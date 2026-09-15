@@ -20,7 +20,7 @@ server/
   src/services/google.js OAuth Google + Drive (lecture seule)
   src/routes/           auth.js (OAuth), api.js (me, referentiel, drive, health)
   db/migrations/        NNN_*.sql, appliqués une fois chacun (schema_migrations)
-  db/seeds/             referentiel_v9.json
+  seed/                 referentiel_qualiopi_v9_indicateurs.json (guide V9)
 railway.json            build, démarrage, healthcheck /api/health
 ```
 
@@ -38,7 +38,7 @@ version du référentiel n'est en base.
 | Commande | Rôle |
 | --- | --- |
 | `npm run db:migrate` | applique les migrations en attente |
-| `npm run db:seed` | réimporte `referentiel_v9.json` |
+| `npm run db:seed` | réimporte le guide V9 |
 | `npm run db:seed -- chemin.json` | importe un autre fichier de référentiel |
 | `npm test` | tests unitaires serveur |
 
@@ -73,16 +73,21 @@ Deux consentements distincts :
 
 ## Référentiel
 
-`server/db/seeds/referentiel_v9.json` contient les 7 critères et les 32
-indicateurs avec les libellés du décret n° 2019-564. Ils sont marqués
-**provisoires** (`texte_source_verifie = false`) jusqu'à l'import du guide de
-lecture V9 officiel, qui renseignera aussi niveau attendu, éléments de preuve,
-obligations spécifiques, applicabilité aux nouveaux entrants et possibilité de
-non-conformité mineure.
+Source : `server/seed/referentiel_qualiopi_v9_indicateurs.json`, tiré du guide
+de lecture V9 du 8 janvier 2024 (DGEFP). Il contient les 7 critères et les 32
+indicateurs avec type commun ou spécifique, catégories concernées (OF, CFA,
+CBC, VAE), niveau attendu, exemples de preuves, obligations spécifiques,
+sous-traitance, gradation des non-conformités, modalités pour nouveaux
+entrants et audit initial aménagé.
 
-Pour importer le texte officiel : compléter le JSON (ou en fournir un autre),
-passer `texte_source_verifie` à `true` sur chaque indicateur relu, puis
-`npm run db:seed`. Le seed ne réécrit jamais une ligne déjà vérifiée.
+L'import est idempotent. Un fichier est réputé tiré du guide officiel, sauf
+s'il porte `"provisoire": true`. Un import provisoire ne réécrit jamais un
+indicateur déjà vérifié.
+
+> **V10** : le décret n° 2026-728 du 1er août 2026 passe le référentiel à 33
+> indicateurs au 1er novembre 2026. Le guide V10 n'est pas encore publié.
+> La table `referentiel_versions` accueillera la V10 à côté de la V9 ; une
+> seule version est active à la fois.
 
 ## Schéma (migration 001)
 

@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 
-const PORTEE = {
-  certification: "Certification",
-  apprentissage: "CFA",
-  alternance: "Alternance",
-  bilan: "Bilan de compétences",
-  vae: "VAE",
-};
+const TOUTES_CATEGORIES = ["OF", "CFA", "CBC", "VAE"];
+const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'apprentis", CBC: "Bilan de compétences", VAE: "Validation des acquis de l'expérience" };
 
 export default function Referentiel() {
   const [data, setData] = useState(null);
@@ -46,6 +41,7 @@ export default function Referentiel() {
         <div>
           <h1>Référentiel {data.version.code}</h1>
           <p className="muted">
+            {data.version.source && <>{data.version.source} · </>}
             {data.criteres.length} critères · {data.totalIndicateurs} indicateurs
             {data.totalIndicateurs !== 32 && <span className="text-erreur"> · 32 attendus</span>}
           </p>
@@ -55,9 +51,10 @@ export default function Referentiel() {
           value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher un indicateur"
         />
       </div>
+      {data.version.note && <p className="flash info">{data.version.note}</p>}
       {nonVerifies > 0 && (
         <p className="flash info">
-          {nonVerifies} libellé(s) provisoire(s), en attente d'import du guide de lecture officiel.
+          {nonVerifies} libellé(s) provisoire(s), non confronté(s) au guide de lecture officiel.
         </p>
       )}
       {criteres.length === 0 && <p className="muted">Aucun indicateur ne correspond.</p>}
@@ -78,7 +75,11 @@ export default function Referentiel() {
                     <div>
                       <p>{i.libelle}</p>
                       <div className="tags">
-                        {i.champ_application.map((p) => <span key={p} className="pill">{PORTEE[p] || p}</span>)}
+                        {i.type === "specifique" && <span className="pill spec">Spécifique</span>}
+                        {TOUTES_CATEGORIES.every((c) => i.categories.includes(c))
+                          ? <span className="pill">Toutes catégories</span>
+                          : i.categories.map((c) => <span key={c} className="pill" title={TITRES[c]}>{c}</span>)}
+                        {i.gradation === "majeure_uniquement" && <span className="pill off">NC majeure uniquement</span>}
                         {!i.texte_source_verifie && <span className="pill warn">Provisoire</span>}
                       </div>
                     </div>

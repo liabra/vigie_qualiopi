@@ -20,7 +20,8 @@ CREATE TABLE referentiel_versions (
   libelle          text NOT NULL,
   date_publication date,
   date_application date,
-  source           text,                             -- URL / référence du guide de lecture
+  source           text,                             -- référence du guide de lecture
+  note             text,                             -- ex. annonce de la version suivante
   est_active       boolean NOT NULL DEFAULT false,
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now()
@@ -32,32 +33,36 @@ CREATE UNIQUE INDEX referentiel_versions_une_active
 CREATE TABLE criteres (
   id          serial PRIMARY KEY,
   version_id  integer NOT NULL REFERENCES referentiel_versions(id) ON DELETE CASCADE,
-  numero      smallint NOT NULL CHECK (numero BETWEEN 1 AND 7),
+  numero      smallint NOT NULL CHECK (numero > 0),
   libelle     text NOT NULL,
   UNIQUE (version_id, numero)
 );
 
 CREATE TABLE indicateurs (
-  id                        serial PRIMARY KEY,
-  version_id                integer NOT NULL REFERENCES referentiel_versions(id) ON DELETE CASCADE,
-  critere_id                integer NOT NULL REFERENCES criteres(id) ON DELETE CASCADE,
-  numero                    smallint NOT NULL CHECK (numero BETWEEN 1 AND 32),
-  libelle                   text NOT NULL,
-  -- Champs du guide de lecture, remplis à l'import du texte officiel.
-  niveau_attendu            text,
-  elements_preuve           text,
-  obligations_specifiques   text,
-  precisions_guide          text,
-  -- Portée : vide = toutes catégories d'actions ; sinon parmi
-  -- 'certification', 'apprentissage', 'alternance', 'bilan', 'vae'…
-  champ_application         text[] NOT NULL DEFAULT '{}',
-  applicable_nouvel_entrant boolean,
-  nc_mineure_possible       boolean,
-  -- false tant que le libellé n'a pas été confronté au guide de lecture
-  -- officiel. Le seed ne réécrit JAMAIS une ligne passée à true.
-  texte_source_verifie      boolean NOT NULL DEFAULT false,
-  created_at                timestamptz NOT NULL DEFAULT now(),
-  updated_at                timestamptz NOT NULL DEFAULT now(),
+  id                                  serial PRIMARY KEY,
+  version_id                          integer NOT NULL REFERENCES referentiel_versions(id) ON DELETE CASCADE,
+  critere_id                          integer NOT NULL REFERENCES criteres(id) ON DELETE CASCADE,
+  numero                              smallint NOT NULL CHECK (numero BETWEEN 1 AND 40),
+  libelle                             text NOT NULL,
+  -- Champs du guide de lecture officiel.
+  type                                text NOT NULL DEFAULT 'commun' CHECK (type IN ('commun', 'specifique')),
+  -- Catégories d'actions concernées : OF, CFA, CBC (bilan), VAE.
+  categories                          text[] NOT NULL DEFAULT '{}'
+                                        CHECK (categories <@ ARRAY['OF', 'CFA', 'CBC', 'VAE']),
+  niveau_attendu                      text,
+  exemples_preuves                    text[] NOT NULL DEFAULT '{}',
+  -- Clés libres du guide : VAE, CBC, CFA, PSH, formations_certifiantes…
+  obligations_specifiques             jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- Texte, objet ou null selon l'indicateur.
+  sous_traitance                      jsonb,
+  gradation                           text CHECK (gradation IN ('mineure_ou_majeure', 'majeure_uniquement')),
+  nouveaux_entrants_modalites_adaptees boolean,
+  audit_initial_amenage               boolean,
+  -- false = libellé provisoire, non confronté au guide officiel. Un import
+  -- provisoire ne réécrit JAMAIS une ligne vérifiée.
+  texte_source_verifie                boolean NOT NULL DEFAULT false,
+  created_at                          timestamptz NOT NULL DEFAULT now(),
+  updated_at                          timestamptz NOT NULL DEFAULT now(),
   UNIQUE (version_id, numero)
 );
 CREATE INDEX indicateurs_critere ON indicateurs (critere_id);

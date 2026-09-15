@@ -98,3 +98,4 @@ p { margin: 0; }
   .critere-head { grid-template-columns: 1fr auto; }
   .critere-libelle { grid-column: 1 / -1; grid-row: 2; }
 }
+.pill.spec { background: var(--primary); color: var(--primary-text); }

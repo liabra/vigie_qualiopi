@@ -1,0 +1,809 @@
+{
+  "referentiel": "RNQ Qualiopi",
+  "version": "V9",
+  "date_version": "2024-01-08",
+  "source": "Guide de lecture V.9 - 8 janvier 2024, Ministère du Travail, du Plein emploi et de l'Insertion (DGEFP)",
+  "nb_indicateurs": 32,
+  "criteres": [
+    {
+      "numero": 1,
+      "libelle": "Les conditions d'information du public sur les prestations proposées, les délais pour y accéder et les résultats obtenus"
+    },
+    {
+      "numero": 2,
+      "libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations"
+    },
+    {
+      "numero": 3,
+      "libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre"
+    },
+    {
+      "numero": 4,
+      "libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre"
+    },
+    {
+      "numero": 5,
+      "libelle": "La qualification et le développement des connaissances et compétences des personnels chargés de mettre en œuvre les prestations"
+    },
+    {
+      "numero": 6,
+      "libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel"
+    },
+    {
+      "numero": 7,
+      "libelle": "Le recueil et la prise en compte des appréciations et des réclamations formulées par les parties prenantes aux prestations délivrées"
+    }
+  ],
+  "indicateurs": [
+    {
+      "numero": 1,
+      "critere": 1,
+      "libelle": "Le prestataire diffuse une information accessible au public, détaillée et vérifiable sur les prestations proposées : prérequis, objectifs, durée, modalités et délais d'accès, tarifs, contacts, méthodes mobilisées et modalités d'évaluation, accessibilité aux personnes handicapées.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Donner une information accessible, exhaustive sur la prestation (tous les items) et à jour.",
+      "exemples_preuves": [
+        "Supports et outils d'information (plaquette, réseaux sociaux, site internet, publicité, salons, contractualisation, CGV)",
+        "Pour les PSH : supports de présentation de la politique d'accessibilité, conditions d'accès",
+        "CBC : supports rappelant le cadre légal et réglementaire du bilan de compétences, objectifs, financement"
+      ],
+      "obligations_specifiques": {
+        "VAE": "Contraintes et exigences de la démarche clairement formalisées et communiquées (modalités d'instruction et de faisabilité).",
+        "CBC": "Les prérequis n'ont pas à être mentionnés.",
+        "formations_certifiantes": "Libellé exact de la certification, code RNCP/RS, nom du certificateur, date d'enregistrement."
+      },
+      "sous_traitance": "Non applicable : l'information doit être réalisée par le donneur d'ordres.",
+      "critere_libelle": "Les conditions d'information du public sur les prestations proposées, les délais pour y accéder et les résultats obtenus",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 2,
+      "critere": 1,
+      "libelle": "Le prestataire diffuse des indicateurs de résultats adaptés à la nature des prestations mises en œuvre et des publics accueillis.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Donner une information chiffrée permettant de suivre les résultats de la prestation au regard des objectifs.",
+      "exemples_preuves": [
+        "Rapports d'activités, bilans, résultats d'enquêtes, indicateurs de performance",
+        "Taux de satisfaction, nombre de stagiaires, taux et causes d'abandon, taux de retour enquêtes, taux d'interruption, taux de rupture de contrats d'alternance, taux d'insertion emploi",
+        "CBC : nombre de bénéficiaires début/fin, taux de réalisation des entretiens de suivi à 6 mois",
+        "VAE : nombre de candidats accompagnés, taux de réussite globale et par diplôme, taux de satisfaction"
+      ],
+      "obligations_specifiques": {
+        "CFA": "Indicateurs obligatoires cités à L. 6111-8 du code du travail, calculés par les ministères et rendus publics via Inserjeunes ; à défaut le CFA calcule et diffuse lui-même."
+      },
+      "sous_traitance": "Non applicable : la diffusion des indicateurs doit être réalisée par le donneur d'ordres.",
+      "critere_libelle": "Les conditions d'information du public sur les prestations proposées, les délais pour y accéder et les résultats obtenus",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 3,
+      "critere": 1,
+      "libelle": "Lorsque le prestataire met en œuvre des prestations conduisant à une certification professionnelle, il informe sur les taux d'obtention des certifications préparées, les possibilités de valider un ou des blocs de compétences, ainsi que sur les équivalences, passerelles, suites de parcours et débouchés.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA",
+        "VAE"
+      ],
+      "niveau_attendu": "Donner une information accessible, exhaustive et actualisée.",
+      "exemples_preuves": [
+        "Plaquette, réseaux sociaux, site internet, publicité, salons, contractualisation",
+        "Taux d'obtention d'une certification pour les formations certifiantes",
+        "Trajectoires d'évolution des bénéficiaires à l'issue de la prestation insertion ou mobilité"
+      ],
+      "obligations_specifiques": {
+        "note": "Le taux d'obtention doit être mis en relation avec le taux de présentation à l'examen. L'information sur les débouchés comprend le taux d'insertion global et dans le métier visé (fiche RNCP)."
+      },
+      "sous_traitance": "Non applicable : l'information doit être réalisée par le donneur d'ordres.",
+      "critere_libelle": "Les conditions d'information du public sur les prestations proposées, les délais pour y accéder et les résultats obtenus",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 4,
+      "critere": 2,
+      "libelle": "Le prestataire analyse le besoin du bénéficiaire en lien avec l'entreprise et/ou le financeur concerné(s).",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer comment le besoin du bénéficiaire est analysé en fonction de la finalité de la prestation.",
+      "exemples_preuves": [
+        "Grilles d'analyse, diagnostics préalables, dossiers d'admission, comptes rendus d'entretiens, critères d'opportunité/faisabilité",
+        "VAE : contractualisation de l'accompagnement (méthode, modalités individuelles/collectives, échéancier)"
+      ],
+      "obligations_specifiques": {
+        "PSH": "Démontrer la prise en compte des situations de handicap et des besoins en compensation.",
+        "CFA_alternance": "Analyse prévue en amont de la contractualisation alternant/entreprise, intégrant la vérification des missions proposées avec le diplôme/certification visé.",
+        "CBC": "L'outil de la phase préliminaire (ex. grille APS) doit déboucher sur la co-construction d'un programme personnalisé."
+      },
+      "sous_traitance": "Le prestataire démontre qu'il tient compte des objectifs définis par le donneur d'ordres.",
+      "critere_libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false
+    },
+    {
+      "numero": 5,
+      "critere": 2,
+      "libelle": "Le prestataire définit les objectifs opérationnels et évaluables de la prestation.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer que les objectifs spécifiques à la prestation ont été définis et peuvent faire l'objet d'une évaluation.",
+      "exemples_preuves": [
+        "Outils d'analyse, indicateurs de suivi et de résultats, contractualisation, compétences visées, objectifs pédagogiques intermédiaires/finaux, référentiel de certification",
+        "VAE : fiches de travail, programme de travail avec durées prévues, entretiens avec accompagnateurs"
+      ],
+      "obligations_specifiques": {
+        "CFA_alternance": "Objectifs exprimés en compétences/capacités professionnelles à acquérir et/ou certifications visées.",
+        "CBC": "Outils et grilles pour codéfinir les objectifs en phase préliminaire.",
+        "VAE": "Accompagnement contractualisé énonçant les engagements du bénéficiaire et de l'accompagnateur.",
+        "formations_certifiantes": "Objectifs conformes à ceux fixés par la certification RNCP/RS."
+      },
+      "sous_traitance": "Le prestataire démontre qu'il tient compte des objectifs définis par le donneur d'ordres.",
+      "critere_libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false
+    },
+    {
+      "numero": 6,
+      "critere": 2,
+      "libelle": "Le prestataire établit les contenus et les modalités de mise en œuvre de la prestation, adaptés aux objectifs définis et aux publics bénéficiaires.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer que les contenus et modalités sont adaptés aux objectifs et aux bénéficiaires.",
+      "exemples_preuves": [
+        "Parcours, déroulés et séquences, grilles et modalités d'évaluation, modalités présentiel/distance/mixte (blended, synchrone/asynchrone)",
+        "Supports de contractualisation, référentiels des diplômes, guide pratique du déroulé avec durée et calendrier",
+        "VAE et formations certifiantes : ateliers collectifs d'explicitation de l'expérience"
+      ],
+      "obligations_specifiques": {
+        "formations_certifiantes": "Cohérence du contenu avec les objectifs inscrits au référentiel RNCP/RS.",
+        "PSH": "Prise en compte dans la conception et la mise en œuvre."
+      },
+      "critere_libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 7,
+      "critere": 2,
+      "libelle": "Lorsque le prestataire met en œuvre des prestations conduisant à une certification professionnelle, il s'assure de l'adéquation du ou des contenus de la prestation aux exigences de la certification visée.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer l'adéquation du contenu aux compétences ciblées et aux épreuves d'évaluation de la certification.",
+      "exemples_preuves": [
+        "Offre de formation en cohérence avec le référentiel de certification",
+        "Habilitation à former ou convention de partenariat avec le certificateur",
+        "Tableau croisé du contenu de formation et du référentiel de compétences"
+      ],
+      "obligations_specifiques": {},
+      "sous_traitance": "L'organisme certificateur tient compte des missions confiées pour l'appréciation de l'indicateur.",
+      "critere_libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 8,
+      "critere": 2,
+      "libelle": "Le prestataire détermine les procédures de positionnement et d'évaluation des acquis à l'entrée de la prestation.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer l'existence de procédures de positionnement et d'évaluation des acquis à l'entrée, adaptées aux publics et modalités.",
+      "exemples_preuves": [
+        "Diagnostic préalable, entretien, évaluation des acquis à l'entrée (quizz, QCM, exercices, mise en situation, test)",
+        "Outils de mesure des écarts en compétences, auto-positionnement, procédures de positionnement et/ou conditions d'accès"
+      ],
+      "obligations_specifiques": {
+        "formations_certifiantes": "Prérequis cohérents avec ceux de la certification RNCP/RS."
+      },
+      "critere_libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires lors de la conception des prestations",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 9,
+      "critere": 3,
+      "libelle": "Le prestataire informe les publics bénéficiaires des conditions de déroulement de la prestation.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Les modalités d'accueil et les conditions de déroulement de la prestation sont formalisées et diffusées.",
+      "exemples_preuves": [
+        "Règlement intérieur, livret d'accueil, convocation, CGU, noms des référents pédagogiques/administratifs, organigramme",
+        "Aspects périphériques (hébergement, restauration, transport, rémunération), modalités d'accès/suivi/accompagnement PSH",
+        "FOAD : modalités d'accès au LMS, assistance technique et pédagogique"
+      ],
+      "obligations_specifiques": {
+        "CBC": "Information sur les engagements déontologiques prévus à l'article L. 6313-4 (consentement, confidentialité)."
+      },
+      "sous_traitance": "L'organisme certificateur tient compte des missions confiées pour l'appréciation de l'indicateur.",
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false
+    },
+    {
+      "numero": 10,
+      "critere": 3,
+      "libelle": "Le prestataire met en œuvre et adapte la prestation, l'accompagnement et le suivi aux publics bénéficiaires.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "La prestation est adaptée aux situations et profils des bénéficiaires (contenus, accompagnement, suivi) lorsque l'analyse du besoin en établit la nécessité.",
+      "exemples_preuves": [
+        "Durées et contenus des prestations, emplois du temps, groupes de niveaux, entretiens, référent pédagogique, livret de suivi pédagogique",
+        "PSH : liste de structures/personnes ressources, modalités d'aménagement, plans individuels de compensation du handicap"
+      ],
+      "obligations_specifiques": {
+        "CFA": "Mise en œuvre des obligations légales d'accompagnement des apprentis (missions 1°, 2°, 11° de L. 6231-2).",
+        "VAE": "Phases individuelles/collectives, durée et modalités adaptées au bénéficiaire.",
+        "CBC": "Convention précisant durée, coût, planning, description des 3 étapes du bilan, moyens/outils/méthodes/postures."
+      },
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 11,
+      "critere": 3,
+      "libelle": "Le prestataire évalue l'atteinte par les publics bénéficiaires des objectifs de la prestation.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer qu'un processus d'évaluation existe, est formalisé et mis en œuvre, permettant d'apprécier l'atteinte des objectifs.",
+      "exemples_preuves": [
+        "Outils d'évaluation des acquis en cours/fin de prestation (à chaud/à froid), auto-évaluation, bilans intermédiaires, comptes-rendus",
+        "Taux de réussite aux certifications, livret de compétences, preuve de délivrance, livrets de suivi en entreprise"
+      ],
+      "obligations_specifiques": {
+        "VAE": "Dossier de suivi du candidat permettant d'apprécier la progression au regard des objectifs."
+      },
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 12,
+      "critere": 3,
+      "libelle": "Le prestataire décrit et met en œuvre les mesures pour favoriser l'engagement des bénéficiaires et prévenir les ruptures de parcours.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "duree_minimale_applicable": "> 2 jours",
+      "niveau_attendu": "Démontrer que des mesures formalisées existent et sont mises en œuvre.",
+      "exemples_preuves": [
+        "Procédure de gestion des abandons et de relance systématique, listing de relances, carnet de rendez-vous",
+        "Outils favorisant l'implication du bénéficiaire, enquêtes terrain, variété des modalités pédagogiques",
+        "Formations en alternance : contacts/visites avec l'entreprise, rencontres tuteurs/maîtres d'apprentissage, accompagnement spécifique"
+      ],
+      "obligations_specifiques": {
+        "CFA": "Accompagnement en lien avec le Service Public de l'Emploi (missions 5°, 6°, 13° de L. 6231-2) : prévention des difficultés, orientation en cas d'interruption, aide à la recherche d'une autre entreprise."
+      },
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 13,
+      "critere": 3,
+      "libelle": "Pour les formations en alternance, le prestataire, en lien avec l'entreprise, anticipe avec l'apprenant les missions confiées, à court, moyen et long terme, et assure la coordination et la progressivité des apprentissages réalisés en centre de formation et en entreprise.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer que les principes de la pédagogie de l'alternance sont mis en œuvre grâce à un processus formalisé d'articulation itératif entre centre de formation et entreprise.",
+      "exemples_preuves": [
+        "Outil de liaison entreprise/bénéficiaire/prestataire : carnet de suivi, preuves de dialogue avec tuteurs, plannings, comptes rendus d'entretien/visite",
+        "PSH : outil de liaison sur les adaptations en entreprise"
+      ],
+      "obligations_specifiques": {},
+      "sous_traitance": "L'organisme certificateur tient compte des missions confiées pour l'appréciation de l'indicateur.",
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 14,
+      "critere": 3,
+      "libelle": "Le prestataire met en œuvre un accompagnement socio-professionnel, éducatif et relatif à l'exercice de la citoyenneté.",
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer que l'accompagnement de l'apprenant est formalisé et mis en œuvre par la mise en place de projets spécifiques.",
+      "exemples_preuves": [
+        "Projets d'activités sportives, ateliers culturels, éducation aux écrans, citoyenneté, dispositifs d'aides financières",
+        "Dispositif d'accompagnement des apprenants dans le centre, actions de sensibilisation à la mixité et à la diversité"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 15,
+      "critere": 3,
+      "libelle": "Le prestataire informe les apprentis de leurs droits et devoirs en tant qu'apprentis et salariés ainsi que des règles applicables en matière de santé et de sécurité en milieu professionnel.",
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer que les apprentis sont informés de leurs droits/devoirs et des règles de santé et sécurité.",
+      "exemples_preuves": [
+        "Règlement intérieur du CFA, supports d'information, contractualisation, compte-rendu de réunions d'information collective, livret d'accueil"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 16,
+      "critere": 3,
+      "libelle": "Lorsque le prestataire met en œuvre des formations conduisant à une certification professionnelle, il s'assure que les conditions de présentation des bénéficiaires à la certification respectent les exigences formelles de l'autorité de certification.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA",
+        "VAE"
+      ],
+      "niveau_attendu": "Le prestataire respecte les exigences formelles de l'autorité de certification lorsqu'il présente des candidats.",
+      "exemples_preuves": [
+        "Information communiquée sur le déroulement de l'évaluation, conditions de passage à distance, preuve d'inscription",
+        "Habilitation à évaluer, convention avec le certificateur, référentiel d'évaluation, procès-verbal des sessions d'examen"
+      ],
+      "obligations_specifiques": {
+        "VAE": "Le prestataire démontre qu'il a demandé au certificateur les conditions de présentation et les calendriers de jury.",
+        "PSH": "Modalités d'aménagement des examens."
+      },
+      "sous_traitance": "L'organisme certificateur tient compte des missions confiées pour l'appréciation de l'indicateur.",
+      "critere_libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 17,
+      "critere": 4,
+      "libelle": "Le prestataire met à disposition ou s'assure de la mise à disposition des moyens humains et techniques adaptés et d'un environnement approprié (conditions, locaux, équipements, plateaux techniques…).",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer que les locaux, équipements et moyens humains sont en adéquation avec les objectifs de la prestation.",
+      "exemples_preuves": [
+        "Bail ou contrat de location, registre public d'accessibilité, document unique d'évaluation des risques professionnels",
+        "Matériel adéquat, plateaux techniques, plateformes LMS, CV, supports méthodologiques, contrats de sous-traitance/prestations"
+      ],
+      "obligations_specifiques": {
+        "CBC": "Environnement garantissant la discrétion et la confidentialité des échanges ; habilitation des personnes faisant passer les tests."
+      },
+      "critere_libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 18,
+      "critere": 4,
+      "libelle": "Le prestataire mobilise et coordonne les différents intervenants internes et/ou externes (pédagogiques, administratifs, logistiques, commerciaux…).",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Le prestataire identifie, selon les fonctions nécessaires, les intervenants dont il assure la coordination.",
+      "exemples_preuves": [
+        "Organigramme fonctionnel, liste des intervenants/contributeurs, contrats de travail/prestation, fiches de poste, planning des intervenants, comptes-rendus de réunions"
+      ],
+      "obligations_specifiques": {
+        "VAE": "Les intervenants externes ne sont ni les certificateurs ni les financeurs."
+      },
+      "critere_libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 19,
+      "critere": 4,
+      "libelle": "Le prestataire met à disposition du bénéficiaire des ressources pédagogiques et permet à celui-ci de se les approprier.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer que les ressources pédagogiques sont cohérentes avec les objectifs, disponibles, et que des dispositions permettent leur appropriation.",
+      "exemples_preuves": [
+        "Supports de cours, vidéos, fiches pratiques, outils d'exploration du monde du travail, ressources documentaires, typologie des ressources",
+        "Modalités d'accès pour bénéficiaires et équipes pédagogiques, dispositif de veille et d'actualisation"
+      ],
+      "obligations_specifiques": {
+        "formation_a_distance": "Assistance technique et pédagogique appropriée pour accompagner le bénéficiaire (article D. 6313-3-1)."
+      },
+      "critere_libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 20,
+      "critere": 4,
+      "libelle": "Le prestataire dispose d'un personnel dédié à l'appui à la mobilité nationale et internationale, d'un référent handicap et d'un conseil de perfectionnement.",
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "niveau_attendu": "Présenter la liste des membres du conseil de perfectionnement, les personnes dédiées à la mobilité, le nom et le contact du référent handicap et leurs actions.",
+      "exemples_preuves": [
+        "Nom et qualité des membres du conseil de perfectionnement, dernier compte-rendu/PV",
+        "Nom du référent handicap et PV de nomination, missions remplies et exemples d'actions menées"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 21,
+      "critere": 5,
+      "libelle": "Le prestataire détermine, mobilise et évalue les compétences des différents intervenants internes et/ou externes, adaptées aux prestations.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer que les compétences requises ont été définies en amont, sont adaptées, et que leur maîtrise est vérifiée.",
+      "exemples_preuves": [
+        "Analyse des besoins de compétences, modalités de recrutement/intégration, CV des intervenants, formations initiales/continues",
+        "CBC : vérification des certifications détenues pour réaliser les tests psychotechniques"
+      ],
+      "obligations_specifiques": {
+        "VAE": "Les accompagnateurs sont formés à l'analyse des référentiels métiers/certifications et à la méthodologie d'accompagnement."
+      },
+      "critere_libelle": "La qualification et le développement des connaissances et compétences des personnels chargés de mettre en œuvre les prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 22,
+      "critere": 5,
+      "libelle": "Le prestataire entretient et développe les compétences de ses salariés, adaptées aux prestations qu'il délivre.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mobilisation des différents leviers de formation et de professionnalisation pour l'ensemble du personnel.",
+      "exemples_preuves": [
+        "Qualification des personnels, plan de développement des compétences, entretien professionnel, communauté de pairs, groupes d'échange de pratiques"
+      ],
+      "obligations_specifiques": {
+        "prestataires_independants": "Démontrent leur démarche de formation continue."
+      },
+      "critere_libelle": "La qualification et le développement des connaissances et compétences des personnels chargés de mettre en œuvre les prestations",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 23,
+      "critere": 6,
+      "libelle": "Le prestataire réalise une veille légale et réglementaire sur le champ de la formation professionnelle et en exploite les enseignements.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mise en place d'une veille légale et réglementaire, sa prise en compte et sa communication en interne.",
+      "exemples_preuves": [
+        "Abonnements, adhésions, participation aux salons professionnels, conférences, groupes normatifs",
+        "Actualisation des supports d'information et de contractualisation selon les évolutions juridiques, diffusion au personnel"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 24,
+      "critere": 6,
+      "libelle": "Le prestataire réalise une veille sur les évolutions des compétences, des métiers et des emplois dans ses secteurs d'intervention et en exploite les enseignements.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mise en place d'une veille sur les thèmes de l'indicateur et son impact éventuel sur les prestations.",
+      "exemples_preuves": [
+        "Veille sur les évolutions des compétences/métiers/emplois, participations à conférences/colloques, adhésion à un réseau professionnel"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 25,
+      "critere": 6,
+      "libelle": "Le prestataire réalise une veille sur les innovations pédagogiques et technologiques permettant une évolution de ses prestations et en exploite les enseignements.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mise en place d'une veille sur les thèmes de l'indicateur et son impact éventuel sur les prestations.",
+      "exemples_preuves": [
+        "Veille sur les innovations pédagogiques/technologiques, participations à conférences/colloques/salons, groupes de réflexion et d'analyse de pratiques"
+      ],
+      "obligations_specifiques": {
+        "PSH": "Participation à des conférences/colloques/groupes de réflexion en matière d'innovations pour le public visé."
+      },
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 26,
+      "critere": 6,
+      "libelle": "Le prestataire mobilise les expertises, outils et réseaux nécessaires pour accueillir, accompagner/former ou orienter les publics en situation de handicap.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer l'identification d'un réseau de partenaires/experts/acteurs du champ du handicap, mobilisable par les personnels ; préciser les modalités de recours et les mesures d'accompagnement/orientation mises en œuvre.",
+      "exemples_preuves": [
+        "Liste des partenaires du territoire (Agefiph, Fiphfp, Cap emploi, MDPH), participation aux instances, comptes-rendus de rencontres",
+        "Charte d'engagement pour l'accessibilité, recours à l'offre Ressource Handicap Formation"
+      ],
+      "obligations_specifiques": {},
+      "sous_traitance": "Le prestataire démontre qu'il dispose d'un réseau de partenaires/experts/acteurs du handicap ou que le donneur d'ordre lui a communiqué sa liste de partenaires mobilisables.",
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 27,
+      "critere": 6,
+      "libelle": "Lorsque le prestataire fait appel à la sous-traitance ou au portage salarial, il s'assure du respect de la conformité au présent référentiel.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer les dispositions mises en place pour vérifier le respect de la conformité au référentiel par le sous-traitant ou le salarié porté.",
+      "exemples_preuves": [
+        "Contrats de sous-traitance, modalités de sélection et de pilotage des sous-traitants (process de sélection, animation qualité, charte), justificatifs présentés"
+      ],
+      "obligations_specifiques": {
+        "note": "N'impose pas aux sous-traitants l'obligation de certification Qualiopi elle-même ; la responsabilité de la qualité reste au donneur d'ordre."
+      },
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 28,
+      "critere": 6,
+      "libelle": "Lorsque les prestations dispensées au bénéficiaire comprennent des périodes de formation en situation de travail, le prestataire mobilise son réseau de partenaires socio-économiques pour co-construire l'ingénierie de formation et favoriser l'accueil en entreprise.",
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer l'existence d'un réseau de partenaires socio-économiques mobilisé tout au long de la prestation.",
+      "exemples_preuves": [
+        "Comités de pilotage, comptes rendus de réunions, liste des entreprises partenaires, conventions de partenariat, contacts réseau SPE, livret alternance"
+      ],
+      "obligations_specifiques": {
+        "note": "Concerne tous les prestataires mobilisant un réseau de partenaires dès lors que la formation prévoit une période en entreprise (alternance, stage, AFEST…)."
+      },
+      "sous_traitance": "L'organisme certificateur tient compte des missions confiées pour l'appréciation de l'indicateur.",
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true
+    },
+    {
+      "numero": 29,
+      "critere": 6,
+      "libelle": "Le prestataire développe des actions qui concourent à l'insertion professionnelle ou la poursuite d'étude par la voie de l'apprentissage ou par toute autre voie permettant de développer leurs connaissances et leurs compétences.",
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "niveau_attendu": "Démontrer l'existence d'actions qui concourent à l'insertion professionnelle ou à la poursuite d'études.",
+      "exemples_preuves": [
+        "Salon d'orientation, visite d'entreprise, ateliers CV/lettre de motivation, aide à la recherche d'emploi, réseau d'anciens élèves",
+        "Partenariats avec les acteurs de l'insertion et de l'emploi, diffusion des offres d'apprentissage et d'emploi"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    },
+    {
+      "numero": 30,
+      "critere": 7,
+      "libelle": "Le prestataire recueille les appréciations des parties prenantes : bénéficiaires, financeurs, équipes pédagogiques et entreprise concernées.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la sollicitation des appréciations à une fréquence pertinente, incluant des dispositifs de relance et permettant une libre expression.",
+      "exemples_preuves": [
+        "Enquête de satisfaction, questionnaire, compte-rendu d'entretiens, évaluation à chaud/froid, comité de pilotage, webinaires, sollicitation des financeurs",
+        "CBC : questionnaire d'évaluation à l'issue du bilan et à 6 mois"
+      ],
+      "obligations_specifiques": {
+        "CBC": "Seules les appréciations des bénéficiaires et des équipes pédagogiques sont requises.",
+        "note": "La sollicitation des financeurs n'est pas exigée à la fin de chaque prestation, mais au moins une fois par an (ou remplacée par la participation à des webinaires/réunions organisés par le financeur)."
+      },
+      "sous_traitance": "Le prestataire recueille l'appréciation des bénéficiaires et de son donneur d'ordres sur la prestation réalisée.",
+      "critere_libelle": "Le recueil et la prise en compte des appréciations et des réclamations formulées par les parties prenantes aux prestations délivrées",
+      "gradation": "mineure_ou_majeure",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false
+    },
+    {
+      "numero": 31,
+      "critere": 7,
+      "libelle": "Le prestataire met en œuvre des modalités de traitement des difficultés rencontrées par les parties prenantes, des réclamations exprimées par ces dernières, des aléas survenus en cours de prestation.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mise en place de modalités de traitement des aléas, difficultés et réclamations.",
+      "exemples_preuves": [
+        "Description et mise en œuvre des modalités (accusé de réception, réponses aux réclamants), enquêtes de satisfaction, système de médiation, tableau de suivi des réclamations"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "Le recueil et la prise en compte des appréciations et des réclamations formulées par les parties prenantes aux prestations délivrées",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": false,
+      "audit_initial_amenage": false,
+      "sous_traitance": null
+    },
+    {
+      "numero": 32,
+      "critere": 7,
+      "libelle": "Le prestataire met en œuvre des mesures d'amélioration à partir de l'analyse des appréciations et des réclamations.",
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CFA",
+        "CBC",
+        "VAE"
+      ],
+      "niveau_attendu": "Démontrer la mise en place d'une démarche d'amélioration continue.",
+      "exemples_preuves": [
+        "Identification et réflexion sur les causes d'abandon/motifs d'insatisfaction, plans d'action d'amélioration, tableau de suivi des mesures mises en œuvre",
+        "VAE : partage des résultats de l'accompagnement (candidats début/fin, taux et causes d'abandon, taux de réussite)"
+      ],
+      "obligations_specifiques": {},
+      "critere_libelle": "Le recueil et la prise en compte des appréciations et des réclamations formulées par les parties prenantes aux prestations délivrées",
+      "gradation": "majeure_uniquement",
+      "nouveaux_entrants_modalites_adaptees": true,
+      "audit_initial_amenage": true,
+      "sous_traitance": null
+    }
+  ],
+  "note_v10": "Décret n°2026-728 du 1er août 2026 (JO 4/08/2026), applicable au 1er novembre 2026 : passage à 33 indicateurs. Indicateurs modifiés en V10 : 1,2,3,7,12,13,14,15,19,20,27,32. Nouvel indicateur 33 (CFA, évaluation des enseignements par les apprenants). Guide de lecture V10 officiel non encore publié à ce jour — statut provisoire tant que le texte détaillé n'est pas sorti."
+}

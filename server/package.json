@@ -1,0 +1,19 @@
+{
+  "name": "@vigie-qualiopi/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../.env src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node --env-file-if-exists=../.env src/cli/migrate.js",
+    "db:seed": "node --env-file-if-exists=../.env src/cli/seed.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@googleapis/drive": "^8.14.0",
+    "express": "^4.21.2",
+    "google-auth-library": "^9.15.0",
+    "pg": "^8.13.1"
+  }
+}

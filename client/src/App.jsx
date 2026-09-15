@@ -1,0 +1,55 @@
+import { useEffect, useState } from "react";
+import { api } from "./api.js";
+import { ERREURS } from "./messages.js";
+import Login from "./Login.jsx";
+import DriveStatus from "./DriveStatus.jsx";
+import Referentiel from "./Referentiel.jsx";
+
+// Lit puis retire ?erreur= / ?drive= de l'URL, pour qu'un rechargement ne réaffiche rien.
+function consumeFlash() {
+  const params = new URLSearchParams(window.location.search);
+  const erreur = params.get("erreur");
+  const drive = params.get("drive");
+  if (erreur || drive) window.history.replaceState(null, "", window.location.pathname);
+  if (erreur) return { type: "erreur", texte: ERREURS[erreur] || "Erreur de connexion." };
+  if (drive === "ok") return { type: "ok", texte: "Google Drive connecté en lecture seule." };
+  return null;
+}
+
+export default function App() {
+  const [me, setMe] = useState(null);
+  const [error, setError] = useState(null);
+  const [flash] = useState(consumeFlash);
+
+  useEffect(() => {
+    api("/api/me").then(setMe).catch((e) => setError(e.message));
+  }, []);
+
+  async function logout() {
+    await api("/auth/logout", { method: "POST" }).catch(() => {});
+    setMe((m) => ({ ...m, user: null }));
+  }
+
+  if (error) return <main className="page"><p className="flash erreur">Serveur injoignable : {error}</p></main>;
+  if (!me) return <main className="page"><p className="muted">Chargement…</p></main>;
+  if (!me.user) return <Login flash={flash} googleConfigured={me.googleConfigured} />;
+
+  const isAdmin = me.user.role === "admin";
+  return (
+    <>
+      <header className="topbar">
+        <div className="brand">Vigie Qualiopi</div>
+        <div className="who">
+          <span>{me.user.nom || me.user.email}</span>
+          <span className={"role " + me.user.role}>{isAdmin ? "Admin" : "Contributeur"}</span>
+          <button className="link" onClick={logout}>Déconnexion</button>
+        </div>
+      </header>
+      <main className="page">
+        {flash && <p className={"flash " + flash.type}>{flash.texte}</p>}
+        {isAdmin && <DriveStatus />}
+        <Referentiel />
+      </main>
+    </>
+  );
+}

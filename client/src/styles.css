@@ -99,3 +99,59 @@ p { margin: 0; }
   .critere-libelle { grid-column: 1 / -1; grid-row: 2; }
 }
 .pill.spec { background: var(--primary); color: var(--primary-text); }
+
+/* ── Phase 1 : statuts de conformité ─────────────────────────── */
+:root {
+  --st-maitrise: var(--ok); --st-maitrise-bg: var(--ok-bg);
+  --st-consolider: var(--warn); --st-consolider-bg: var(--warn-bg);
+  --st-risque: var(--err); --st-risque-bg: var(--err-bg);
+  --st-na: var(--muted); --st-na-bg: var(--accent-bg);
+}
+.pill.statut-maitrise { background: var(--st-maitrise-bg); color: var(--st-maitrise); }
+.pill.statut-a_consolider { background: var(--st-consolider-bg); color: var(--st-consolider); }
+.pill.statut-a_risque { background: var(--st-risque-bg); color: var(--st-risque); }
+.pill.statut-non_applicable { background: var(--st-na-bg); color: var(--st-na); }
+.ind-num.statut-maitrise { background: var(--st-maitrise); }
+.ind-num.statut-a_consolider { background: var(--st-consolider); }
+.ind-num.statut-a_risque { background: var(--st-risque); }
+.ind-num.statut-non_applicable { background: var(--st-na); }
+.ind-num.petit { width: 1.7rem; height: 1.7rem; font-size: .75rem; }
+
+.score { display: grid; gap: .5rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.score-chiffre { font-size: 1.1rem; }
+.score-chiffre strong { font-size: 1.6rem; color: var(--primary); }
+.jauge { display: flex; height: 1.4rem; border-radius: 99px; overflow: hidden; background: var(--accent-bg); }
+.jauge .part { display: grid; place-items: center; font-size: .75rem; color: #fff; min-width: 1.6rem; }
+.part.statut-maitrise { background: var(--st-maitrise); }
+.part.statut-a_consolider { background: var(--st-consolider); }
+.part.statut-a_risque { background: var(--st-risque); }
+.part.statut-non_applicable { background: var(--st-na); }
+
+.onglets { display: flex; gap: .5rem; }
+.onglets button {
+  padding: .5rem 1rem; border: 1px solid var(--border); border-radius: 8px 8px 0 0;
+  background: var(--surface); color: var(--muted); font: inherit; cursor: pointer;
+}
+.onglets button.actif { color: var(--primary); border-bottom-color: var(--surface); font-weight: 600; }
+
+.import-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.apercu { padding: .9rem 1rem; display: grid; gap: .3rem; }
+.filtres { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.filtres select, .filtres input { padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.liste-preuves { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.preuve { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; display: grid; gap: .6rem; }
+.preuve.a-confirmer { border-left: 4px solid var(--st-risque); }
+.preuve-tete { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: start; }
+.preuve-titre { min-width: 0; }
+.preuve-tete select { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.rattachement { display: grid; gap: .4rem; }
+.candidats { display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
+.btn.petit { padding: .3rem .6rem; font-size: .85rem; }
+.btn.danger { color: var(--err); border-color: var(--err); }
+.recherche-drive { display: flex; gap: .4rem; }
+.recherche-drive input { flex: 1; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.preuve-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .preuve-tete { grid-template-columns: auto 1fr; }
+  .preuve-tete select { grid-column: 2; }
+}

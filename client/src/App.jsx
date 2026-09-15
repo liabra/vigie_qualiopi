@@ -4,6 +4,7 @@ import { ERREURS } from "./messages.js";
 import Login from "./Login.jsx";
 import DriveStatus from "./DriveStatus.jsx";
 import Referentiel from "./Referentiel.jsx";
+import Preuves from "./Preuves.jsx";
 
 // Lit puis retire ?erreur= / ?drive= de l'URL, pour qu'un rechargement ne réaffiche rien.
 function consumeFlash() {
@@ -20,6 +21,9 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [error, setError] = useState(null);
   const [flash] = useState(consumeFlash);
+  const [onglet, setOnglet] = useState("referentiel");
+  // Une preuve modifiée change le tableau de bord : on le remonte.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     api("/api/me").then(setMe).catch((e) => setError(e.message));
@@ -48,7 +52,17 @@ export default function App() {
       <main className="page">
         {flash && <p className={"flash " + flash.type}>{flash.texte}</p>}
         {isAdmin && <DriveStatus />}
-        <Referentiel />
+        <nav className="onglets">
+          <button className={onglet === "referentiel" ? "actif" : ""} onClick={() => setOnglet("referentiel")}>
+            Tableau de bord
+          </button>
+          <button className={onglet === "preuves" ? "actif" : ""} onClick={() => setOnglet("preuves")}>
+            Preuves
+          </button>
+        </nav>
+        {onglet === "referentiel"
+          ? <Referentiel key={version} />
+          : <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
       </main>
     </>
   );

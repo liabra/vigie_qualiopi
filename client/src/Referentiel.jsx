@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 
+const STATUTS = {
+  maitrise: "Maîtrisé",
+  a_consolider: "À consolider",
+  a_risque: "À risque",
+  non_applicable: "Non applicable",
+};
+const resumeScore = (s) =>
+  Object.entries(STATUTS).map(([clef, libelle]) => s[clef] + " " + libelle).join(", ");
 const TOUTES_CATEGORIES = ["OF", "CFA", "CBC", "VAE"];
 const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'apprentis", CBC: "Bilan de compétences", VAE: "Validation des acquis de l'expérience" };
 
@@ -51,6 +59,26 @@ export default function Referentiel() {
           value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher un indicateur"
         />
       </div>
+      <div className="score">
+        <div className="score-chiffre">
+          <strong>{data.score.maitrise}</strong> indicateur(s) au vert sur {data.score.total}
+        </div>
+        <div className="jauge" role="img" aria-label={resumeScore(data.score)}>
+          {["maitrise", "a_consolider", "a_risque", "non_applicable"].map((s) =>
+            data.score[s] > 0 ? (
+              <span key={s} className={"part statut-" + s} style={{ flexGrow: data.score[s] }}>
+                {data.score[s]}
+              </span>
+            ) : null
+          )}
+        </div>
+        <div className="muted small">
+          {data.score.preuves} preuve(s) rattachée(s)
+          {data.score.a_confirmer > 0 && (
+            <span className="text-erreur"> · {data.score.a_confirmer} à confirmer</span>
+          )}
+        </div>
+      </div>
       {data.version.note && <p className="flash info">{data.version.note}</p>}
       {nonVerifies > 0 && (
         <p className="flash info">
@@ -65,16 +93,21 @@ export default function Referentiel() {
             <button className="critere-head" onClick={() => toggle(c.numero)} aria-expanded={isOpen}>
               <span className="num">Critère {c.numero}</span>
               <span className="critere-libelle">{c.libelle}</span>
-              <span className="count">{c.indicateurs.length}</span>
+              <span className="count">
+                {c.indicateurs.filter((i) => i.statut === "maitrise").length}/{c.indicateurs.length}
+              </span>
             </button>
             {isOpen && (
               <ol className="indicateurs">
                 {c.indicateurs.map((i) => (
                   <li key={i.id}>
-                    <span className="ind-num">{i.numero}</span>
+                    <span className={"ind-num statut-" + i.statut} title={STATUTS[i.statut]}>{i.numero}</span>
                     <div>
                       <p>{i.libelle}</p>
                       <div className="tags">
+                        <span className={"pill statut-" + i.statut}>{STATUTS[i.statut]}</span>
+                        <span className="pill">{i.nb_preuves} preuve(s)</span>
+                        {i.nb_a_confirmer > 0 && <span className="pill warn">{i.nb_a_confirmer} à confirmer</span>}
                         {i.type === "specifique" && <span className="pill spec">Spécifique</span>}
                         {TOUTES_CATEGORIES.every((c) => i.categories.includes(c))
                           ? <span className="pill">Toutes catégories</span>

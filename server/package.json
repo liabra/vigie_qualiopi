@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@googleapis/drive": "^8.14.0",
+    "@googleapis/sheets": "^18.0.0",
     "express": "^4.21.2",
     "google-auth-library": "^9.15.0",
     "pg": "^8.13.1"

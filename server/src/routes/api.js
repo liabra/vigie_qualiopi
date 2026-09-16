@@ -139,7 +139,10 @@ router.post("/import/classeur", requireAdmin, wrap(async (req, res) => {
     const r = await importerClasseur({ fichierId, onglet, apercu: apercu === true, utilisateurId: req.user.id });
     res.json(r);
   } catch (e) {
-    res.status(400).json({ error: e.message, entetes: e.entetes });
+    // `error` est le message lisible ; `diagnostic` porte la réponse brute de
+    // Google (code, statut, corps JSON), lisible directement dans l'onglet
+    // Réseau du navigateur. Les jetons en sont retirés.
+    res.status(400).json({ error: e.message, entetes: e.entetes, diagnostic: e.diagnostic || null });
   }
 }));
 

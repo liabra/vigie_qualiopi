@@ -139,6 +139,32 @@ et l'admin tranche en un clic depuis l'écran Preuves. Un rattachement validé
 L'import est **rejouable** : une preuve importée est identifiée par son
 indicateur et son titre, un second passage met à jour sans dupliquer.
 
+## Diagnostic des refus de Google
+
+Quand un appel Drive ou Sheets échoue, `POST /api/import/classeur` répond
+400 avec deux champs distincts :
+
+- `error` : le message lisible, affiché dans l'écran Preuves.
+- `diagnostic` : la réponse brute de Google, à lire dans l'onglet Réseau du
+  navigateur, sans passer par les journaux du serveur.
+
+Le diagnostic contient l'opération fautive, par exemple
+`sheets.spreadsheets.get`, le `code` et le `status` HTTP, l'URL appelée
+sans sa chaîne de requête, et `googleErreur`, le corps JSON complet renvoyé
+par Google. C'est ce corps qui distingue les causes : `CREDENTIALS_MISSING`
+pour une requête reçue sans identité, `SERVICE_DISABLED` pour une API non
+activée sur le projet Cloud, `ACCESS_TOKEN_SCOPE_INSUFFICIENT` pour un scope
+manquant.
+
+Il porte aussi `jeton`, l'état de l'access_token au moment de l'appel :
+présence, date d'expiration, `expire` et `secondesRestantes`. Une valeur
+négative indique qu'un rafraîchissement a dû avoir lieu juste avant.
+
+Le même diagnostic est journalisé côté serveur, en une ligne JSON préfixée
+`Google — échec de`. Les jetons n'y figurent jamais : toute clé ressemblant
+à un secret est masquée, et seuls le message et le corps d'erreur de Google
+sont conservés.
+
 ## Tableau de bord
 
 Chaque indicateur porte un statut agrégé à partir de ses preuves :

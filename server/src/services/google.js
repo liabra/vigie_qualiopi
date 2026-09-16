@@ -107,21 +107,89 @@ export async function disconnectDrive() {
   await query("DELETE FROM drive_connexions WHERE email = $1", [config.driveAccountEmail]);
 }
 
+// ── Diagnostic des appels Google ─────────────────────────────
+// Un « error.message » seul ne dit pas pourquoi Google refuse. On garde
+// donc le code, le statut, le corps JSON complet et l'URL appelée.
+// JAMAIS de jeton : ni en-tête Authorization, ni corps de requête, où
+// gaxios range access_token, refresh_token et client_secret.
+
+// Ne laisse passer que des clés inoffensives, à toute profondeur.
+const SENSIBLE = /token|secret|authorization|password|assertion|credential|key$/i;
+export function nettoyer(valeur, profondeur = 0) {
+  if (valeur === null || typeof valeur !== "object") return valeur;
+  if (profondeur > 4) return "[…]";
+  if (Array.isArray(valeur)) return valeur.slice(0, 20).map((v) => nettoyer(v, profondeur + 1));
+  const sortie = {};
+  for (const [k, v] of Object.entries(valeur)) {
+    sortie[k] = SENSIBLE.test(k) ? "[masqué]" : nettoyer(v, profondeur + 1);
+  }
+  return sortie;
+}
+
+// État du jeton AU MOMENT de l'appel : dit si un rafraîchissement a dû
+// avoir lieu juste avant, ce qui oriente vers la piste « jeton » ou non.
+export function etatJeton(row, maintenant = Date.now()) {
+  if (!row) return { connu: false };
+  const expiry = row.expiry ? new Date(row.expiry).getTime() : null;
+  return {
+    connu: true,
+    aAccessToken: !!row.access_token,
+    expiry: expiry ? new Date(expiry).toISOString() : null,
+    expire: expiry ? expiry <= maintenant : null,
+    secondesRestantes: expiry ? Math.round((expiry - maintenant) / 1000) : null,
+    scopes: (row.scopes || "").split(/\s+/).filter(Boolean),
+  };
+}
+
+// Extrait tout ce que Google a renvoyé, quelle que soit la couche qui a
+// emballé l'erreur (gaxios, googleapis-common, fetch).
+export function diagnostiquerErreur(e, contexte = {}) {
+  const reponse = e?.response;
+  const corps = reponse?.data ?? e?.errors ?? null;
+  return {
+    ...contexte,
+    message: e?.message || String(e),
+    code: e?.code ?? null,
+    status: e?.status ?? reponse?.status ?? null,
+    statusText: reponse?.statusText ?? null,
+    url: e?.config?.url ? String(e.config.url).split("?")[0] : null,
+    methode: e?.config?.method ?? null,
+    googleErreur: nettoyer(corps),
+  };
+}
+
+// Enveloppe un appel Google : journalise le diagnostic complet côté
+// serveur et l'attache à l'erreur pour que la route puisse le renvoyer.
+export async function appelGoogle(operation, fn, contexte = {}) {
+  try {
+    return await fn();
+  } catch (e) {
+    const diagnostic = diagnostiquerErreur(e, { operation, ...contexte });
+    console.error("Google — échec de " + operation + " : " + JSON.stringify(diagnostic));
+    e.diagnostic = diagnostic;
+    throw e;
+  }
+}
+
 // ── Classeur de suivi ────────────────────────────────────────
 // Recherche PAR NOM, jamais par identifiant en dur : le classeur peut être
 // renommé ou recréé. Les noms connus sont des amorces, pas une liste fermée.
 export const NOMS_CLASSEUR = ["Audit", "construction", "systeme qualite", "système qualité", "qualiopi", "suivi"];
 const MIME_SHEET = "application/vnd.google-apps.spreadsheet";
 
-export async function chercherClasseurs(drive, { noms = NOMS_CLASSEUR } = {}) {
+export async function chercherClasseurs(drive, { noms = NOMS_CLASSEUR, jeton = null } = {}) {
   const vus = new Map();
   for (const nom of noms) {
-    const { data } = await drive.files.list({
-      q: `mimeType = '${MIME_SHEET}' and name contains '${nom.replace(/'/g, "\\'")}' and trashed = false`,
-      fields: "files(id,name,parents,modifiedTime,webViewLink,owners(emailAddress))",
-      pageSize: 50, orderBy: "modifiedTime desc",
-      supportsAllDrives: true, includeItemsFromAllDrives: true,
-    });
+    const { data } = await appelGoogle(
+      "drive.files.list",
+      () => drive.files.list({
+        q: `mimeType = '${MIME_SHEET}' and name contains '${nom.replace(/'/g, "\\'")}' and trashed = false`,
+        fields: "files(id,name,parents,modifiedTime,webViewLink,owners(emailAddress))",
+        pageSize: 50, orderBy: "modifiedTime desc",
+        supportsAllDrives: true, includeItemsFromAllDrives: true,
+      }),
+      { api: "drive", recherche: nom, jeton: etatJeton(jeton) }
+    );
     for (const f of data.files || []) if (!vus.has(f.id)) vus.set(f.id, f);
   }
   return [...vus.values()];
@@ -129,11 +197,15 @@ export async function chercherClasseurs(drive, { noms = NOMS_CLASSEUR } = {}) {
 
 // Grille d'un onglet, cellules fusionnées comprises. `onglet` facultatif :
 // sans lui, on prend la première feuille du classeur.
-export async function lireOnglet(sheets, fichierId, onglet = null) {
-  const { data: meta } = await sheets.spreadsheets.get({
-    spreadsheetId: fichierId,
-    fields: "properties(title),sheets(properties(sheetId,title,index,gridProperties),merges)",
-  });
+export async function lireOnglet(sheets, fichierId, onglet = null, { jeton = null } = {}) {
+  const { data: meta } = await appelGoogle(
+    "sheets.spreadsheets.get",
+    () => sheets.spreadsheets.get({
+      spreadsheetId: fichierId,
+      fields: "properties(title),sheets(properties(sheetId,title,index,gridProperties),merges)",
+    }),
+    { api: "sheets", fichierId, jeton: etatJeton(jeton) }
+  );
   const feuilles = meta.sheets || [];
   if (!feuilles.length) throw new Error("Classeur sans feuille.");
   const feuille = onglet
@@ -142,12 +214,16 @@ export async function lireOnglet(sheets, fichierId, onglet = null) {
   if (!feuille) throw new Error(`Onglet « ${onglet} » introuvable. Onglets : ${feuilles.map((f) => f.properties.title).join(", ")}`);
 
   const titre = feuille.properties.title;
-  const { data } = await sheets.spreadsheets.values.get({
-    spreadsheetId: fichierId,
-    range: `'${titre.replace(/'/g, "''")}'`,
-    valueRenderOption: "FORMATTED_VALUE",
-    majorDimension: "ROWS",
-  });
+  const { data } = await appelGoogle(
+    "sheets.spreadsheets.values.get",
+    () => sheets.spreadsheets.values.get({
+      spreadsheetId: fichierId,
+      range: `'${titre.replace(/'/g, "''")}'`,
+      valueRenderOption: "FORMATTED_VALUE",
+      majorDimension: "ROWS",
+    }),
+    { api: "sheets", fichierId, onglet: titre, jeton: etatJeton(jeton) }
+  );
   return {
     classeur: meta.properties?.title || "",
     onglet: titre,

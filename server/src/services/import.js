@@ -8,7 +8,7 @@
 //  rattachement déjà validé à la main par l'admin (validee_le).
 // ─────────────────────────────────────────────────────────────
 import { getPool, query } from "../db.js";
-import { getDrive, chercherClasseurs, lireOnglet, SHEETS_READONLY } from "./google.js";
+import { getDrive, chercherClasseurs, lireOnglet, appelGoogle, etatJeton, SHEETS_READONLY } from "./google.js";
 import { extrairePreuves, normaliser } from "./classeur.js";
 import { construireIndex, rapprocher } from "./driveIndex.js";
 
@@ -49,17 +49,21 @@ export async function importerClasseur({ fichierId = null, onglet = null, apercu
 
   let fichier;
   if (fichierId) {
-    const { data } = await d.drive.files.get({
-      fileId: fichierId, fields: "id,name,parents,webViewLink,modifiedTime,owners(emailAddress)", supportsAllDrives: true,
-    });
+    const { data } = await appelGoogle(
+      "drive.files.get",
+      () => d.drive.files.get({
+        fileId: fichierId, fields: "id,name,parents,webViewLink,modifiedTime,owners(emailAddress)", supportsAllDrives: true,
+      }),
+      { api: "drive", fichierId, jeton: etatJeton(d.row) }
+    );
     fichier = data;
   } else {
-    const candidats = await chercherClasseurs(d.drive);
+    const candidats = await chercherClasseurs(d.drive, { jeton: d.row });
     fichier = choisirClasseur(candidats, { compte: d.row.email });
     if (!fichier) throw new Error("Aucun classeur de suivi trouvé sur le Drive (recherche par nom).");
   }
 
-  const lu = await lireOnglet(d.sheets, fichier.id, onglet);
+  const lu = await lireOnglet(d.sheets, fichier.id, onglet, { jeton: d.row });
   const analyse = extrairePreuves(lu.grille, { fusions: lu.fusions });
   if (analyse.erreur) {
     const e = new Error(analyse.erreur);

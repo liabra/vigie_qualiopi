@@ -63,10 +63,16 @@ function Rattachement({ preuve, onChange }) {
   );
 }
 
-function LignePreuve({ p, actions, admin }) {
+function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
   return (
-    <li className={"preuve" + (p.a_confirmer ? " a-confirmer" : "")}>
+    <li className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (selectionnee ? " selectionnee" : "")}>
       <div className="preuve-tete">
+        {admin && (
+          <input
+            type="checkbox" className="case-selection" checked={selectionnee}
+            onChange={() => onBasculerSelection(p.id)} aria-label={`Sélectionner « ${p.titre} »`}
+          />
+        )}
         <span className="ind-num petit" title={`Critère ${p.critere}`}>{p.indicateur}</span>
         <div className="preuve-titre">
           <strong>{p.titre}</strong>
@@ -104,6 +110,12 @@ export default function Preuves({ admin, onChange }) {
   const [dernier, setDernier] = useState(null);
   const [occupe, setOccupe] = useState(null);
   const [apercu, setApercu] = useState(null);
+  // Sélection multiple : remise à zéro à chaque nouveau chargement (filtre
+  // changé, import relancé), pour ne jamais garder un id qui n'est plus
+  // affiché.
+  const [selection, setSelection] = useState(() => new Set());
+  const [statutMasse, setStatutMasse] = useState("maitrise");
+  const [enCours, setEnCours] = useState(false);
 
   const charger = useCallback(async () => {
     const p = new URLSearchParams();
@@ -112,6 +124,7 @@ export default function Preuves({ admin, onChange }) {
     if (filtre.q.trim()) p.set("q", filtre.q.trim());
     try {
       setData(await api("/api/preuves?" + p));
+      setSelection(new Set());
     } catch (e) { setErr(e.message); }
   }, [filtre]);
 
@@ -139,6 +152,12 @@ export default function Preuves({ admin, onChange }) {
   const majLocale = (p, champs) =>
     setData((d) => ({ ...d, preuves: d.preuves.map((x) => (x.id === p.id ? { ...x, ...champs } : x)) }));
 
+  // Une preuve « à risque » qu'on confirme (fichier trouvé ou « sans
+  // fichier ») passe à « Maîtrisé » : c'est le serveur qui tranche
+  // (RETURNING statut), ceci n'est qu'un affichage immédiat en attendant
+  // sa réponse.
+  const statutApresConfirmation = (p) => (p.statut === "a_risque" ? "maitrise" : p.statut);
+
   const actions = {
     erreur: setErr,
     async statut(p, statut) {
@@ -147,25 +166,58 @@ export default function Preuves({ admin, onChange }) {
       onChange?.();
     },
     async lier(p, f) {
-      majLocale(p, { drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, a_confirmer: false });
-      await api(`/api/preuves/${p.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, confirmer: true }),
-      }).catch((e) => setErr(e.message));
+      majLocale(p, { drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, a_confirmer: false, statut: statutApresConfirmation(p) });
+      try {
+        const r = await api(`/api/preuves/${p.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, confirmer: true }),
+        });
+        if (r.statut) majLocale(p, { statut: r.statut });
+      } catch (e) { setErr(e.message); }
       onChange?.();
     },
     async confirmer(p) {
-      majLocale(p, { a_confirmer: false });
-      await api(`/api/preuves/${p.id}`, { method: "PATCH", body: JSON.stringify({ confirmer: true }) }).catch((e) => setErr(e.message));
+      majLocale(p, { a_confirmer: false, statut: statutApresConfirmation(p) });
+      try {
+        const r = await api(`/api/preuves/${p.id}`, { method: "PATCH", body: JSON.stringify({ confirmer: true }) });
+        if (r.statut) majLocale(p, { statut: r.statut });
+      } catch (e) { setErr(e.message); }
       onChange?.();
     },
     async supprimer(p) {
       if (!window.confirm(`Supprimer la preuve « ${p.titre} » ?`)) return;
       setData((d) => ({ ...d, preuves: d.preuves.filter((x) => x.id !== p.id) }));
+      setSelection((s) => { if (!s.has(p.id)) return s; const n = new Set(s); n.delete(p.id); return n; });
       await api(`/api/preuves/${p.id}`, { method: "DELETE" }).catch((e) => setErr(e.message));
       onChange?.();
     },
   };
+
+  function basculerSelection(id) {
+    setSelection((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  const idsAffiches = data?.preuves.map((p) => p.id) || [];
+  const toutSelectionne = idsAffiches.length > 0 && idsAffiches.every((id) => selection.has(id));
+  const basculerTout = () => setSelection(toutSelectionne ? new Set() : new Set(idsAffiches));
+
+  async function appliquerStatutMasse() {
+    if (!selection.size || enCours) return;
+    const ids = [...selection];
+    const idsSet = selection;
+    setEnCours(true);
+    setData((d) => ({ ...d, preuves: d.preuves.map((x) => (idsSet.has(x.id) ? { ...x, statut: statutMasse } : x)) }));
+    try {
+      await api("/api/preuves", { method: "PATCH", body: JSON.stringify({ ids, statut: statutMasse }) });
+      setSelection(new Set());
+    } catch (e) { setErr(e.message); }
+    finally { setEnCours(false); }
+    onChange?.();
+  }
 
   const aConfirmer = data?.preuves.filter((p) => p.a_confirmer).length || 0;
 
@@ -226,8 +278,36 @@ export default function Preuves({ admin, onChange }) {
       {data && data.preuves.length === 0 && (
         <p className="muted">Aucune preuve. {admin && "Lancez l'import du classeur pour peupler le tableau de bord."}</p>
       )}
+
+      {admin && data && data.preuves.length > 0 && (
+        <div className="selection-entete">
+          <label>
+            <input type="checkbox" checked={toutSelectionne} onChange={basculerTout} aria-label="Tout sélectionner" />
+            Tout sélectionner ({idsAffiches.length})
+          </label>
+        </div>
+      )}
+
+      {admin && selection.size > 0 && (
+        <div className="barre-selection">
+          <span>{selection.size} preuve(s) sélectionnée(s)</span>
+          <select value={statutMasse} onChange={(e) => setStatutMasse(e.target.value)} aria-label="Nouveau statut pour la sélection">
+            {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <button className="btn primary petit" onClick={appliquerStatutMasse} disabled={enCours}>
+            {enCours ? "Application…" : "Changer le statut de la sélection"}
+          </button>
+          <button className="btn petit" onClick={() => setSelection(new Set())}>Désélectionner</button>
+        </div>
+      )}
+
       <ul className="liste-preuves">
-        {data?.preuves.map((p) => <LignePreuve key={p.id} p={p} actions={actions} admin={admin} />)}
+        {data?.preuves.map((p) => (
+          <LignePreuve
+            key={p.id} p={p} actions={actions} admin={admin}
+            selectionnee={selection.has(p.id)} onBasculerSelection={basculerSelection}
+          />
+        ))}
       </ul>
     </section>
   );

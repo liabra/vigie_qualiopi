@@ -141,7 +141,9 @@ p { margin: 0; }
 .liste-preuves { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .preuve { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; display: grid; gap: .6rem; }
 .preuve.a-confirmer { border-left: 4px solid var(--st-risque); }
-.preuve-tete { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: start; }
+.preuve.selectionnee { outline: 2px solid var(--primary); outline-offset: -1px; }
+.preuve-tete { display: grid; grid-template-columns: auto auto 1fr auto; gap: .75rem; align-items: start; }
+.case-selection { margin-top: .3rem; width: 1.1rem; height: 1.1rem; accent-color: var(--primary); }
 .preuve-titre { min-width: 0; }
 .preuve-tete select { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
 .rattachement { display: grid; gap: .4rem; }
@@ -151,7 +153,17 @@ p { margin: 0; }
 .recherche-drive { display: flex; gap: .4rem; }
 .recherche-drive input { flex: 1; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
 .preuve-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.selection-entete { padding: 0 .2rem; }
+.selection-entete label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.barre-selection {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  padding: .6rem .9rem; background: var(--accent-bg); border: 1px solid var(--border); border-radius: 10px;
+}
+.barre-selection select {
+  padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
 @media (max-width: 560px) {
-  .preuve-tete { grid-template-columns: auto 1fr; }
-  .preuve-tete select { grid-column: 2; }
+  .preuve-tete { grid-template-columns: auto auto 1fr; }
+  .preuve-tete select { grid-column: 1 / -1; }
 }

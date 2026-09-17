@@ -110,7 +110,15 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const sets = [];
   const params = [id];
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
-  if (statut !== undefined) set("statut", statut);
+  if (statut !== undefined) {
+    set("statut", statut);
+  } else if (confirmer) {
+    // Confirmer une preuve « à risque » la fait passer à « maîtrisé ». Si
+    // l'admin a lui-même choisi un statut dans ce même appel, la branche
+    // du dessus s'applique à la place ; un changement manuel ultérieur est
+    // un appel séparé et l'emporte toujours de la même façon.
+    sets.push("statut = CASE WHEN statut = 'a_risque' THEN 'maitrise' ELSE statut END");
+  }
   if (drive_file_id !== undefined) {
     set("drive_file_id", drive_file_id || null);
     set("drive_url", drive_url || (drive_file_id ? `https://drive.google.com/file/d/${drive_file_id}/view` : null));
@@ -121,9 +129,21 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     params.push(req.user.id); sets.push(`validee_par = $${params.length}`);
   }
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
-  const { rows } = await query(`UPDATE preuves SET ${sets.join(", ")} WHERE id = $1 RETURNING id`, params);
+  const { rows } = await query(`UPDATE preuves SET ${sets.join(", ")} WHERE id = $1 RETURNING id, statut`, params);
   if (!rows.length) return res.status(404).json({ error: "Preuve introuvable." });
-  res.json({ ok: true });
+  res.json({ ok: true, statut: rows[0].statut });
+}));
+
+// Changement de statut groupé : une sélection de preuves, un seul appel.
+router.patch("/preuves", requireAdmin, wrap(async (req, res) => {
+  const { ids, statut } = req.body || {};
+  if (!STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "Aucune preuve sélectionnée." });
+  const propres = [...new Set(ids.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+  if (!propres.length) return res.status(400).json({ error: "Identifiants de preuve invalides." });
+  if (propres.length > 500) return res.status(400).json({ error: "500 preuves au maximum par changement groupé." });
+  const { rowCount } = await query("UPDATE preuves SET statut = $1 WHERE id = ANY($2::int[])", [statut, propres]);
+  res.json({ ok: true, misAJour: rowCount });
 }));
 
 router.delete("/preuves/:id", requireAdmin, wrap(async (req, res) => {

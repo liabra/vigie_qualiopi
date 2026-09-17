@@ -75,18 +75,32 @@ p { margin: 0; }
   padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); font: inherit; width: 100%; max-width: 280px;
 }
-.critere { overflow: hidden; }
+/* `overflow: hidden` ferait de la carte un conteneur de défilement et
+   neutraliserait le `position: sticky` de son en-tête. `clip` découpe
+   les coins arrondis de la même façon, sans créer ce conteneur. */
+.critere { overflow: clip; }
 .critere-head {
   width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: start;
-  padding: .9rem 1rem; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  padding: .9rem 1rem; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  /* Reste en haut de l'écran pendant qu'on parcourt SES indicateurs : le
+     collage est borné par la carte, donc l'en-tête s'efface de lui-même
+     quand le critère suivant arrive. Fond opaque obligatoire, sinon les
+     indicateurs défileraient en transparence derrière lui. */
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface);
+  border-radius: 10px 10px 0 0;
 }
 .critere-head:hover { background: var(--accent-bg); }
+/* Trait de séparation porté par l'en-tête et non par la liste : collé en
+   haut, il doit rester détaché du contenu qui défile dessous. Seulement
+   quand le critère est déplié. */
+.critere-head[aria-expanded="true"] { border-bottom: 1px solid var(--border); }
 .num { font-weight: 700; color: var(--primary); white-space: nowrap; }
 .count {
   min-width: 1.8rem; text-align: center; font-size: .8rem; padding: .1rem .45rem;
   border-radius: 99px; background: var(--accent-bg);
 }
-.indicateurs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.indicateurs { list-style: none; margin: 0; padding: 0; }
 .indicateurs li { display: grid; grid-template-columns: 2.2rem 1fr auto; gap: .5rem; align-items: start; padding: .75rem 1rem; }
 .indicateurs li + li { border-top: 1px solid var(--border); }
 .ind-num {

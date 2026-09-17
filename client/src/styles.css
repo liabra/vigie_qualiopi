@@ -142,6 +142,8 @@ p { margin: 0; }
 .preuve { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; display: grid; gap: .6rem; }
 .preuve.a-confirmer { border-left: 4px solid var(--st-risque); }
 .preuve.selectionnee { outline: 2px solid var(--primary); outline-offset: -1px; }
+.preuve.cliquable { cursor: pointer; }
+.preuve.cliquable:hover { border-color: var(--primary); }
 .preuve-tete { display: grid; grid-template-columns: auto auto 1fr auto; gap: .75rem; align-items: start; }
 .case-selection { margin-top: .3rem; width: 1.1rem; height: 1.1rem; accent-color: var(--primary); }
 .preuve-titre { min-width: 0; }
@@ -152,6 +154,7 @@ p { margin: 0; }
 .btn.danger { color: var(--err); border-color: var(--err); }
 .recherche-drive { display: flex; gap: .4rem; }
 .recherche-drive input { flex: 1; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.zone-actions { display: grid; gap: .6rem; }
 .preuve-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .selection-entete { padding: 0 .2rem; }
 .selection-entete label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; color: var(--muted); cursor: pointer; }

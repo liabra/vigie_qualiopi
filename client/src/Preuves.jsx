@@ -63,9 +63,22 @@ function Rattachement({ preuve, onChange }) {
   );
 }
 
+// Contrôles qu'un clic sur la ligne ne doit jamais transformer en sélection :
+// liens, boutons, champs, select, et tout ce qu'ils contiennent (candidats
+// proposés, formulaire de recherche Drive…).
+const CIBLE_INTERACTIVE = "a, button, input, select, label";
+
 function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
+  function clicLigne(e) {
+    if (!admin || e.target.closest(CIBLE_INTERACTIVE)) return;
+    onBasculerSelection(p.id);
+  }
+
   return (
-    <li className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (selectionnee ? " selectionnee" : "")}>
+    <li
+      className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (selectionnee ? " selectionnee" : "") + (admin ? " cliquable" : "")}
+      onClick={clicLigne}
+    >
       <div className="preuve-tete">
         {admin && (
           <input
@@ -91,13 +104,16 @@ function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
         ) : <span className={"pill statut-" + p.statut}>{STATUTS[p.statut]}</span>}
       </div>
       {admin && p.a_confirmer && (
-        <>
+        // Toute cette zone est dédiée aux actions : un clic dans un espace
+        // entre deux boutons ne doit pas non plus basculer la sélection,
+        // pas seulement un clic sur un contrôle précis.
+        <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
           <Rattachement preuve={p} onChange={actions} />
           <div className="preuve-actions">
             <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
             <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
           </div>
-        </>
+        </div>
       )}
     </li>
   );

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { config, googleConfigured } from "../config.js";
-import { query } from "../db.js";
+import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth } from "../session.js";
 import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
@@ -17,13 +17,15 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // n'améliorent un indicateur qui en a d'autres. Le marquage manuel, lui,
 // l'emporte sur tout : un indicateur ainsi marqué passe gris quelles que
 // soient ses preuves — voir indicateurs_non_applicables.
+// On agrège sur `statut_effectif`, qui fait redescendre une preuve
+// maîtrisée mais incomplète (fichiers manquants) à « à consolider ».
 const STATUT_SQL = `
   CASE
     WHEN na.indicateur_id IS NOT NULL THEN 'non_applicable'
     WHEN count(p.id) = 0 THEN 'a_risque'
-    WHEN count(p.id) FILTER (WHERE p.statut <> 'non_applicable') = 0 THEN 'non_applicable'
-    WHEN count(p.id) FILTER (WHERE p.statut = 'a_risque') > 0 THEN 'a_risque'
-    WHEN count(p.id) FILTER (WHERE p.statut = 'a_consolider') > 0 THEN 'a_consolider'
+    WHEN count(p.id) FILTER (WHERE p.statut_effectif <> 'non_applicable') = 0 THEN 'non_applicable'
+    WHEN count(p.id) FILTER (WHERE p.statut_effectif = 'a_risque') > 0 THEN 'a_risque'
+    WHEN count(p.id) FILTER (WHERE p.statut_effectif = 'a_consolider') > 0 THEN 'a_consolider'
     ELSE 'maitrise'
   END`;
 
@@ -48,15 +50,16 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
       `SELECT i.id, i.critere_id, i.numero, i.libelle, i.type, i.categories, i.gradation, i.texte_source_verifie,
               count(p.id)::int AS nb_preuves,
               count(p.id) FILTER (WHERE p.a_confirmer)::int AS nb_a_confirmer,
-              count(p.id) FILTER (WHERE p.statut = 'maitrise')::int AS nb_maitrise,
-              count(p.id) FILTER (WHERE p.statut = 'a_consolider')::int AS nb_a_consolider,
-              count(p.id) FILTER (WHERE p.statut = 'a_risque')::int AS nb_a_risque,
-              count(p.id) FILTER (WHERE p.statut = 'non_applicable')::int AS nb_non_applicable,
+              count(p.id) FILTER (WHERE p.incomplet)::int AS nb_incomplets,
+              count(p.id) FILTER (WHERE p.statut_effectif = 'maitrise')::int AS nb_maitrise,
+              count(p.id) FILTER (WHERE p.statut_effectif = 'a_consolider')::int AS nb_a_consolider,
+              count(p.id) FILTER (WHERE p.statut_effectif = 'a_risque')::int AS nb_a_risque,
+              count(p.id) FILTER (WHERE p.statut_effectif = 'non_applicable')::int AS nb_non_applicable,
               na.indicateur_id IS NOT NULL AS non_applicable_force,
               na.motif AS non_applicable_motif,
               ${STATUT_SQL} AS statut
        FROM indicateurs i
-       LEFT JOIN preuves p ON p.indicateur_id = i.id
+       LEFT JOIN preuves_enrichies p ON p.indicateur_id = i.id
        LEFT JOIN indicateurs_non_applicables na ON na.indicateur_id = i.id
        WHERE i.version_id = $1
        GROUP BY i.id, na.indicateur_id, na.motif ORDER BY i.numero`,
@@ -75,6 +78,7 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
       non_applicable: parStatut.non_applicable || 0,
       preuves: indicateurs.reduce((n, i) => n + i.nb_preuves, 0),
       a_confirmer: indicateurs.reduce((n, i) => n + i.nb_a_confirmer, 0),
+      incomplets: indicateurs.reduce((n, i) => n + i.nb_incomplets, 0),
     },
     criteres: criteres.map((c) => ({ ...c, indicateurs: indicateurs.filter((i) => i.critere_id === c.id) })),
   });
@@ -116,28 +120,103 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
   if (req.query.a_confirmer === "1") filtres.push("p.a_confirmer");
   if (req.query.q) { params.push(`%${req.query.q}%`); filtres.push(`p.titre ILIKE $${params.length}`); }
   const { rows } = await query(
-    `SELECT p.id, p.titre, p.statut, p.a_confirmer, p.motif_confirmation, p.candidats, p.drive_file_id,
-            p.drive_url, p.drive_nom, p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
-            p.source, p.validee_le, i.numero AS indicateur, c.numero AS critere
-     FROM preuves p
+    `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.a_confirmer, p.motif_confirmation, p.candidats,
+            p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
+            p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
+            p.nb_fichiers, p.fichiers_attendus, p.incomplet,
+            i.numero AS indicateur, c.numero AS critere,
+            s.reference AS session_reference, g.nom AS groupe_nom,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url,
+                        'nom', f.drive_nom, 'mime', f.drive_mime, 'source', f.source)
+                      ORDER BY f.ajoute_le, f.id)
+               FROM preuve_fichiers f WHERE f.preuve_id = p.id),
+              '[]'::json) AS fichiers
+     FROM preuves_enrichies p
      JOIN indicateurs i ON i.id = p.indicateur_id
      JOIN criteres c ON c.id = i.critere_id
      JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+     LEFT JOIN sessions s ON s.id = p.session_id
+     LEFT JOIN groupes g ON g.id = p.groupe_id
      WHERE ${filtres.join(" AND ")}
-     ORDER BY p.a_confirmer DESC, i.numero, p.titre
+     ORDER BY p.a_confirmer DESC, p.incomplet DESC, i.numero, p.titre
      LIMIT 1000`,
     params
   );
   res.json({ preuves: rows, total: rows.length });
 }));
 
+// Une seule preuve, telle que la liste la renvoie : sert à rafraîchir une
+// ligne après modification, sans recharger tout l'écran.
+router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
+  const { rows } = await query(
+    `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.a_confirmer, p.motif_confirmation, p.candidats,
+            p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
+            p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
+            p.nb_fichiers, p.fichiers_attendus, p.incomplet,
+            i.numero AS indicateur, c.numero AS critere,
+            s.reference AS session_reference, g.nom AS groupe_nom,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url,
+                        'nom', f.drive_nom, 'mime', f.drive_mime, 'source', f.source)
+                      ORDER BY f.ajoute_le, f.id)
+               FROM preuve_fichiers f WHERE f.preuve_id = p.id),
+              '[]'::json) AS fichiers
+     FROM preuves_enrichies p
+     JOIN indicateurs i ON i.id = p.indicateur_id
+     JOIN criteres c ON c.id = i.critere_id
+     LEFT JOIN sessions s ON s.id = p.session_id
+     LEFT JOIN groupes g ON g.id = p.groupe_id
+     WHERE p.id = $1`,
+    [Number(req.params.id)]
+  );
+  if (!rows.length) return res.status(404).json({ error: "Preuve introuvable." });
+  res.json({ preuve: rows[0] });
+}));
+
+// Sessions disponibles pour rattacher une preuve, avec le nombre d'inscrits
+// qui servira de nombre attendu en mode « par stagiaire ».
+router.get("/sessions", requireAuth, wrap(async (_req, res) => {
+  const { rows } = await query(
+    `SELECT s.id, s.reference, s.date_debut, s.date_fin, f.intitule AS formation,
+            (SELECT count(*)::int FROM inscriptions i WHERE i.session_id = s.id AND i.statut <> 'abandon') AS nb_inscrits,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                        'id', g.id, 'nom', g.nom,
+                        'nb_inscrits', (SELECT count(*)::int FROM inscriptions i2
+                                        WHERE i2.groupe_id = g.id AND i2.statut <> 'abandon'))
+                      ORDER BY g.nom)
+               FROM groupes g WHERE g.session_id = s.id),
+              '[]'::json) AS groupes
+     FROM sessions s
+     JOIN formations f ON f.id = s.formation_id
+     ORDER BY s.date_debut DESC, s.id DESC
+     LIMIT 500`
+  );
+  res.json({ sessions: rows, total: rows.length });
+}));
+
+const MODES = ["unique", "multiple", "par_stagiaire"];
+const lienDrive = (fileId) => `https://drive.google.com/file/d/${fileId}/view`;
+const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, fichiers_attendus, incomplet
+                    FROM preuves_enrichies WHERE id = $1`;
+
 // Correction du rattachement, en un appel : l'admin choisit un candidat
-// (ou colle un identifiant Drive), ajuste le statut, ou déclare la preuve
-// confirmée telle quelle.
+// (ou colle un identifiant Drive), ajuste le statut, le mode de fichiers,
+// la session rattachée, ou déclare la preuve confirmée telle quelle.
 router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const id = Number(req.params.id);
-  const { statut, drive_file_id, drive_url, drive_nom, confirmer } = req.body || {};
+  const {
+    statut, drive_file_id, drive_url, drive_nom, drive_mime, confirmer,
+    mode_fichiers, session_id, groupe_id,
+  } = req.body || {};
   if (statut !== undefined && !STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
+  if (mode_fichiers !== undefined && !MODES.includes(mode_fichiers)) {
+    return res.status(400).json({ error: "Mode de fichiers inconnu." });
+  }
+
   const sets = [];
   const params = [id];
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
@@ -150,19 +229,85 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     // un appel séparé et l'emporte toujours de la même façon.
     sets.push("statut = CASE WHEN statut = 'a_risque' THEN 'maitrise' ELSE statut END");
   }
-  if (drive_file_id !== undefined) {
-    set("drive_file_id", drive_file_id || null);
-    set("drive_url", drive_url || (drive_file_id ? `https://drive.google.com/file/d/${drive_file_id}/view` : null));
-    set("drive_nom", drive_nom || null);
-  }
+  if (mode_fichiers !== undefined) set("mode_fichiers", mode_fichiers);
+  if (session_id !== undefined) set("session_id", session_id || null);
+  if (groupe_id !== undefined) set("groupe_id", groupe_id || null);
   if (confirmer) {
     sets.push("a_confirmer = false", "motif_confirmation = NULL", "validee_le = now()");
     params.push(req.user.id); sets.push(`validee_par = $${params.length}`);
   }
-  if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
-  const { rows } = await query(`UPDATE preuves SET ${sets.join(", ")} WHERE id = $1 RETURNING id, statut`, params);
-  if (!rows.length) return res.status(404).json({ error: "Preuve introuvable." });
-  res.json({ ok: true, statut: rows[0].statut });
+  if (!sets.length && drive_file_id === undefined) return res.status(400).json({ error: "Rien à modifier." });
+
+  // Plusieurs écritures (preuve + pièces jointes) : tout ou rien.
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [avant] } = await client.query("SELECT mode_fichiers FROM preuves WHERE id = $1 FOR UPDATE", [id]);
+    if (!avant) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Preuve introuvable." }); }
+
+    if (drive_file_id !== undefined) {
+      const mode = mode_fichiers ?? avant.mode_fichiers;
+      // En mode « un seul fichier », le nouveau remplace l'ancien — c'est
+      // le comportement d'origine. Dans les autres modes, il s'ajoute.
+      if (mode === "unique" || !drive_file_id) {
+        await client.query("DELETE FROM preuve_fichiers WHERE preuve_id = $1", [id]);
+      }
+      if (drive_file_id) {
+        await client.query(
+          `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
+           VALUES ($1, $2, $3, $4, $5, 'manuel', $6)
+           ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
+             drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime`,
+          [id, drive_file_id, drive_url || lienDrive(drive_file_id), drive_nom || null, drive_mime || null, req.user.id]
+        );
+      }
+    }
+    if (sets.length) await client.query(`UPDATE preuves SET ${sets.join(", ")} WHERE id = $1`, params);
+    const { rows: [apres] } = await client.query(ETAT_APRES, [id]);
+    await client.query("COMMIT");
+    res.json({ ok: true, ...apres });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
+
+// Ajoute une pièce jointe à une preuve qui accepte plusieurs fichiers.
+router.post("/preuves/:id/fichiers", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { drive_file_id, drive_url, drive_nom, drive_mime, stagiaire_id } = req.body || {};
+  if (!drive_file_id) return res.status(400).json({ error: "Aucun fichier Drive indiqué." });
+  const { rows: [preuve] } = await query("SELECT mode_fichiers FROM preuves WHERE id = $1", [id]);
+  if (!preuve) return res.status(404).json({ error: "Preuve introuvable." });
+  if (preuve.mode_fichiers === "unique") {
+    return res.status(409).json({
+      error: "Cette preuve n'accepte qu'un seul fichier. Passez-la en « plusieurs fichiers » ou « un par stagiaire » d'abord.",
+    });
+  }
+  const { rows: [fichier] } = await query(
+    `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, stagiaire_id, ajoute_par)
+     VALUES ($1, $2, $3, $4, $5, 'manuel', $6, $7)
+     ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
+       drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime
+     RETURNING id, drive_file_id, drive_url AS url, drive_nom AS nom, drive_mime AS mime, source`,
+    [id, drive_file_id, drive_url || lienDrive(drive_file_id), drive_nom || null, drive_mime || null,
+     stagiaire_id || null, req.user.id]
+  );
+  const { rows: [apres] } = await query(ETAT_APRES, [id]);
+  res.json({ ok: true, fichier, ...apres });
+}));
+
+router.delete("/preuves/:id/fichiers/:fichierId", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { rowCount } = await query(
+    "DELETE FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2",
+    [Number(req.params.fichierId), id]
+  );
+  if (!rowCount) return res.status(404).json({ error: "Fichier introuvable sur cette preuve." });
+  const { rows: [apres] } = await query(ETAT_APRES, [id]);
+  res.json({ ok: true, ...apres });
 }));
 
 // Changement de statut groupé : une sélection de preuves, un seul appel.

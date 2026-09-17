@@ -183,6 +183,42 @@ Le même diagnostic est journalisé côté serveur, en une ligne JSON préfixée
 à un secret est masquée, et seuls le message et le corps d'erreur de Google
 sont conservés.
 
+## Preuves à plusieurs fichiers
+
+Une preuve porte désormais une liste de fichiers Drive, dans la table
+`preuve_fichiers`, et non plus une seule référence. `mode_fichiers`
+décide de ce qu'on attend d'elle :
+
+| Mode | Ce qu'il change |
+| --- | --- |
+| `unique` | un seul fichier, le nouveau remplace l'ancien. C'est le mode par défaut et le comportement d'origine, inchangé |
+| `multiple` | plusieurs fichiers, sans nombre cible |
+| `par_stagiaire` | un fichier par stagiaire, le nombre attendu étant **calculé** |
+
+En mode `par_stagiaire`, le nombre attendu vient des inscriptions de la
+session rattachée, ou du groupe quand il est précisé. Il n'est jamais
+saisi à la main. **Les abandons en sont exclus** : on n'attend pas
+d'attestation pour quelqu'un qui a quitté la formation. Sans session
+rattachée, le nombre reste inconnu et la preuve est tenue pour incomplète,
+faute de pouvoir prouver le contraire.
+
+L'écran Preuves affiche alors « 12/20 rattaché(s) » et un badge
+**Incomplet** tant que le compte n'y est pas. Cet écart l'emporte sur le
+statut saisi : une preuve marquée Maîtrisé mais incomplète compte comme
+« à consolider » dans le tableau de bord, donc l'indicateur ne passe pas
+au vert. C'est la colonne `statut_effectif` de la vue
+`preuves_enrichies`, où se concentre tout ce calcul pour que les deux
+écrans ne puissent pas diverger.
+
+L'import n'a pas changé de logique : le rapprochement reste le même, son
+résultat est simplement rangé dans `preuve_fichiers`. Un réimport ne
+touche que les fichiers qu'un import avait posés, jamais ceux ajoutés à la
+main, et jamais une preuve validée par l'admin.
+
+> Les sessions, groupes et inscriptions sont encore vides : ils seront
+> alimentés en Phase 2. D'ici là, le mode « par stagiaire » fonctionne
+> mais n'a aucune session à laquelle se rattacher.
+
 ## Tableau de bord
 
 Chaque indicateur porte un statut agrégé à partir de ses preuves :

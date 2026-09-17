@@ -8,9 +8,16 @@ const STATUTS = {
   non_applicable: "Non applicable",
 };
 
-// Rattachement d'une preuve : candidats proposés par l'import, sinon
-// recherche libre sur le Drive. Jamais de ressaisie du nom à la main.
-function Rattachement({ preuve, onChange }) {
+const MODES = {
+  unique: "Un seul fichier",
+  multiple: "Plusieurs fichiers",
+  par_stagiaire: "Un par stagiaire",
+};
+
+// Recherche Drive réutilisée pour deux gestes : remplacer le fichier d'une
+// preuve à confirmer, ou ajouter une pièce à une preuve qui en accepte
+// plusieurs. `surChoix` décide lequel.
+function Rattachement({ preuve, onChange, surChoix, avecCandidats = true, placeholder }) {
   const [q, setQ] = useState("");
   const [trouves, setTrouves] = useState(null);
   const [cherche, setCherche] = useState(false);
@@ -30,8 +37,8 @@ function Rattachement({ preuve, onChange }) {
     }
   }
 
-  const lier = (f) => onChange.lier(preuve, f);
-  const candidats = preuve.candidats || [];
+  const candidats = avecCandidats ? preuve.candidats || [] : [];
+  const dejaRattache = new Set((preuve.fichiers || []).map((f) => f.drive_file_id));
 
   return (
     <div className="rattachement">
@@ -39,7 +46,7 @@ function Rattachement({ preuve, onChange }) {
         <div className="candidats">
           <span className="muted small">Proposés :</span>
           {candidats.map((c) => (
-            <button key={c.id} className="btn petit" onClick={() => lier(c)} title={c.chemin}>
+            <button key={c.id} className="btn petit" onClick={() => surChoix(c)} title={c.chemin}>
               {c.nom.slice(0, 48)} <span className="muted">· {c.score}%</span>
             </button>
           ))}
@@ -48,16 +55,115 @@ function Rattachement({ preuve, onChange }) {
       <form className="recherche-drive" onSubmit={rechercher}>
         <input
           type="search" value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="Chercher un autre fichier sur le Drive" aria-label="Chercher sur le Drive"
+          placeholder={placeholder || "Chercher un autre fichier sur le Drive"} aria-label="Chercher sur le Drive"
         />
         <button className="btn petit" disabled={cherche || q.trim().length < 3}>{cherche ? "…" : "Chercher"}</button>
       </form>
       {trouves && (
         trouves.length
           ? <div className="candidats">{trouves.map((f) => (
-              <button key={f.id} className="btn petit" onClick={() => lier(f)}>{f.nom.slice(0, 48)}</button>
+              <button key={f.id} className="btn petit" onClick={() => surChoix(f)} disabled={dejaRattache.has(f.id)}>
+                {f.nom.slice(0, 48)}{dejaRattache.has(f.id) ? " · déjà rattaché" : ""}
+              </button>
             ))}</div>
           : <p className="muted small">Aucun fichier trouvé.</p>
+      )}
+    </div>
+  );
+}
+
+// Fichiers rattachés, écart au nombre attendu, et réglages du mode.
+function Fichiers({ p, actions, admin, sessions }) {
+  const multi = p.mode_fichiers !== "unique";
+  const attendus = p.fichiers_attendus;
+  const session = sessions.find((s) => s.id === p.session_id);
+
+  return (
+    <div className="fichiers-preuve">
+      {multi && (
+        <div className="compte-fichiers">
+          <span className={"pill " + (p.incomplet ? "off" : "ok")}>
+            {p.nb_fichiers}/{attendus ?? "?"} rattaché(s)
+          </span>
+          {p.incomplet && <span className="pill warn">Incomplet</span>}
+          {p.mode_fichiers === "par_stagiaire" && attendus === null && (
+            <span className="muted small">Rattachez une session pour calculer le nombre attendu.</span>
+          )}
+          {p.mode_fichiers === "par_stagiaire" && attendus !== null && (
+            <span className="muted small">
+              d'après {session ? `« ${session.reference || session.formation} »` : "la session rattachée"}
+              {p.groupe_nom && <>, groupe {p.groupe_nom}</>}
+            </span>
+          )}
+        </div>
+      )}
+
+      {p.fichiers.length > 0 ? (
+        <ul className="liste-fichiers">
+          {p.fichiers.map((f) => (
+            <li key={f.id}>
+              <a href={f.url} target="_blank" rel="noreferrer">{f.nom || f.drive_file_id}</a>
+              {admin && (
+                <button className="btn petit danger" onClick={() => actions.retirerFichier(p, f)} aria-label={`Retirer ${f.nom || "ce fichier"}`}>
+                  retirer
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted small text-erreur">{p.motif_confirmation || "Aucun fichier Drive rattaché"}</p>
+      )}
+
+      {admin && (
+        <div className="reglages-fichiers">
+          <label>
+            <span className="muted small">Mode</span>
+            <select value={p.mode_fichiers} onChange={(e) => actions.reglage(p, { mode_fichiers: e.target.value })} aria-label="Mode de fichiers">
+              {Object.entries(MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          {multi && (
+            <>
+              <label>
+                <span className="muted small">Session</span>
+                <select
+                  value={p.session_id ?? ""} aria-label="Session rattachée"
+                  onChange={(e) => actions.reglage(p, { session_id: e.target.value ? Number(e.target.value) : null, groupe_id: null })}
+                >
+                  <option value="">Aucune</option>
+                  {sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {(s.reference || s.formation)} · {s.nb_inscrits} inscrit(s)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {session && session.groupes.length > 0 && (
+                <label>
+                  <span className="muted small">Groupe</span>
+                  <select
+                    value={p.groupe_id ?? ""} aria-label="Groupe rattaché"
+                    onChange={(e) => actions.reglage(p, { groupe_id: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">Toute la session</option>
+                    {session.groupes.map((g) => (
+                      <option key={g.id} value={g.id}>{g.nom} · {g.nb_inscrits} inscrit(s)</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {admin && multi && (
+        <Rattachement
+          preuve={p} onChange={actions} avecCandidats={false}
+          placeholder="Ajouter un fichier du Drive"
+          surChoix={(f) => actions.ajouterFichier(p, f)}
+        />
       )}
     </div>
   );
@@ -68,7 +174,7 @@ function Rattachement({ preuve, onChange }) {
 // proposés, formulaire de recherche Drive…).
 const CIBLE_INTERACTIVE = "a, button, input, select, label";
 
-function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
+function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSelection }) {
   function clicLigne(e) {
     if (!admin || e.target.closest(CIBLE_INTERACTIVE)) return;
     onBasculerSelection(p.id);
@@ -76,7 +182,8 @@ function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
 
   return (
     <li
-      className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (selectionnee ? " selectionnee" : "") + (admin ? " cliquable" : "")}
+      className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (p.incomplet ? " incomplete" : "")
+        + (selectionnee ? " selectionnee" : "") + (admin ? " cliquable" : "")}
       onClick={clicLigne}
     >
       <div className="preuve-tete">
@@ -90,9 +197,7 @@ function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
         <div className="preuve-titre">
           <strong>{p.titre}</strong>
           <div className="muted small">
-            {p.drive_url
-              ? <a href={p.drive_url} target="_blank" rel="noreferrer">{p.drive_nom || "Ouvrir sur le Drive"}</a>
-              : <span className="text-erreur">{p.motif_confirmation || "Pas de fichier Drive rattaché"}</span>}
+            {MODES[p.mode_fichiers]}
             {p.etat_source && <> · classeur : « {p.etat_source} »</>}
             {p.occurrences > 1 && <> · {p.occurrences} lignes</>}
           </div>
@@ -103,18 +208,24 @@ function LignePreuve({ p, actions, admin, selectionnee, onBasculerSelection }) {
           </select>
         ) : <span className={"pill statut-" + p.statut}>{STATUTS[p.statut]}</span>}
       </div>
-      {admin && p.a_confirmer && (
-        // Toute cette zone est dédiée aux actions : un clic dans un espace
-        // entre deux boutons ne doit pas non plus basculer la sélection,
-        // pas seulement un clic sur un contrôle précis.
-        <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
-          <Rattachement preuve={p} onChange={actions} />
-          <div className="preuve-actions">
-            <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
-            <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
-          </div>
-        </div>
-      )}
+
+      {/* Toute cette zone est dédiée aux actions : un clic dans un espace
+          entre deux boutons ne doit pas non plus basculer la sélection,
+          pas seulement un clic sur un contrôle précis. */}
+      <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
+        <Fichiers p={p} actions={actions} admin={admin} sessions={sessions} />
+        {admin && p.a_confirmer && (
+          <>
+            {p.mode_fichiers === "unique" && (
+              <Rattachement preuve={p} onChange={actions} surChoix={(f) => actions.lier(p, f)} />
+            )}
+            <div className="preuve-actions">
+              <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
+              <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
+            </div>
+          </>
+        )}
+      </div>
     </li>
   );
 }
@@ -132,6 +243,7 @@ export default function Preuves({ admin, onChange }) {
   const [selection, setSelection] = useState(() => new Set());
   const [statutMasse, setStatutMasse] = useState("maitrise");
   const [enCours, setEnCours] = useState(false);
+  const [sessions, setSessions] = useState([]);
 
   const charger = useCallback(async () => {
     const p = new URLSearchParams();
@@ -148,6 +260,11 @@ export default function Preuves({ admin, onChange }) {
   useEffect(() => {
     if (admin) api("/api/import/dernier").then((r) => setDernier(r.import)).catch(() => {});
   }, [admin]);
+  // Sessions disponibles pour le mode « par stagiaire » : c'est leur
+  // nombre d'inscrits qui fixe le nombre de fichiers attendu.
+  useEffect(() => {
+    api("/api/sessions").then((r) => setSessions(r.sessions)).catch(() => {});
+  }, []);
 
   async function lancerImport(enApercu) {
     setOccupe(enApercu ? "apercu" : "import");
@@ -174,6 +291,24 @@ export default function Preuves({ admin, onChange }) {
   // sa réponse.
   const statutApresConfirmation = (p) => (p.statut === "a_risque" ? "maitrise" : p.statut);
 
+  // Le compte rattaché, le compte attendu et l'écart sont calculés par le
+  // serveur : on recopie sa réponse, on ne la recalcule jamais ici.
+  const compteurs = (r) =>
+    Object.fromEntries(
+      ["statut", "statut_effectif", "mode_fichiers", "nb_fichiers", "fichiers_attendus", "incomplet"]
+        .filter((k) => r[k] !== undefined)
+        .map((k) => [k, r[k]])
+    );
+
+  // Relit une seule ligne, sans recharger la liste : la sélection en cours
+  // et la position de défilement ne bougent pas.
+  async function rafraichirLigne(p) {
+    try {
+      const { preuve } = await api(`/api/preuves/${p.id}`);
+      setData((d) => ({ ...d, preuves: d.preuves.map((x) => (x.id === preuve.id ? preuve : x)) }));
+    } catch { /* la ligne restera telle quelle jusqu'au prochain chargement */ }
+  }
+
   const actions = {
     erreur: setErr,
     async statut(p, statut) {
@@ -182,14 +317,52 @@ export default function Preuves({ admin, onChange }) {
       onChange?.();
     },
     async lier(p, f) {
-      majLocale(p, { drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, a_confirmer: false, statut: statutApresConfirmation(p) });
+      majLocale(p, {
+        fichiers: [{ id: `attente-${f.id}`, drive_file_id: f.id, url: f.url, nom: f.nom, source: "manuel" }],
+        a_confirmer: false, statut: statutApresConfirmation(p),
+      });
       try {
         const r = await api(`/api/preuves/${p.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, confirmer: true }),
+          body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime, confirmer: true }),
         });
-        if (r.statut) majLocale(p, { statut: r.statut });
+        majLocale(p, compteurs(r));
+        // L'identifiant de la pièce jointe vient du serveur : on relit la
+        // ligne pour pouvoir la retirer ensuite.
+        await rafraichirLigne(p);
       } catch (e) { setErr(e.message); }
+      onChange?.();
+    },
+    // Ajoute une pièce à une preuve qui en accepte plusieurs.
+    async ajouterFichier(p, f) {
+      try {
+        const r = await api(`/api/preuves/${p.id}/fichiers`, {
+          method: "POST",
+          body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime }),
+        });
+        majLocale(p, {
+          fichiers: [...p.fichiers.filter((x) => x.drive_file_id !== r.fichier.drive_file_id), r.fichier],
+          ...compteurs(r),
+        });
+      } catch (e) { setErr(e.message); }
+      onChange?.();
+    },
+    async retirerFichier(p, fichier) {
+      majLocale(p, { fichiers: p.fichiers.filter((x) => x.id !== fichier.id) });
+      try {
+        const r = await api(`/api/preuves/${p.id}/fichiers/${fichier.id}`, { method: "DELETE" });
+        majLocale(p, compteurs(r));
+      } catch (e) { setErr(e.message); await rafraichirLigne(p); }
+      onChange?.();
+    },
+    // Mode de fichiers, session ou groupe rattaché : le nombre attendu est
+    // recalculé par le serveur, jamais deviné ici.
+    async reglage(p, champs) {
+      majLocale(p, champs);
+      try {
+        const r = await api(`/api/preuves/${p.id}`, { method: "PATCH", body: JSON.stringify(champs) });
+        majLocale(p, compteurs(r));
+      } catch (e) { setErr(e.message); await rafraichirLigne(p); }
       onChange?.();
     },
     async confirmer(p) {
@@ -320,7 +493,7 @@ export default function Preuves({ admin, onChange }) {
       <ul className="liste-preuves">
         {data?.preuves.map((p) => (
           <LignePreuve
-            key={p.id} p={p} actions={actions} admin={admin}
+            key={p.id} p={p} actions={actions} admin={admin} sessions={sessions}
             selectionnee={selection.has(p.id)} onBasculerSelection={basculerSelection}
           />
         ))}

@@ -121,28 +121,48 @@ export async function importerClasseur({ fichierId = null, onglet = null, apercu
     let creees = 0, majes = 0;
     for (const l of lignes) {
       const { rows } = await client.query(
-        `INSERT INTO preuves (indicateur_id, titre, statut, source, drive_file_id, drive_url, drive_nom, drive_mime,
+        `INSERT INTO preuves (indicateur_id, titre, statut, source,
            modele_nom, tache, etat_source, occurrences, lignes_source, a_confirmer, motif_confirmation, candidats,
            import_id, created_by)
-         VALUES ($1,$2,$3,'import_drive',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         VALUES ($1,$2,$3,'import_drive',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (indicateur_id, md5(lower(titre))) WHERE source = 'import_drive' DO UPDATE SET
            statut = EXCLUDED.statut, modele_nom = EXCLUDED.modele_nom, tache = EXCLUDED.tache,
            etat_source = EXCLUDED.etat_source, occurrences = EXCLUDED.occurrences,
            lignes_source = EXCLUDED.lignes_source, import_id = EXCLUDED.import_id,
            -- un rattachement validé à la main n'est jamais écrasé par un réimport
-           drive_file_id = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.drive_file_id ELSE preuves.drive_file_id END,
-           drive_url = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.drive_url ELSE preuves.drive_url END,
-           drive_nom = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.drive_nom ELSE preuves.drive_nom END,
-           drive_mime = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.drive_mime ELSE preuves.drive_mime END,
            a_confirmer = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.a_confirmer ELSE false END,
            motif_confirmation = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.motif_confirmation ELSE preuves.motif_confirmation END,
            candidats = CASE WHEN preuves.validee_le IS NULL THEN EXCLUDED.candidats ELSE preuves.candidats END
-         RETURNING (xmax = 0) AS creee`,
-        [l.indicateur_id, l.titre, l.statut, l.drive_file_id, l.drive_url, l.drive_nom, l.drive_mime,
+         RETURNING id, (xmax = 0) AS creee, validee_le`,
+        [l.indicateur_id, l.titre, l.statut,
          l.modele_nom, l.tache, l.etat_source, l.occurrences, l.lignes_source, l.a_confirmer,
          l.motif_confirmation, JSON.stringify(l.candidats), imp.id, utilisateurId]
       );
-      if (rows[0]?.creee) creees++; else majes++;
+      const preuve = rows[0];
+      if (preuve?.creee) creees++; else majes++;
+
+      // Le fichier rapproché devient une pièce jointe. Le rapprochement
+      // lui-même n'a pas changé : seul l'endroit où son résultat est rangé
+      // a bougé, une preuve pouvant désormais en porter plusieurs.
+      // Un rattachement validé à la main n'est pas retouché, et les
+      // fichiers ajoutés à la main ne sont jamais supprimés : on ne
+      // remplace que ce qu'un import précédent avait posé.
+      if (preuve && !preuve.validee_le) {
+        await client.query(
+          "DELETE FROM preuve_fichiers WHERE preuve_id = $1 AND source = 'import_drive'" +
+            (l.drive_file_id ? " AND drive_file_id <> $2" : ""),
+          l.drive_file_id ? [preuve.id, l.drive_file_id] : [preuve.id]
+        );
+        if (l.drive_file_id) {
+          await client.query(
+            `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
+             VALUES ($1, $2, $3, $4, $5, 'import_drive', $6)
+             ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
+               drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime`,
+            [preuve.id, l.drive_file_id, l.drive_url, l.drive_nom, l.drive_mime, utilisateurId]
+          );
+        }
+      }
     }
     await client.query(
       `UPDATE imports_drive SET preuves_creees = $2, preuves_majes = $3, statut = 'termine', termine_le = now() WHERE id = $1`,

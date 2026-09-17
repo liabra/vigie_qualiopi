@@ -60,8 +60,11 @@ export default function App() {
             Preuves
           </button>
         </nav>
+        {/* `rafraichir` fait relire les données au tableau de bord, sans le
+            remonter : une clé qui change réinitialiserait les critères
+            ouverts et renverrait en haut de page. */}
         {onglet === "referentiel"
-          ? <Referentiel key={version} admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />
+          ? <Referentiel admin={isAdmin} rafraichir={version} />
           : <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
       </main>
     </>

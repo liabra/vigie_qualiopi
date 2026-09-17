@@ -12,7 +12,10 @@ const resumeScore = (s) =>
 const TOUTES_CATEGORIES = ["OF", "CFA", "CBC", "VAE"];
 const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'apprentis", CBC: "Bilan de compétences", VAE: "Validation des acquis de l'expérience" };
 
-export default function Referentiel({ admin, onChange }) {
+// `rafraichir` change quand une preuve a été modifiée ailleurs : le
+// tableau de bord relit ses données, sans jamais être remonté — les
+// critères dépliés et la position de défilement restent en place.
+export default function Referentiel({ admin, rafraichir = 0 }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [open, setOpen] = useState(() => new Set([1]));
@@ -23,7 +26,7 @@ export default function Referentiel({ admin, onChange }) {
 
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
-  }, []);
+  }, [rafraichir]);
 
   // Marque ou réactive un indicateur, indépendamment de ses preuves. La
   // réactivation peut faire réapparaître n'importe quel statut selon les
@@ -37,8 +40,9 @@ export default function Referentiel({ admin, onChange }) {
         method: "PATCH",
         body: JSON.stringify({ non_applicable: !i.non_applicable_force }),
       });
+      // On remplace les données en place : les critères dépliés, la
+      // recherche en cours et le défilement ne bougent pas.
       setData(await api("/api/referentiel"));
-      onChange?.();
     } catch (e) {
       setErr(e.message);
     } finally {

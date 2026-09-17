@@ -139,6 +139,24 @@ et l'admin tranche en un clic depuis l'écran Preuves. Un rattachement validé
 L'import est **rejouable** : une preuve importée est identifiée par son
 indicateur et son titre, un second passage met à jour sans dupliquer.
 
+## Versions des librairies Google : à ne pas désaligner
+
+`google-auth-library` doit rester sur la même version majeure que celle
+attendue par le `googleapis-common` embarqué dans `@googleapis/sheets`,
+aujourd'hui la 11.
+
+Sinon l'en-tête `Authorization` est perdu entre le paquet Sheets et notre
+client OAuth : la requête part sans identité, et Google répond 403
+« Method doesn't allow unregistered callers », alors que le jeton, le scope
+et le projet Cloud sont valides. Drive continue de fonctionner pendant ce
+temps, car il embarque une version plus ancienne de `googleapis-common`,
+ce qui rend le symptôme très trompeur.
+
+Le test `server/test/pileGoogle.test.js` échoue si les versions divergent.
+Le script `server/scripts/debug-sheets.js`, ignoré par git, rejoue un appel
+Sheets avec un jeton collé à la main par quatre chemins différents, et
+distingue un en-tête perdu, 403, d'un jeton refusé, 401.
+
 ## Diagnostic des refus de Google
 
 Quand un appel Drive ou Sheets échoue, `POST /api/import/classeur` répond

@@ -5,3 +5,6 @@ dist
 !.env.example
 .DS_Store
 docs/
+
+# Scripts de debug temporaires, jamais commités
+server/scripts/debug-*.js

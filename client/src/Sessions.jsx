@@ -48,12 +48,10 @@ function Formations({ formations, onChange, erreur }) {
           {Object.entries(MODALITES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </label>
-      <Champ label="Programme" multiligne value={f.programme || ""} onChange={(e) => set({ ...f, programme: e.target.value })} />
-      <Champ label="Scénario pédagogique" multiligne value={f.scenario_pedagogique || ""}
-        onChange={(e) => set({ ...f, scenario_pedagogique: e.target.value })} />
-      <Champ label="Compétences visées (une par ligne)" multiligne
-        value={Array.isArray(f.competences) ? f.competences.join("\n") : f.competences || ""}
-        onChange={(e) => set({ ...f, competences: e.target.value })} />
+      <p className="muted small">
+        Programme, scénario pédagogique et compétences visées : à rattacher comme preuves
+        (indicateurs 5 et 6) plutôt qu'à saisir ici.
+      </p>
     </>
   );
 
@@ -87,7 +85,7 @@ function Formations({ formations, onChange, erreur }) {
                 {f.duree_heures_defaut && <> · {f.duree_heures_defaut} h</>}
               </div>
             </div>
-            <button className="btn petit" onClick={() => setEdite({ ...f, competences: f.competences || [] })}>Réviser</button>
+            <button className="btn petit" onClick={() => setEdite({ ...f })}>Réviser</button>
           </li>
         ))}
         {formations.length === 0 && <li className="muted">Aucune formation.</li>}

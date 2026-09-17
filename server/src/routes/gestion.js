@@ -21,9 +21,8 @@ const STATUTS_INSCRIPTION = ["inscrit", "en_cours", "termine", "abandon"];
 // Champs de contenu d'une version de formation : une modification en crée
 // une nouvelle, les sessions déjà créées gardent la leur.
 const CHAMPS_VERSION = [
-  "objectifs", "prerequis", "public_vise", "programme", "scenario_pedagogique",
-  "competences", "duree_heures_defaut", "modalite", "certifiante", "code_rncp_rs",
-  "tarif_ht", "accessibilite_handicap",
+  "objectifs", "prerequis", "public_vise", "duree_heures_defaut", "modalite",
+  "certifiante", "code_rncp_rs", "tarif_ht", "accessibilite_handicap",
 ];
 
 // ── Formations ───────────────────────────────────────────────
@@ -32,8 +31,8 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
   const { rows } = await query(
     `SELECT f.id, f.intitule, f.code_interne, f.actif,
             v.id AS version_id, v.numero AS version_numero, v.duree_heures_defaut, v.modalite,
-            v.objectifs, v.prerequis, v.public_vise, v.programme, v.scenario_pedagogique,
-            v.competences, v.certifiante, v.code_rncp_rs, v.tarif_ht, v.accessibilite_handicap,
+            v.objectifs, v.prerequis, v.public_vise,
+            v.certifiante, v.code_rncp_rs, v.tarif_ht, v.accessibilite_handicap,
             (SELECT count(*)::int FROM formation_versions fv WHERE fv.formation_id = f.id) AS nb_versions,
             (SELECT count(*)::int FROM sessions s WHERE s.formation_id = f.id) AS nb_sessions
      FROM formations f
@@ -52,7 +51,6 @@ async function creerVersion(cx, formationId, corps, utilisateurId) {
   );
   const valeurs = CHAMPS_VERSION.map((c) => {
     const v = corps[c];
-    if (c === "competences") return Array.isArray(v) ? v : (v ? String(v).split("\n").map((x) => x.trim()).filter(Boolean) : []);
     if (c === "certifiante") return v === true;
     return v === "" || v === undefined ? null : v;
   });

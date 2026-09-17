@@ -12,11 +12,14 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 //   vert  — toutes maîtrisées
 //   orange— au moins une à consolider, aucune à risque
 //   rouge — au moins une à risque, ou aucune preuve
-//   gris  — toutes non applicables
+//   gris  — toutes non applicables, OU marqué non applicable à la main
 // Les preuves non applicables sont neutres : elles ne dégradent ni
-// n'améliorent un indicateur qui en a d'autres.
+// n'améliorent un indicateur qui en a d'autres. Le marquage manuel, lui,
+// l'emporte sur tout : un indicateur ainsi marqué passe gris quelles que
+// soient ses preuves — voir indicateurs_non_applicables.
 const STATUT_SQL = `
   CASE
+    WHEN na.indicateur_id IS NOT NULL THEN 'non_applicable'
     WHEN count(p.id) = 0 THEN 'a_risque'
     WHEN count(p.id) FILTER (WHERE p.statut <> 'non_applicable') = 0 THEN 'non_applicable'
     WHEN count(p.id) FILTER (WHERE p.statut = 'a_risque') > 0 THEN 'a_risque'
@@ -49,11 +52,14 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
               count(p.id) FILTER (WHERE p.statut = 'a_consolider')::int AS nb_a_consolider,
               count(p.id) FILTER (WHERE p.statut = 'a_risque')::int AS nb_a_risque,
               count(p.id) FILTER (WHERE p.statut = 'non_applicable')::int AS nb_non_applicable,
+              na.indicateur_id IS NOT NULL AS non_applicable_force,
+              na.motif AS non_applicable_motif,
               ${STATUT_SQL} AS statut
        FROM indicateurs i
        LEFT JOIN preuves p ON p.indicateur_id = i.id
+       LEFT JOIN indicateurs_non_applicables na ON na.indicateur_id = i.id
        WHERE i.version_id = $1
-       GROUP BY i.id ORDER BY i.numero`,
+       GROUP BY i.id, na.indicateur_id, na.motif ORDER BY i.numero`,
       [version.id]
     ),
   ]);
@@ -72,6 +78,31 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
     },
     criteres: criteres.map((c) => ({ ...c, indicateurs: indicateurs.filter((i) => i.critere_id === c.id) })),
   });
+}));
+
+// Marque ou réactive un indicateur, indépendamment de ses preuves.
+// Réversible : la ligne existe ou non dans indicateurs_non_applicables.
+router.patch("/indicateurs/:id/non-applicable", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { non_applicable, motif } = req.body || {};
+  if (typeof non_applicable !== "boolean") {
+    return res.status(400).json({ error: "Le champ non_applicable (true/false) est requis." });
+  }
+  const { rowCount: existe } = await query("SELECT 1 FROM indicateurs WHERE id = $1", [id]);
+  if (!existe) return res.status(404).json({ error: "Indicateur introuvable." });
+
+  if (non_applicable) {
+    await query(
+      `INSERT INTO indicateurs_non_applicables (indicateur_id, motif, marquee_par)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (indicateur_id) DO UPDATE SET
+         motif = EXCLUDED.motif, marquee_par = EXCLUDED.marquee_par, marquee_le = now()`,
+      [id, motif || null, req.user.id]
+    );
+  } else {
+    await query("DELETE FROM indicateurs_non_applicables WHERE indicateur_id = $1", [id]);
+  }
+  res.json({ ok: true, non_applicable });
 }));
 
 // ── Preuves ──────────────────────────────────────────────────

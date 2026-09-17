@@ -61,7 +61,7 @@ export default function App() {
           </button>
         </nav>
         {onglet === "referentiel"
-          ? <Referentiel key={version} />
+          ? <Referentiel key={version} admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />
           : <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
       </main>
     </>

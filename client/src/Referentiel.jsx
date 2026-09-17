@@ -12,15 +12,39 @@ const resumeScore = (s) =>
 const TOUTES_CATEGORIES = ["OF", "CFA", "CBC", "VAE"];
 const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'apprentis", CBC: "Bilan de compétences", VAE: "Validation des acquis de l'expérience" };
 
-export default function Referentiel() {
+export default function Referentiel({ admin, onChange }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [open, setOpen] = useState(() => new Set([1]));
   const [q, setQ] = useState("");
+  // Marquage en cours, pour désactiver le bouton le temps de la réponse
+  // et ne jamais envoyer deux fois la même bascule.
+  const [enCours, setEnCours] = useState(null);
 
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
   }, []);
+
+  // Marque ou réactive un indicateur, indépendamment de ses preuves. La
+  // réactivation peut faire réapparaître n'importe quel statut selon les
+  // preuves existantes : plutôt que de le deviner côté client, on relit
+  // le tableau de bord une fois le serveur à jour.
+  async function basculerNonApplicable(i) {
+    if (enCours) return;
+    setEnCours(i.id);
+    try {
+      await api(`/api/indicateurs/${i.id}/non-applicable`, {
+        method: "PATCH",
+        body: JSON.stringify({ non_applicable: !i.non_applicable_force }),
+      });
+      setData(await api("/api/referentiel"));
+      onChange?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setEnCours(null);
+    }
+  }
 
   const criteres = useMemo(() => {
     if (!data) return [];
@@ -36,7 +60,10 @@ export default function Referentiel() {
       .filter((c) => c.indicateurs.length);
   }, [data, q]);
 
-  if (err) return <p className="flash erreur">Référentiel : {err}</p>;
+  // Une erreur avant tout chargement efface l'écran ; une fois le tableau
+  // de bord affiché, une erreur d'action (ex. bascule non applicable) ne
+  // doit pas faire disparaître tout ce qui fonctionne déjà.
+  if (err && !data) return <p className="flash erreur">Référentiel : {err}</p>;
   if (!data) return <p className="muted">Chargement du référentiel…</p>;
 
   const toggle = (n) => setOpen((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
@@ -79,6 +106,7 @@ export default function Referentiel() {
           )}
         </div>
       </div>
+      {err && <p className="flash erreur">{err}</p>}
       {data.version.note && <p className="flash info">{data.version.note}</p>}
       {nonVerifies > 0 && (
         <p className="flash info">
@@ -114,8 +142,18 @@ export default function Referentiel() {
                           : i.categories.map((c) => <span key={c} className="pill" title={TITRES[c]}>{c}</span>)}
                         {i.gradation === "majeure_uniquement" && <span className="pill off">NC majeure uniquement</span>}
                         {!i.texte_source_verifie && <span className="pill warn">Provisoire</span>}
+                        {i.non_applicable_force && <span className="pill">Marqué non applicable</span>}
                       </div>
                     </div>
+                    {admin && (
+                      <button
+                        className={"btn petit" + (i.non_applicable_force ? "" : " non-applicable")}
+                        onClick={() => basculerNonApplicable(i)}
+                        disabled={enCours === i.id}
+                      >
+                        {enCours === i.id ? "…" : i.non_applicable_force ? "Réactiver" : "Marquer non applicable"}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ol>

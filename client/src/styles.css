@@ -87,16 +87,19 @@ p { margin: 0; }
   border-radius: 99px; background: var(--accent-bg);
 }
 .indicateurs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
-.indicateurs li { display: grid; grid-template-columns: 2.2rem 1fr; gap: .5rem; padding: .75rem 1rem; }
+.indicateurs li { display: grid; grid-template-columns: 2.2rem 1fr auto; gap: .5rem; align-items: start; padding: .75rem 1rem; }
 .indicateurs li + li { border-top: 1px solid var(--border); }
 .ind-num {
   width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%;
   background: var(--primary); color: var(--primary-text); font-weight: 700; font-size: .85rem;
 }
 .tags { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .35rem; }
+.btn.petit.non-applicable { color: var(--st-na); border-color: var(--st-na); }
 @media (max-width: 560px) {
   .critere-head { grid-template-columns: 1fr auto; }
   .critere-libelle { grid-column: 1 / -1; grid-row: 2; }
+  .indicateurs li { grid-template-columns: 2.2rem 1fr; }
+  .indicateurs li > button { grid-column: 1 / -1; justify-self: start; }
 }
 .pill.spec { background: var(--primary); color: var(--primary-text); }
 

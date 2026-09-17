@@ -73,8 +73,8 @@ Deux consentements distincts :
 - **Connexion** (`openid email profile`) : identifie la personne. Au premier
   passage, seules les adresses de `ADMIN_EMAILS` créent leur compte, en
   admin. Ensuite la table `utilisateurs` fait foi (rôle, `actif`).
-- **Connecter le Drive** (bouton admin, scopes `drive.readonly` et
-  `spreadsheets.readonly`) : n'est accepté que pour `DRIVE_ACCOUNT_EMAIL`.
+- **Connecter le Drive** (bouton admin, scopes `drive.readonly`,
+  `spreadsheets.readonly` et `drive.file`) : n'est accepté que pour `DRIVE_ACCOUNT_EMAIL`.
   Le refresh_token est stocké dans `drive_connexions` et rafraîchi
   automatiquement. Le scope Sheets sert à lire le classeur de suivi : l'export
   CSV de Drive ne rendrait que le premier onglet et perdrait les cellules
@@ -218,6 +218,80 @@ main, et jamais une preuve validée par l'admin.
 > Les sessions, groupes et inscriptions sont encore vides : ils seront
 > alimentés en Phase 2. D'ici là, le mode « par stagiaire » fonctionne
 > mais n'a aucune session à laquelle se rattacher.
+
+## Sessions, stagiaires et génération de documents (Phase 2)
+
+### Formations versionnées
+
+`formations` porte l'identité, `formation_versions` le contenu qui
+évolue : programme, scénario pédagogique, compétences, durée par défaut.
+Réviser une formation crée une **nouvelle version**. Une session retient
+la version en vigueur au jour de sa création, donc réviser ne réécrit
+jamais l'histoire des sessions déjà lancées, ni la durée imprimée sur
+leurs documents.
+
+Une session contient un ou plusieurs **groupes**. Un groupe est un lieu ou
+une cohorte, avec son propre lieu et son propre formateur : deux groupes
+d'une même session peuvent se tenir sur deux sites aux mêmes dates. Une
+session sur un seul lieu n'a qu'un groupe.
+
+Le prescripteur et l'état du dossier sont portés par l'**inscription**, pas
+par la personne : ils peuvent différer d'une session à l'autre pour un
+même stagiaire. Marquer un abandon date l'abandon et sort aussitôt le
+stagiaire du décompte « un par stagiaire » des preuves.
+
+### Marqueurs de documents
+
+Un modèle est un Google Doc ou Sheet **existant** sur le Drive. La
+génération en fait une copie et y remplace ces marqueurs. Le modèle
+d'origine n'est jamais modifié.
+
+| Marqueur | Valeur |
+| --- | --- |
+| `{{nom_stagiaire}}` | nom du stagiaire, portée stagiaire seulement |
+| `{{prenom_stagiaire}}` | prénom du stagiaire, idem |
+| `{{date_debut}}` | début de session, jj/mm/aaaa |
+| `{{date_fin}}` | fin de session, jj/mm/aaaa |
+| `{{duree}}` | durée réelle de la session, à défaut celle de la version |
+| `{{intitule_formation}}` | intitulé de la formation |
+| `{{lieu}}` | lieu du groupe, à défaut celui de la session |
+| `{{formateur}}` | formateur du groupe, à défaut celui de la session |
+| `{{nom_organisme}}` | variable d'environnement `ORGANISME_NOM` |
+
+**N'ajoutez pas de marqueur sans l'inscrire ici et dans
+`server/src/services/marqueurs.js`**, qui fait foi. Un marqueur inconnu
+n'est pas remplacé et reste visible dans le document produit. Le test
+`server/test/marqueurs.test.js` fige cette liste.
+
+### Générer
+
+Depuis l'écran d'une session : choisir un modèle, éventuellement un
+groupe, puis « Générer les documents ». Une portée session ou groupe
+produit un fichier ; une portée stagiaire produit une copie par stagiaire
+inscrit, **abandons exclus**.
+
+Les copies sont déposées dans
+`/<DRIVE_RACINE>/<formation>/<référence et dates>/<groupe>/`, créé au
+besoin. Chaque génération crée ou retrouve une preuve par indicateur
+associé au modèle : en mode « un seul fichier » pour une portée session ou
+groupe, en mode « un par stagiaire » sinon. Le comptage est celui de la
+Phase 1bis, aucune logique nouvelle.
+
+Regénérer ne duplique pas : les documents déjà produits pour le même
+couple modèle / groupe / stagiaire sont mis à la corbeille et remplacés,
+après confirmation explicite. Le serveur répond 409 tant que ce
+remplacement n'est pas confirmé.
+
+### Accès Drive en écriture
+
+La génération exige le scope `drive.file`, qui n'autorise l'écriture que
+sur les fichiers créés par l'application. L'application ne demande jamais
+le scope `drive` complet, qui donnerait accès en écriture à tout le Drive.
+
+> **Après ce déploiement, l'admin doit reconnecter le Drive**, comme lors
+> de l'ajout du scope Sheets en Phase 1. L'écran d'accueil le signale, et
+> toute tentative de génération répond « Reconnectez-le pour autoriser la
+> création de documents ».
 
 ## Tableau de bord
 

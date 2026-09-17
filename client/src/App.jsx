@@ -5,6 +5,8 @@ import Login from "./Login.jsx";
 import DriveStatus from "./DriveStatus.jsx";
 import Referentiel from "./Referentiel.jsx";
 import Preuves from "./Preuves.jsx";
+import Sessions from "./Sessions.jsx";
+import Modeles from "./Modeles.jsx";
 
 // Lit puis retire ?erreur= / ?drive= de l'URL, pour qu'un rechargement ne réaffiche rien.
 function consumeFlash() {
@@ -59,13 +61,24 @@ export default function App() {
           <button className={onglet === "preuves" ? "actif" : ""} onClick={() => setOnglet("preuves")}>
             Preuves
           </button>
+          {isAdmin && (
+            <button className={onglet === "sessions" ? "actif" : ""} onClick={() => setOnglet("sessions")}>
+              Sessions
+            </button>
+          )}
+          {isAdmin && (
+            <button className={onglet === "modeles" ? "actif" : ""} onClick={() => setOnglet("modeles")}>
+              Modèles
+            </button>
+          )}
         </nav>
         {/* `rafraichir` fait relire les données au tableau de bord, sans le
             remonter : une clé qui change réinitialiserait les critères
             ouverts et renverrait en haut de page. */}
-        {onglet === "referentiel"
-          ? <Referentiel admin={isAdmin} rafraichir={version} />
-          : <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
+        {onglet === "referentiel" && <Referentiel admin={isAdmin} rafraichir={version} />}
+        {onglet === "preuves" && <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
+        {onglet === "sessions" && <Sessions admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
+        {onglet === "modeles" && <Modeles admin={isAdmin} />}
       </main>
     </>
   );

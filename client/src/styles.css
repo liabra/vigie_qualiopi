@@ -204,3 +204,31 @@ p { margin: 0; }
   padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); font: inherit; max-width: 16rem;
 }
+
+/* ── Phase 2 : sessions, stagiaires, modèles ─────────────────── */
+.sessions, .modeles { display: grid; gap: 1rem; }
+.bloc { overflow: clip; }
+.bloc-tete {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  padding: .8rem 1rem; background: none; border: 0; color: inherit; font: inherit; cursor: pointer;
+}
+.bloc-tete:hover { background: var(--accent-bg); }
+.bloc-corps { padding: 0 1rem 1rem; display: grid; gap: .75rem; }
+.liste-simple { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.liste-simple li {
+  display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+  padding: .5rem .6rem; border: 1px solid var(--border); border-radius: 8px;
+}
+.liste-simple li.actif { border-color: var(--primary); }
+.liste-simple li.abandonne { opacity: .65; }
+.formulaire { display: grid; gap: .6rem; padding: .8rem; border: 1px dashed var(--border); border-radius: 8px; }
+.formulaire.ligne { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); align-items: end; }
+.champ { display: grid; gap: .2rem; }
+.champ.case { display: flex; align-items: center; gap: .4rem; }
+.champ input, .champ select, .champ textarea {
+  padding: .4rem .55rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; width: 100%;
+}
+.champ textarea { resize: vertical; }
+.detail-session { display: grid; gap: .75rem; padding-top: .5rem; border-top: 2px solid var(--border); }
+.detail-session h2 { font-size: 1.15rem; margin: 0; }

@@ -17,6 +17,13 @@ export const config = {
   },
   adminEmails: list(env.ADMIN_EMAILS),
   driveAccountEmail: (env.DRIVE_ACCOUNT_EMAIL || "actions.a2c@gmail.com").trim().toLowerCase(),
+  // Nom de l'organisme, injecté dans les documents via {{nom_organisme}}.
+  organismeNom: (env.ORGANISME_NOM || "A2C").trim(),
+  // Dossier Drive où sont déposés les documents générés. Par défaut
+  // l'application le cherche par son nom et le crée s'il n'existe pas ;
+  // DRIVE_RACINE_ID permet d'imposer un dossier parent précis.
+  driveRacine: (env.DRIVE_RACINE || "A2C Qualiopi").trim(),
+  driveRacineId: (env.DRIVE_RACINE_ID || "").trim(),
 };
 
 export const googleConfigured = () =>

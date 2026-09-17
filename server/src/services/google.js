@@ -4,6 +4,7 @@
 import { OAuth2Client } from "google-auth-library";
 import { drive as driveApi } from "@googleapis/drive";
 import { sheets as sheetsApi } from "@googleapis/sheets";
+import { docs as docsApi } from "@googleapis/docs";
 import { config, googleConfigured } from "../config.js";
 import { query } from "../db.js";
 
@@ -13,7 +14,11 @@ export const DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly";
 // premier onglet et perdrait les cellules fusionnées, dont ce classeur est
 // truffé. L API Sheets donne les deux, en lecture seule elle aussi.
 export const SHEETS_READONLY = "https://www.googleapis.com/auth/spreadsheets.readonly";
-export const DRIVE_SCOPES = ["openid", "email", DRIVE_READONLY, SHEETS_READONLY];
+// Écriture : uniquement les fichiers que l'application crée elle-même.
+// drive.file ne donne AUCUN droit d'écriture sur le reste du Drive, à la
+// différence du scope `drive` complet, qu'on ne demande pas.
+export const DRIVE_FILE = "https://www.googleapis.com/auth/drive.file";
+export const DRIVE_SCOPES = ["openid", "email", DRIVE_READONLY, SHEETS_READONLY, DRIVE_FILE];
 
 export const newOAuthClient = () =>
   new OAuth2Client(config.google.clientId, config.google.clientSecret, config.google.redirectUri);
@@ -77,7 +82,12 @@ export async function getDrive() {
       row.email, t.access_token || row.access_token, t.expiry_date ? new Date(t.expiry_date) : null,
     ]).catch((e) => console.error("Drive — sauvegarde du jeton rafraîchi échouée : " + e.message));
   });
-  return { drive: driveApi({ version: "v3", auth }), sheets: sheetsApi({ version: "v4", auth }), auth, row };
+  return {
+    drive: driveApi({ version: "v3", auth }),
+    sheets: sheetsApi({ version: "v4", auth }),
+    docs: docsApi({ version: "v1", auth }),
+    auth, row,
+  };
 }
 
 export async function driveStatus() {
@@ -92,7 +102,10 @@ export async function driveStatus() {
       // Un compte lié avant l ajout du scope Sheets ne peut pas lire le
       // classeur : on le signale sans attendre le premier 403.
       sheetsAutorise: scopes.includes(SHEETS_READONLY),
-      reconnexionRequise: !scopes.includes(SHEETS_READONLY),
+      // Sans drive.file, l'application peut tout lire mais ne peut RIEN
+      // créer : la génération de documents est impossible.
+      ecritureAutorisee: scopes.includes(DRIVE_FILE),
+      reconnexionRequise: !scopes.includes(SHEETS_READONLY) || !scopes.includes(DRIVE_FILE),
       verifie: data.user?.emailAddress || null,
     };
   } catch (e) {

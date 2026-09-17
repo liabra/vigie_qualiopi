@@ -11,6 +11,7 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
+    "@googleapis/docs": "^14.0.0",
     "@googleapis/drive": "^8.14.0",
     "@googleapis/sheets": "^18.0.0",
     "express": "^4.21.2",

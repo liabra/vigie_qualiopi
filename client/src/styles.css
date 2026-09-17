@@ -30,6 +30,10 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+/* Réserve la place de la barre de défilement en permanence : sans cela,
+   passer d'un écran qui défile à un écran qui ne défile pas décale toute
+   la mise en page de quelques pixels. */
+html { scrollbar-gutter: stable; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

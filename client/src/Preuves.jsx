@@ -183,8 +183,16 @@ const ALERTE_LIBELLE = { perime: "Périmé", bientot: "Bientôt à revoir" };
 // Réglage de l'échéance d'un document permanent (CGV, habilitation,
 // contrat…) : révision périodique ou date fixe. La rupture réglementaire
 // (liée à la veille) n'a pas encore d'écran, donc pas de contrôle ici.
+// Type choisi mais valeur pas encore saisie : état transitoire admis par
+// la base (migration 007) et par la vue, qui ne calcule alors aucune
+// alerte. Il ne doit surtout pas passer pour un réglage terminé.
+const echeanceIncomplete = (p) =>
+  (p.type_alerte === "revision_periodique" && !p.periodicite_mois) ||
+  (p.type_alerte === "echeance_fixe" && !p.date_echeance);
+
 function Echeance({ p, actions, admin }) {
   if (!admin && !p.type_alerte) return null;
+  const incomplete = echeanceIncomplete(p);
   return (
     <div className="fichiers-preuve">
       {p.alerte_statut && p.alerte_statut !== "ok" && (
@@ -192,6 +200,7 @@ function Echeance({ p, actions, admin }) {
           {ALERTE_LIBELLE[p.alerte_statut]}
         </span>
       )}
+      {incomplete && <span className="pill warn">Échéance à configurer</span>}
       {admin && (
         <div className="reglages-fichiers">
           <label>
@@ -204,6 +213,13 @@ function Echeance({ p, actions, admin }) {
               {Object.entries(TYPES_ALERTE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
+          {incomplete && (
+            <span className="muted small">
+              {p.type_alerte === "revision_periodique"
+                ? "Indiquez tous les combien de mois cette preuve doit être revue."
+                : "Indiquez la date d'expiration portée sur le document."}
+            </span>
+          )}
           {p.type_alerte === "revision_periodique" && (
             <>
               <label>

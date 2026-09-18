@@ -236,3 +236,8 @@ p { margin: 0; }
 .champ textarea { resize: vertical; }
 .detail-session { display: grid; gap: .75rem; padding-top: .5rem; border-top: 2px solid var(--border); }
 .detail-session h2 { font-size: 1.15rem; margin: 0; }
+.actions-stagiaire { display: flex; align-items: center; gap: .4rem; }
+.actions-stagiaire select {
+  padding: .25rem .4rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: .85rem;
+}

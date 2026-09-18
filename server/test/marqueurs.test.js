@@ -10,7 +10,7 @@ import {
 
 test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
-    "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "duree",
+    "civilite", "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "duree",
     "intitule_formation", "lieu", "formateur", "nom_organisme",
   ]);
 });
@@ -33,7 +33,7 @@ const contexte = {
   version: { duree_heures_defaut: 21 },
   session: { date_debut: "2026-01-05", date_fin: "2026-03-05", lieu: "Cayenne", formateur: "Mme Carr" },
   groupe: { lieu: "Soula", formateur: "M. Jones" },
-  stagiaire: { nom: "Dupont", prenom: "Jean" },
+  stagiaire: { civilite: "Mme", nom: "Dupont", prenom: "Jean" },
   organisme: "A2C",
 };
 
@@ -50,6 +50,14 @@ test("le groupe l'emporte sur la session pour le lieu et le formateur", () => {
 test("la durée réelle de la session l'emporte sur celle de la formation", () => {
   assert.equal(valeursMarqueurs(contexte).duree, "21 h");
   assert.equal(valeursMarqueurs({ ...contexte, session: { ...contexte.session, duree_heures_reelle: 28 } }).duree, "28 h");
+});
+
+test("la civilité vient du stagiaire, et reste vide si elle n'est pas renseignée", () => {
+  assert.equal(valeursMarqueurs(contexte).civilite, "Mme");
+  // stagiaire saisi avant l'ajout de la colonne : rien ne doit casser
+  const sansCivilite = valeursMarqueurs({ ...contexte, stagiaire: { nom: "Dupont", prenom: "Jean" } });
+  assert.equal(sansCivilite.civilite, "");
+  assert.equal(remplacer("{{civilite}} {{nom_stagiaire}}", sansCivilite), " Dupont");
 });
 
 test("un marqueur sans valeur devient vide, jamais « {{...}} » imprimé", () => {
@@ -71,10 +79,15 @@ test("les requêtes Google couvrent tous les marqueurs, avec la bonne forme", ()
   const v = valeursMarqueurs(contexte);
   const docs = requetesDocs(v);
   assert.equal(docs.length, MARQUEURS.length);
-  assert.deepEqual(docs[0].replaceAllText.containsText, { text: "{{nom_stagiaire}}", matchCase: true });
-  assert.equal(docs[0].replaceAllText.replaceText, "Dupont");
+  // repérage par nom, pas par position : ajouter un marqueur ne doit pas
+  // faire échouer ce test pour une mauvaise raison.
+  const requete = (nom) => docs.find((d) => d.replaceAllText.containsText.text === "{{" + nom + "}}");
+  assert.deepEqual(requete("nom_stagiaire").replaceAllText.containsText, { text: "{{nom_stagiaire}}", matchCase: true });
+  assert.equal(requete("nom_stagiaire").replaceAllText.replaceText, "Dupont");
+  assert.equal(requete("civilite").replaceAllText.replaceText, "Mme");
   const sheets = requetesSheets(v);
   assert.equal(sheets.length, MARQUEURS.length);
-  assert.equal(sheets[0].findReplace.find, "{{nom_stagiaire}}");
-  assert.equal(sheets[0].findReplace.allSheets, true);
+  const trouve = (nom) => sheets.find((r) => r.findReplace.find === "{{" + nom + "}}");
+  assert.equal(trouve("nom_stagiaire").findReplace.allSheets, true);
+  assert.ok(trouve("civilite"));
 });

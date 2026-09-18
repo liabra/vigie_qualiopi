@@ -248,6 +248,7 @@ d'origine n'est jamais modifié.
 
 | Marqueur | Valeur |
 | --- | --- |
+| `{{civilite}}` | « M. » ou « Mme », vide si non renseignée |
 | `{{nom_stagiaire}}` | nom du stagiaire, portée stagiaire seulement |
 | `{{prenom_stagiaire}}` | prénom du stagiaire, idem |
 | `{{date_debut}}` | début de session, jj/mm/aaaa |
@@ -262,6 +263,19 @@ d'origine n'est jamais modifié.
 `server/src/services/marqueurs.js`**, qui fait foi. Un marqueur inconnu
 n'est pas remplacé et reste visible dans le document produit. Le test
 `server/test/marqueurs.test.js` fige cette liste.
+
+Un marqueur tiré du stagiaire exige aussi sa colonne dans la requête
+`cibles()` de `services/documents.js` : une colonne oubliée là ressort
+en marqueur vide, sans la moindre erreur. C'est ainsi que `{{civilite}}`
+est passé inaperçu.
+
+**Chaque génération contrôle le modèle** et signale les marqueurs qu'elle
+n'y reconnaît pas, corps, tableaux, en-têtes et pieds de page compris. Le
+message de fin les liste, plutôt qu'un succès silencieux. Deux réserves :
+ce contrôle n'est pas fait sur les Google Sheets, qui demanderaient de
+parcourir toutes les cellules de tous les onglets, et il ne bloque jamais
+la production. S'il échoue, les documents sortent quand même et le
+message dit que la vérification n'a pas pu être faite.
 
 ### Générer
 

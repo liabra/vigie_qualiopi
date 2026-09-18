@@ -14,7 +14,7 @@
 import { config } from "../config.js";
 import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
-import { requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
+import { marqueursInconnus, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -23,6 +23,56 @@ const SHEET = "application/vnd.google-apps.spreadsheet";
 const echappe = (s) => String(s).replace(/'/g, "\\'");
 // Un nom de dossier Drive ne doit pas contenir de séparateur de chemin.
 const nomSain = (s) => String(s || "").replace(/[\/\\]/g, "-").trim() || "Sans nom";
+
+// Texte brut d'un Google Doc, TOUT compris : corps, tableaux (marqueurs
+// souvent placés dans des cellules), en-têtes et pieds de page. Sans
+// cela, un marqueur logé dans un tableau passerait inaperçu.
+export function texteDuDocument(doc) {
+  const morceaux = [];
+  const parcourirElements = (elements = []) => {
+    for (const el of elements) {
+      if (el.paragraph) {
+        for (const e of el.paragraph.elements || []) if (e.textRun?.content) morceaux.push(e.textRun.content);
+      }
+      if (el.table) {
+        for (const ligne of el.table.tableRows || []) {
+          for (const cellule of ligne.tableCells || []) parcourirElements(cellule.content);
+        }
+      }
+      if (el.tableOfContents) parcourirElements(el.tableOfContents.content);
+    }
+  };
+  parcourirElements(doc?.body?.content);
+  for (const partie of [...Object.values(doc?.headers || {}), ...Object.values(doc?.footers || {}),
+                        ...Object.values(doc?.footnotes || {})]) {
+    parcourirElements(partie.content);
+  }
+  return morceaux.join("");
+}
+
+// Marqueurs écrits dans un modèle mais absents de la convention. Le
+// résultat est mis en cache par modèle : une génération « un par
+// stagiaire » produit N copies du MÊME modèle, inutile de le relire N fois.
+// null = contrôle impossible, à distinguer de [] = aucun marqueur inconnu.
+// Ce contrôle est un garde-fou, pas un préalable : s'il échoue (droits,
+// quota, format inattendu), on produit quand même les documents et on dit
+// que la vérification n'a pas pu être faite.
+async function marqueursNonReconnus(clients, modele, jeton, cache) {
+  if (cache?.has(modele.drive_file_id)) return cache.get(modele.drive_file_id);
+  let trouves = null;
+  try {
+    const { data } = await appelGoogle(
+      "docs.documents.get",
+      () => clients.docs.documents.get({ documentId: modele.drive_file_id }),
+      { api: "docs", fichierId: modele.drive_file_id, modele: modele.nom, jeton }
+    );
+    trouves = marqueursInconnus(texteDuDocument(data));
+  } catch (e) {
+    console.error("Modèle « " + modele.nom + " » : contrôle des marqueurs impossible — " + (e.message || "erreur inconnue"));
+  }
+  cache?.set(modele.drive_file_id, trouves);
+  return trouves;
+}
 
 // Retrouve un sous-dossier par son nom, ou le crée. Le dossier créé est
 // « créé par l'application », donc accessible avec le seul scope
@@ -63,7 +113,7 @@ export async function dossierCible(drive, { formation, session, groupe }, jeton)
 
 // Copie le modèle puis remplace les marqueurs DANS LA COPIE. Le modèle
 // d'origine n'est jamais modifié.
-export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs }, jeton) {
+export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs, cacheMarqueurs = null }, jeton) {
   const { data: copie } = await appelGoogle(
     "drive.files.copy",
     () => clients.drive.files.copy({
@@ -84,6 +134,10 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
       { api: "sheets", fichierId: copie.id, jeton }
     );
   } else if (mime === DOC) {
+    // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
+    // copie déjà nettoyée) : c'est le seul moment où les marqueurs non
+    // reconnus sont encore visibles.
+    const inconnus = await marqueursNonReconnus(clients, modele, jeton, cacheMarqueurs);
     await appelGoogle(
       "docs.documents.batchUpdate",
       () => clients.docs.documents.batchUpdate({
@@ -91,12 +145,21 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
       }),
       { api: "docs", fichierId: copie.id, jeton }
     );
+    return {
+      ...copie, marqueursRemplaces: true,
+      marqueursInconnusTrouves: inconnus || [],
+      detectionMarqueurs: inconnus !== null,
+    };
   } else {
     // Ni Doc ni Sheet : la copie existe, mais aucun marqueur n'a pu être
     // remplacé. On le dit plutôt que de laisser croire au remplacement.
-    return { ...copie, marqueursRemplaces: false };
+    return { ...copie, marqueursRemplaces: false, marqueursInconnusTrouves: [], detectionMarqueurs: false };
   }
-  return { ...copie, marqueursRemplaces: true };
+  // Sheet : le remplacement a bien lieu, mais la détection des marqueurs
+  // inconnus n'est pas faite — elle demanderait de parcourir toutes les
+  // cellules de tous les onglets. `detectionMarqueurs: false` dit que
+  // l'absence d'avertissement ne prouve rien pour ce document.
+  return { ...copie, marqueursRemplaces: true, marqueursInconnusTrouves: [], detectionMarqueurs: false };
 }
 
 // Preuve d'un document généré : une par (modèle, indicateur, session,
@@ -123,7 +186,11 @@ async function preuvePourModele(client, { modele, indicateurId, session, groupe,
 async function cibles(modele, { session, groupe }) {
   if (modele.portee !== "stagiaire") return [{ stagiaire: null }];
   const { rows } = await query(
-    `SELECT s.id, s.nom, s.prenom
+    // Toute colonne oubliée ici ressort en marqueur vide dans les
+    // documents, sans erreur : c'est exactement ainsi que {{civilite}}
+    // est passé inaperçu. Ajouter un marqueur lié au stagiaire impose
+    // d'ajouter sa colonne à ce SELECT.
+    `SELECT s.id, s.civilite, s.nom, s.prenom
      FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
      WHERE i.statut <> 'abandon'
        AND ($2::int IS NULL AND i.session_id = $1 OR i.groupe_id = $2)
@@ -190,6 +257,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   const dossierId = await dossierCible(d.drive, ctx, jeton);
   const produits = [];
   let remplaces = 0;
+  // Un seul modèle par génération : le cache évite de le relire à chaque copie.
+  const cacheMarqueurs = new Map();
 
   for (const { stagiaire } of aProduire) {
     const valeurs = valeursMarqueurs({ ...ctx, stagiaire, organisme: config.organismeNom });
@@ -198,7 +267,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}`;
 
     const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-    const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs }, jeton);
+    const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs, cacheMarqueurs }, jeton);
 
     // L'ancien fichier part à la corbeille : il a été créé par
     // l'application, drive.file suffit donc pour l'y mettre.
@@ -262,6 +331,12 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       documents: produits.length, remplaces, preuves: preuves.length,
       dossierId,
       marqueursNonRemplaces: produits.filter((p) => !p.copie.marqueursRemplaces).length,
+      // Marqueurs écrits dans le modèle mais absents de la convention :
+      // ils restent tels quels dans les documents produits.
+      marqueursInconnus: [...new Set(produits.flatMap((p) => p.copie.marqueursInconnusTrouves || []))],
+      // false quand aucune copie n'a pu être analysée (Sheet, ou format
+      // non géré) : l'absence d'avertissement ne prouve alors rien.
+      detectionMarqueurs: produits.some((p) => p.copie.detectionMarqueurs),
     };
   } catch (e) {
     await cx.query("ROLLBACK");

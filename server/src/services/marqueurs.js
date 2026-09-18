@@ -5,6 +5,8 @@
 //  lequel on écrit ces marqueurs à la place des valeurs. La génération
 //  les remplace, à l'identique, dans la copie.
 //
+//    {{civilite}}            « M. » ou « Mme » (portée stagiaire seulement,
+//                            vide si la civilité n est pas renseignée)
 //    {{nom_stagiaire}}       NOM du stagiaire (portée stagiaire seulement)
 //    {{prenom_stagiaire}}    Prénom du stagiaire (idem)
 //    {{date_debut}}          Date de début de session, jj/mm/aaaa
@@ -25,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────
 
 export const MARQUEURS = [
+  "civilite",
   "nom_stagiaire",
   "prenom_stagiaire",
   "date_debut",
@@ -61,6 +64,7 @@ export function formaterDuree(heures) {
 export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme } = {}) {
   const duree = session?.duree_heures_reelle ?? version?.duree_heures_defaut ?? null;
   return {
+    civilite: stagiaire?.civilite ?? "",
     nom_stagiaire: stagiaire?.nom ?? "",
     prenom_stagiaire: stagiaire?.prenom ?? "",
     date_debut: formaterDate(session?.date_debut),

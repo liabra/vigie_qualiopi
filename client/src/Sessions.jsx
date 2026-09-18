@@ -5,6 +5,9 @@ const PRESCRIPTEURS = {
   pole_emploi: "Pôle Emploi", mission_locale: "Mission Locale", of: "Organisme de formation", autre: "Autre",
 };
 const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
+// Valeurs admises en base (migration 008). La chaîne vide vaut « non
+// renseignée » : le marqueur {{civilite}} est alors remplacé par du vide.
+const CIVILITES = ["M.", "Mme"];
 
 // Petit formulaire repliable : la Phase 2 en compte beaucoup, autant
 // qu'ils se ressemblent tous.
@@ -119,7 +122,7 @@ function Formations({ formations, onChange, erreur }) {
 function DetailSession({ sessionId, modeles, onChange, erreur }) {
   const [d, setD] = useState(null);
   const [groupe, setGroupe] = useState({ nom: "", lieu: "", formateur: "" });
-  const [stagiaire, setStagiaire] = useState({ nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
+  const [stagiaire, setStagiaire] = useState({ civilite: "", nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
   const [generation, setGeneration] = useState({ modele_id: "", groupe_id: "" });
   const [occupe, setOccupe] = useState(false);
 
@@ -144,12 +147,21 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
     try {
       await api(`/api/sessions/${sessionId}/stagiaires`, {
         method: "POST",
-        body: JSON.stringify({ ...stagiaire, groupe_id: stagiaire.groupe_id || null }),
+        body: JSON.stringify({ ...stagiaire, civilite: stagiaire.civilite || null, groupe_id: stagiaire.groupe_id || null }),
       });
       setStagiaire({ ...stagiaire, nom: "", prenom: "", email: "" });
       charger();
       onChange?.();
     } catch (e) { erreur(e.message); }
+  }
+
+  // Les stagiaires saisis avant l'ajout de la civilité n'en ont pas :
+  // ce réglage en ligne est le seul moyen de la renseigner après coup.
+  async function reglerCivilite(st, civilite) {
+    setD((d) => ({ ...d, stagiaires: d.stagiaires.map((x) => (x.id === st.id ? { ...x, civilite } : x)) }));
+    try {
+      await api(`/api/stagiaires/${st.id}`, { method: "PATCH", body: JSON.stringify({ civilite: civilite || null }) });
+    } catch (e) { erreur(e.message); charger(); }
   }
 
   async function marquerAbandon(inscription) {
@@ -177,9 +189,17 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
         }),
       });
       erreur(null);
+      const inconnus = r.marqueursInconnus || [];
       window.alert(
         `${r.documents} document(s) généré(s)${r.remplaces ? `, dont ${r.remplaces} remplacé(s)` : ""}.\n` +
         `${r.preuves} preuve(s) rattachée(s).` +
+        (inconnus.length
+          ? `\n\nAttention, marqueur(s) non reconnu(s) dans le modèle : ${inconnus.join(", ")}.\n` +
+            "Ils restent tels quels dans les documents produits."
+          : "") +
+        (r.detectionMarqueurs === false
+          ? "\n\nLes marqueurs inconnus ne sont pas détectés sur ce type de fichier."
+          : "") +
         (r.marqueursNonRemplaces ? `\n${r.marqueursNonRemplaces} fichier(s) ni Doc ni Sheet : marqueurs non remplacés.` : "")
       );
       charger();
@@ -241,14 +261,30 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
                   {st.statut === "abandon" && <span className="text-erreur"> · abandon le {st.date_abandon}</span>}
                 </div>
               </div>
-              {st.statut !== "abandon" && (
-                <button className="btn petit danger" onClick={() => marquerAbandon(st)}>Abandon</button>
-              )}
+              <div className="actions-stagiaire">
+                <select
+                  value={st.civilite || ""} aria-label={`Civilité de ${st.prenom} ${st.nom}`}
+                  onChange={(e) => reglerCivilite(st, e.target.value)}
+                >
+                  <option value="">Civilité ?</option>
+                  {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {st.statut !== "abandon" && (
+                  <button className="btn petit danger" onClick={() => marquerAbandon(st)}>Abandon</button>
+                )}
+              </div>
             </li>
           ))}
           {d.stagiaires.length === 0 && <li className="muted">Aucun stagiaire inscrit.</li>}
         </ul>
         <div className="formulaire ligne">
+          <label className="champ">
+            <span className="muted small">Civilité</span>
+            <select value={stagiaire.civilite} onChange={(e) => setStagiaire({ ...stagiaire, civilite: e.target.value })}>
+              <option value="">Non renseignée</option>
+              {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
           <Champ label="Nom" value={stagiaire.nom} onChange={(e) => setStagiaire({ ...stagiaire, nom: e.target.value })} />
           <Champ label="Prénom" value={stagiaire.prenom} onChange={(e) => setStagiaire({ ...stagiaire, prenom: e.target.value })} />
           <Champ label="Courriel" type="email" value={stagiaire.email} onChange={(e) => setStagiaire({ ...stagiaire, email: e.target.value })} />

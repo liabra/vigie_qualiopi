@@ -16,6 +16,8 @@ const manque = (res, champ) => res.status(400).json({ error: `Champ obligatoire 
 const PORTEES = ["formation", "session", "groupe", "stagiaire"];
 const PRESCRIPTEURS = ["pole_emploi", "mission_locale", "of", "autre"];
 const MODALITES = ["presentiel", "distanciel", "mixte"];
+// Valeurs admises par la contrainte de la migration 008.
+const CIVILITES = ["M.", "Mme"];
 const STATUTS_INSCRIPTION = ["inscrit", "en_cours", "termine", "abandon"];
 
 // Champs de contenu d'une version de formation : une modification en crée
@@ -163,7 +165,7 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   );
   const { rows: stagiaires } = await query(
     `SELECT i.id AS inscription_id, i.groupe_id, i.statut, i.date_inscription, i.date_abandon,
-            i.prescripteur, i.dossier_complet, s.id, s.nom, s.prenom, s.email, s.telephone
+            i.prescripteur, i.dossier_complet, s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone
      FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
      WHERE i.session_id = $1 ORDER BY s.nom, s.prenom`,
     [id]
@@ -200,9 +202,10 @@ router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
 // dossier et l'abandon éventuel.
 router.post("/sessions/:id/stagiaires", requireAdmin, wrap(async (req, res) => {
   const sessionId = Number(req.params.id);
-  const { nom, prenom, email, telephone, groupe_id, prescripteur, dossier_complet, date_inscription, stagiaire_id } = req.body || {};
+  const { civilite, nom, prenom, email, telephone, groupe_id, prescripteur, dossier_complet, date_inscription, stagiaire_id } = req.body || {};
   if (!stagiaire_id && (!nom?.trim() || !prenom?.trim())) return manque(res, "nom et prenom");
   if (prescripteur && !PRESCRIPTEURS.includes(prescripteur)) return res.status(400).json({ error: "Prescripteur inconnu." });
+  if (civilite && !CIVILITES.includes(civilite)) return res.status(400).json({ error: "Civilité inconnue." });
 
   const cx = await getPool().connect();
   try {
@@ -216,8 +219,8 @@ router.post("/sessions/:id/stagiaires", requireAdmin, wrap(async (req, res) => {
     let personneId = stagiaire_id || null;
     if (!personneId) {
       const { rows: [p] } = await cx.query(
-        "INSERT INTO stagiaires (nom, prenom, email, telephone) VALUES ($1,$2,$3,$4) RETURNING id",
-        [nom.trim(), prenom.trim(), email?.trim() || null, telephone?.trim() || null]
+        "INSERT INTO stagiaires (civilite, nom, prenom, email, telephone) VALUES ($1,$2,$3,$4,$5) RETURNING id",
+        [civilite || null, nom.trim(), prenom.trim(), email?.trim() || null, telephone?.trim() || null]
       );
       personneId = p.id;
     }
@@ -261,6 +264,31 @@ router.patch("/inscriptions/:id", requireAdmin, wrap(async (req, res) => {
   const { rows } = await query(`UPDATE inscriptions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
   if (!rows.length) return res.status(404).json({ error: "Inscription introuvable." });
   res.json({ inscription: rows[0] });
+}));
+
+// Modifier une personne déjà saisie. Indispensable pour la civilité :
+// les stagiaires enregistrés avant la migration 008 n'en ont aucune, et
+// rien d'autre ne permettait jusqu'ici de corriger une fiche.
+router.patch("/stagiaires/:id", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { civilite, nom, prenom, email, telephone } = req.body || {};
+  if (civilite !== undefined && civilite !== null && !CIVILITES.includes(civilite)) {
+    return res.status(400).json({ error: "Civilité inconnue." });
+  }
+  const sets = [];
+  const params = [id];
+  const set = (col, val) => { params.push(val); sets.push(col + ' = $' + params.length); };
+  // Une chaîne vide vaut effacement : le formulaire envoie "" pour
+  // « Non renseignée ».
+  if (civilite !== undefined) set("civilite", civilite || null);
+  if (nom !== undefined && nom.trim()) set("nom", nom.trim());
+  if (prenom !== undefined && prenom.trim()) set("prenom", prenom.trim());
+  if (email !== undefined) set("email", email?.trim() || null);
+  if (telephone !== undefined) set("telephone", telephone?.trim() || null);
+  if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
+  const { rows } = await query("UPDATE stagiaires SET " + sets.join(", ") + " WHERE id = $1 RETURNING *", params);
+  if (!rows.length) return res.status(404).json({ error: "Stagiaire introuvable." });
+  res.json({ stagiaire: rows[0] });
 }));
 
 // ── Modèles de documents ─────────────────────────────────────

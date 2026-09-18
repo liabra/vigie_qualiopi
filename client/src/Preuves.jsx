@@ -174,6 +174,68 @@ function Fichiers({ p, actions, admin, sessions }) {
 // proposés, formulaire de recherche Drive…).
 const CIBLE_INTERACTIVE = "a, button, input, select, label";
 
+const TYPES_ALERTE = {
+  revision_periodique: "Révision périodique",
+  echeance_fixe: "Échéance fixe",
+};
+const ALERTE_LIBELLE = { perime: "Périmé", bientot: "Bientôt à revoir" };
+
+// Réglage de l'échéance d'un document permanent (CGV, habilitation,
+// contrat…) : révision périodique ou date fixe. La rupture réglementaire
+// (liée à la veille) n'a pas encore d'écran, donc pas de contrôle ici.
+function Echeance({ p, actions, admin }) {
+  if (!admin && !p.type_alerte) return null;
+  return (
+    <div className="fichiers-preuve">
+      {p.alerte_statut && p.alerte_statut !== "ok" && (
+        <span className={"pill " + (p.alerte_statut === "perime" ? "off" : "warn")}>
+          {ALERTE_LIBELLE[p.alerte_statut]}
+        </span>
+      )}
+      {admin && (
+        <div className="reglages-fichiers">
+          <label>
+            <span className="muted small">Échéance</span>
+            <select
+              value={p.type_alerte || ""} aria-label="Type d'échéance"
+              onChange={(e) => actions.reglage(p, { type_alerte: e.target.value || null })}
+            >
+              <option value="">Aucune</option>
+              {Object.entries(TYPES_ALERTE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          {p.type_alerte === "revision_periodique" && (
+            <>
+              <label>
+                <span className="muted small">Tous les combien de mois</span>
+                <input
+                  type="number" min="1" value={p.periodicite_mois || ""} aria-label="Périodicité en mois"
+                  onChange={(e) => actions.reglage(p, { periodicite_mois: e.target.value ? Number(e.target.value) : null })}
+                />
+              </label>
+              <span className="muted small">
+                Dernière révision : {p.date_derniere_revision ? new Date(p.date_derniere_revision).toLocaleDateString("fr-FR") : "jamais notée"}
+              </span>
+              <button className="btn petit" onClick={() => actions.reglage(p, { marquer_revise: true })}>
+                Marquer révisé aujourd'hui
+              </button>
+            </>
+          )}
+          {p.type_alerte === "echeance_fixe" && (
+            <label>
+              <span className="muted small">Date d'échéance</span>
+              <input
+                type="date" value={p.date_echeance || ""} aria-label="Date d'échéance"
+                onChange={(e) => actions.reglage(p, { date_echeance: e.target.value || null })}
+              />
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSelection }) {
   function clicLigne(e) {
     if (!admin || e.target.closest(CIBLE_INTERACTIVE)) return;
@@ -214,6 +276,7 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
           pas seulement un clic sur un contrôle précis. */}
       <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
         <Fichiers p={p} actions={actions} admin={admin} sessions={sessions} />
+        <Echeance p={p} actions={actions} admin={admin} />
         {admin && p.a_confirmer && (
           <>
             {p.mode_fichiers === "unique" && (
@@ -232,7 +295,7 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
 
 export default function Preuves({ admin, onChange }) {
   const [data, setData] = useState(null);
-  const [filtre, setFiltre] = useState({ a_confirmer: false, statut: "", q: "" });
+  const [filtre, setFiltre] = useState({ a_confirmer: false, statut: "", q: "", alerte: "" });
   const [err, setErr] = useState(null);
   const [dernier, setDernier] = useState(null);
   const [occupe, setOccupe] = useState(null);
@@ -249,6 +312,7 @@ export default function Preuves({ admin, onChange }) {
     const p = new URLSearchParams();
     if (filtre.a_confirmer) p.set("a_confirmer", "1");
     if (filtre.statut) p.set("statut", filtre.statut);
+    if (filtre.alerte) p.set("alerte", filtre.alerte);
     if (filtre.q.trim()) p.set("q", filtre.q.trim());
     try {
       setData(await api("/api/preuves?" + p));
@@ -295,7 +359,8 @@ export default function Preuves({ admin, onChange }) {
   // serveur : on recopie sa réponse, on ne la recalcule jamais ici.
   const compteurs = (r) =>
     Object.fromEntries(
-      ["statut", "statut_effectif", "mode_fichiers", "nb_fichiers", "fichiers_attendus", "incomplet"]
+      ["statut", "statut_effectif", "mode_fichiers", "nb_fichiers", "fichiers_attendus", "incomplet",
+        "type_alerte", "periodicite_mois", "date_echeance", "date_derniere_revision", "alerte_statut"]
         .filter((k) => r[k] !== undefined)
         .map((k) => [k, r[k]])
     );
@@ -409,6 +474,7 @@ export default function Preuves({ admin, onChange }) {
   }
 
   const aConfirmer = data?.preuves.filter((p) => p.a_confirmer).length || 0;
+  const perimees = data?.preuves.filter((p) => p.alerte_statut === "perime").length || 0;
 
   return (
     <section className="preuves">
@@ -418,6 +484,7 @@ export default function Preuves({ admin, onChange }) {
           <p className="muted">
             {data ? `${data.total} preuve(s)` : "Chargement…"}
             {aConfirmer > 0 && <span className="text-erreur"> · {aConfirmer} à confirmer</span>}
+            {perimees > 0 && <span className="text-erreur"> · {perimees} périmée(s)</span>}
           </p>
         </div>
         {admin && (
@@ -459,6 +526,11 @@ export default function Preuves({ admin, onChange }) {
         <select value={filtre.statut} onChange={(e) => setFiltre({ ...filtre, statut: e.target.value })} aria-label="Filtrer par statut">
           <option value="">Tous les statuts</option>
           {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={filtre.alerte} onChange={(e) => setFiltre({ ...filtre, alerte: e.target.value })} aria-label="Filtrer par échéance">
+          <option value="">Toutes les échéances</option>
+          <option value="perime">Périmées</option>
+          <option value="bientot">Bientôt à revoir</option>
         </select>
         <input className="search" type="search" placeholder="Rechercher un document"
           value={filtre.q} onChange={(e) => setFiltre({ ...filtre, q: e.target.value })} />

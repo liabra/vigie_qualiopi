@@ -118,12 +118,16 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
   if (req.query.statut && STATUTS.includes(req.query.statut)) { params.push(req.query.statut); filtres.push(`p.statut = $${params.length}`); }
   if (req.query.indicateur) { params.push(Number(req.query.indicateur)); filtres.push(`i.numero = $${params.length}`); }
   if (req.query.a_confirmer === "1") filtres.push("p.a_confirmer");
+  if (req.query.alerte && ["perime", "bientot"].includes(req.query.alerte)) {
+    params.push(req.query.alerte); filtres.push(`p.alerte_statut = $${params.length}`);
+  }
   if (req.query.q) { params.push(`%${req.query.q}%`); filtres.push(`p.titre ILIKE $${params.length}`); }
   const { rows } = await query(
     `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.a_confirmer, p.motif_confirmation, p.candidats,
             p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
             p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
             p.nb_fichiers, p.fichiers_attendus, p.incomplet,
+            p.type_alerte, p.periodicite_mois, p.date_echeance, p.date_derniere_revision, p.alerte_statut,
             i.numero AS indicateur, c.numero AS critere,
             s.reference AS session_reference, g.nom AS groupe_nom,
             COALESCE(
@@ -155,6 +159,7 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
             p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
             p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
             p.nb_fichiers, p.fichiers_attendus, p.incomplet,
+            p.type_alerte, p.periodicite_mois, p.date_echeance, p.date_derniere_revision, p.alerte_statut,
             i.numero AS indicateur, c.numero AS critere,
             s.reference AS session_reference, g.nom AS groupe_nom,
             COALESCE(
@@ -200,7 +205,9 @@ router.get("/sessions", requireAuth, wrap(async (_req, res) => {
 
 const MODES = ["unique", "multiple", "par_stagiaire"];
 const lienDrive = (fileId) => `https://drive.google.com/file/d/${fileId}/view`;
-const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, fichiers_attendus, incomplet
+const TYPES_ALERTE = ["revision_periodique", "echeance_fixe", "rupture_reglementaire"];
+const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, fichiers_attendus, incomplet,
+                           type_alerte, periodicite_mois, date_echeance, date_derniere_revision, alerte_statut
                     FROM preuves_enrichies WHERE id = $1`;
 
 // Correction du rattachement, en un appel : l'admin choisit un candidat
@@ -211,10 +218,14 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const {
     statut, drive_file_id, drive_url, drive_nom, drive_mime, confirmer,
     mode_fichiers, session_id, groupe_id,
+    type_alerte, periodicite_mois, date_echeance, date_derniere_revision, marquer_revise,
   } = req.body || {};
   if (statut !== undefined && !STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
   if (mode_fichiers !== undefined && !MODES.includes(mode_fichiers)) {
     return res.status(400).json({ error: "Mode de fichiers inconnu." });
+  }
+  if (type_alerte !== undefined && type_alerte !== null && !TYPES_ALERTE.includes(type_alerte)) {
+    return res.status(400).json({ error: "Type d'échéance inconnu." });
   }
 
   const sets = [];
@@ -232,6 +243,19 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   if (mode_fichiers !== undefined) set("mode_fichiers", mode_fichiers);
   if (session_id !== undefined) set("session_id", session_id || null);
   if (groupe_id !== undefined) set("groupe_id", groupe_id || null);
+  // Changer de type d'échéance efface les champs de l'ancien type : une
+  // preuve remise à « aucune » ne doit garder ni date ni périodicité. Sauf
+  // si cette même requête fixe justement cette valeur — jamais deux SET
+  // sur la même colonne, Postgres les refuse.
+  if (type_alerte !== undefined) {
+    set("type_alerte", type_alerte);
+    if (type_alerte !== "revision_periodique" && periodicite_mois === undefined) set("periodicite_mois", null);
+    if (type_alerte !== "echeance_fixe" && date_echeance === undefined) set("date_echeance", null);
+  }
+  if (periodicite_mois !== undefined) set("periodicite_mois", periodicite_mois || null);
+  if (date_echeance !== undefined) set("date_echeance", date_echeance || null);
+  if (date_derniere_revision !== undefined) set("date_derniere_revision", date_derniere_revision || null);
+  else if (marquer_revise) set("date_derniere_revision", new Date().toISOString().slice(0, 10));
   if (confirmer) {
     sets.push("a_confirmer = false", "motif_confirmation = NULL", "validee_le = now()");
     params.push(req.user.id); sets.push(`validee_par = $${params.length}`);

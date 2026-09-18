@@ -23,6 +23,10 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
   // Marquage en cours, pour désactiver le bouton le temps de la réponse
   // et ne jamais envoyer deux fois la même bascule.
   const [enCours, setEnCours] = useState(null);
+  // Écran séparé listant les indicateurs marqués non applicables : ils
+  // n'apparaissent plus dans le référentiel courant, seul cet écran
+  // permet de les retrouver pour les réactiver.
+  const [vue, setVue] = useState("referentiel");
 
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
@@ -50,11 +54,19 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
     }
   }
 
-  const criteres = useMemo(() => {
+  // Indicateurs réellement utilisés par la structure. Un critère dont
+  // tous les indicateurs sont marqués non applicables disparaît aussi.
+  const criteresApplicables = useMemo(() => {
     if (!data) return [];
-    const needle = q.trim().toLowerCase();
-    if (!needle) return data.criteres;
     return data.criteres
+      .map((c) => ({ ...c, indicateurs: c.indicateurs.filter((i) => !i.non_applicable_force) }))
+      .filter((c) => c.indicateurs.length > 0);
+  }, [data]);
+
+  const criteres = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return criteresApplicables;
+    return criteresApplicables
       .map((c) => ({
         ...c,
         indicateurs: c.indicateurs.filter(
@@ -62,7 +74,15 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
         ),
       }))
       .filter((c) => c.indicateurs.length);
-  }, [data, q]);
+  }, [criteresApplicables, q]);
+
+  // Tous critères confondus, pour l'écran dédié aux non applicables.
+  const nonApplicables = useMemo(() => {
+    if (!data) return [];
+    return data.criteres.flatMap((c) =>
+      c.indicateurs.filter((i) => i.non_applicable_force).map((i) => ({ ...i, critereNumero: c.numero }))
+    );
+  }, [data]);
 
   // Une erreur avant tout chargement efface l'écran ; une fois le tableau
   // de bord affiché, une erreur d'action (ex. bascule non applicable) ne
@@ -71,8 +91,48 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
   if (!data) return <p className="muted">Chargement du référentiel…</p>;
 
   const toggle = (n) => setOpen((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
-  const nonVerifies = data.criteres.flatMap((c) => c.indicateurs).filter((i) => !i.texte_source_verifie).length;
+  const nonVerifies = criteresApplicables.flatMap((c) => c.indicateurs).filter((i) => !i.texte_source_verifie).length;
   const filtering = q.trim() !== "";
+
+  if (vue === "non_applicables") {
+    return (
+      <section>
+        <div className="ref-head">
+          <div>
+            <h1>Indicateurs non applicables</h1>
+            <p className="muted">{nonApplicables.length} indicateur(s) écarté(s) du référentiel courant</p>
+          </div>
+          <button className="btn petit" onClick={() => setVue("referentiel")}>← Retour au référentiel</button>
+        </div>
+        {err && <p className="flash erreur">{err}</p>}
+        {nonApplicables.length === 0
+          ? <p className="muted">Aucun indicateur marqué non applicable.</p>
+          : (
+            <ol className="indicateurs">
+              {nonApplicables.map((i) => (
+                <li key={i.id}>
+                  <span className="ind-num statut-non_applicable" title="Non applicable">{i.numero}</span>
+                  <div>
+                    <p>{i.libelle}</p>
+                    <div className="tags">
+                      <span className="pill">Critère {i.critereNumero}</span>
+                      {i.non_applicable_motif && <span className="pill">{i.non_applicable_motif}</span>}
+                    </div>
+                  </div>
+                  {admin && (
+                    <button
+                      className="btn petit" onClick={() => basculerNonApplicable(i)} disabled={enCours === i.id}
+                    >
+                      {enCours === i.id ? "…" : "Réactiver"}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -92,10 +152,10 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
       </div>
       <div className="score">
         <div className="score-chiffre">
-          <strong>{data.score.maitrise}</strong> indicateur(s) au vert sur {data.score.total}
+          <strong>{data.score.maitrise}</strong> indicateur(s) au vert sur {data.score.total - data.score.non_applicable}
         </div>
         <div className="jauge" role="img" aria-label={resumeScore(data.score)}>
-          {["maitrise", "a_consolider", "a_risque", "non_applicable"].map((s) =>
+          {["maitrise", "a_consolider", "a_risque"].map((s) =>
             data.score[s] > 0 ? (
               <span key={s} className={"part statut-" + s} style={{ flexGrow: data.score[s] }}>
                 {data.score[s]}
@@ -107,6 +167,11 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
           {data.score.preuves} preuve(s) rattachée(s)
           {data.score.a_confirmer > 0 && (
             <span className="text-erreur"> · {data.score.a_confirmer} à confirmer</span>
+          )}
+          {data.score.non_applicable > 0 && (
+            <> · <button className="btn petit" onClick={() => setVue("non_applicables")}>
+              {data.score.non_applicable} non applicable(s)
+            </button></>
           )}
         </div>
       </div>
@@ -146,16 +211,15 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
                           : i.categories.map((c) => <span key={c} className="pill" title={TITRES[c]}>{c}</span>)}
                         {i.gradation === "majeure_uniquement" && <span className="pill off">NC majeure uniquement</span>}
                         {!i.texte_source_verifie && <span className="pill warn">Provisoire</span>}
-                        {i.non_applicable_force && <span className="pill">Marqué non applicable</span>}
                       </div>
                     </div>
                     {admin && (
                       <button
-                        className={"btn petit" + (i.non_applicable_force ? "" : " non-applicable")}
+                        className="btn petit non-applicable"
                         onClick={() => basculerNonApplicable(i)}
                         disabled={enCours === i.id}
                       >
-                        {enCours === i.id ? "…" : i.non_applicable_force ? "Réactiver" : "Marquer non applicable"}
+                        {enCours === i.id ? "…" : "Marquer non applicable"}
                       </button>
                     )}
                   </li>

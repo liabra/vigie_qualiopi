@@ -308,6 +308,27 @@ le scope `drive` complet, qui donnerait accès en écriture à tout le Drive.
 > toute tentative de génération répond « Reconnectez-le pour autoriser la
 > création de documents ».
 
+## Historique des audits
+
+L'onglet **Audits** tient la mémoire de ce qui a été contrôlé : type
+d'audit, date, organisme certificateur, auditeur, référentiel visé,
+verdict, nombre de non-conformités majeures et mineures, liste des
+non-conformités relevées, et rapport rattaché depuis le Drive.
+
+La lecture est ouverte à tout compte connecté ; seul un admin enregistre
+ou corrige un audit. Les non-conformités se saisissent **une par ligne**,
+comme les compétences autrefois : le serveur découpe, retire les espaces
+et ignore les lignes vides.
+
+Les valeurs de `type` et `resultat` sont validées côté serveur avant
+d'atteindre la base, dans `services/audits.js`, pour répondre 400 avec un
+message lisible plutôt que de laisser une contrainte `CHECK` échouer en
+500. Le `PATCH` est partiel : seules les clés envoyées sont modifiées.
+
+Le rattachement du rapport réutilise la recherche Drive de l'écran
+Preuves, désormais dans `client/src/RechercheDrive.jsx` : une seule
+implémentation pour les deux écrans.
+
 ## Tableau de bord
 
 Chaque indicateur porte un statut agrégé à partir de ses preuves :

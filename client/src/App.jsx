@@ -7,6 +7,7 @@ import Referentiel from "./Referentiel.jsx";
 import Preuves from "./Preuves.jsx";
 import Sessions from "./Sessions.jsx";
 import Modeles from "./Modeles.jsx";
+import AuditsHistory from "./AuditsHistory.jsx";
 
 // Lit puis retire ?erreur= / ?drive= de l'URL, pour qu'un rechargement ne réaffiche rien.
 function consumeFlash() {
@@ -61,6 +62,9 @@ export default function App() {
           <button className={onglet === "preuves" ? "actif" : ""} onClick={() => setOnglet("preuves")}>
             Preuves
           </button>
+          <button className={onglet === "audits" ? "actif" : ""} onClick={() => setOnglet("audits")}>
+            Audits
+          </button>
           {isAdmin && (
             <button className={onglet === "sessions" ? "actif" : ""} onClick={() => setOnglet("sessions")}>
               Sessions
@@ -78,6 +82,7 @@ export default function App() {
         {onglet === "referentiel" && <Referentiel admin={isAdmin} rafraichir={version} />}
         {onglet === "preuves" && <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
         {onglet === "sessions" && <Sessions admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
+        {onglet === "audits" && <AuditsHistory admin={isAdmin} />}
         {onglet === "modeles" && <Modeles admin={isAdmin} />}
       </main>
     </>

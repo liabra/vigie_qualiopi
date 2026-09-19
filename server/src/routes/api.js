@@ -4,6 +4,7 @@ import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth } from "../session.js";
 import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
+import { champsAudit } from "../services/audits.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -394,6 +395,57 @@ router.get("/drive/status", requireAdmin, wrap(async (_req, res) => res.json(awa
 router.post("/drive/disconnect", requireAdmin, wrap(async (_req, res) => {
   await disconnectDrive();
   res.json({ ok: true });
+}));
+
+// ── Historique des audits ────────────────────────────────────
+// Mémoire institutionnelle : ce qui a été audité, quand, par qui, et
+// avec quelles non-conformités. La table existait depuis la Phase 0
+// sans qu'aucun écran ne s'en serve.
+
+router.get("/audits", requireAuth, wrap(async (_req, res) => {
+  const { rows } = await query(
+    `SELECT a.*, v.code AS referentiel_code, v.libelle AS referentiel_libelle
+     FROM audits_history a
+     LEFT JOIN referentiel_versions v ON v.id = a.referentiel_version_id
+     ORDER BY a.date_audit DESC, a.id DESC`
+  );
+  res.json({ audits: rows, total: rows.length });
+}));
+
+router.post("/audits", requireAdmin, wrap(async (req, res) => {
+  const corps = req.body || {};
+  if (!corps.type) return res.status(400).json({ error: "Le type d'audit est obligatoire." });
+  if (!corps.date_audit) return res.status(400).json({ error: "La date d'audit est obligatoire." });
+  const { champs, erreur } = champsAudit(corps);
+  if (erreur) return res.status(400).json({ error: erreur });
+
+  const colonnes = Object.keys(champs);
+  const valeurs = colonnes.map((c) => (c === "non_conformites" ? JSON.stringify(champs[c]) : champs[c]));
+  const { rows } = await query(
+    `INSERT INTO audits_history (${colonnes.join(", ")})
+     VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
+    valeurs
+  );
+  res.status(201).json({ audit: rows[0] });
+}));
+
+router.patch("/audits/:id", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { champs, erreur } = champsAudit(req.body || {});
+  if (erreur) return res.status(400).json({ error: erreur });
+  const colonnes = Object.keys(champs);
+  if (!colonnes.length) return res.status(400).json({ error: "Rien à modifier." });
+
+  const params = [id];
+  const sets = colonnes.map((c) => {
+    params.push(c === "non_conformites" ? JSON.stringify(champs[c]) : champs[c]);
+    return `${c} = $${params.length}`;
+  });
+  const { rows } = await query(
+    `UPDATE audits_history SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params
+  );
+  if (!rows.length) return res.status(404).json({ error: "Audit introuvable." });
+  res.json({ audit: rows[0] });
 }));
 
 router.use((_req, res) => res.status(404).json({ error: "Route inconnue." }));

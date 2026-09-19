@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
+import { RechercheDrive } from "./RechercheDrive.jsx";
 
 const STATUTS = {
   maitrise: "Maîtrisé",
@@ -13,64 +14,6 @@ const MODES = {
   multiple: "Plusieurs fichiers",
   par_stagiaire: "Un par stagiaire",
 };
-
-// Recherche Drive réutilisée pour deux gestes : remplacer le fichier d'une
-// preuve à confirmer, ou ajouter une pièce à une preuve qui en accepte
-// plusieurs. `surChoix` décide lequel.
-function Rattachement({ preuve, onChange, surChoix, avecCandidats = true, placeholder }) {
-  const [q, setQ] = useState("");
-  const [trouves, setTrouves] = useState(null);
-  const [cherche, setCherche] = useState(false);
-
-  async function rechercher(e) {
-    e.preventDefault();
-    if (q.trim().length < 3) return;
-    setCherche(true);
-    try {
-      const r = await api("/api/drive/recherche?q=" + encodeURIComponent(q.trim()));
-      setTrouves(r.fichiers);
-    } catch (err) {
-      setTrouves([]);
-      onChange.erreur(err.message);
-    } finally {
-      setCherche(false);
-    }
-  }
-
-  const candidats = avecCandidats ? preuve.candidats || [] : [];
-  const dejaRattache = new Set((preuve.fichiers || []).map((f) => f.drive_file_id));
-
-  return (
-    <div className="rattachement">
-      {candidats.length > 0 && (
-        <div className="candidats">
-          <span className="muted small">Proposés :</span>
-          {candidats.map((c) => (
-            <button key={c.id} className="btn petit" onClick={() => surChoix(c)} title={c.chemin}>
-              {c.nom.slice(0, 48)} <span className="muted">· {c.score}%</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <form className="recherche-drive" onSubmit={rechercher}>
-        <input
-          type="search" value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder={placeholder || "Chercher un autre fichier sur le Drive"} aria-label="Chercher sur le Drive"
-        />
-        <button className="btn petit" disabled={cherche || q.trim().length < 3}>{cherche ? "…" : "Chercher"}</button>
-      </form>
-      {trouves && (
-        trouves.length
-          ? <div className="candidats">{trouves.map((f) => (
-              <button key={f.id} className="btn petit" onClick={() => surChoix(f)} disabled={dejaRattache.has(f.id)}>
-                {f.nom.slice(0, 48)}{dejaRattache.has(f.id) ? " · déjà rattaché" : ""}
-              </button>
-            ))}</div>
-          : <p className="muted small">Aucun fichier trouvé.</p>
-      )}
-    </div>
-  );
-}
 
 // Fichiers rattachés, écart au nombre attendu, et réglages du mode.
 function Fichiers({ p, actions, admin, sessions }) {
@@ -159,10 +102,11 @@ function Fichiers({ p, actions, admin, sessions }) {
       )}
 
       {admin && multi && (
-        <Rattachement
-          preuve={p} onChange={actions} avecCandidats={false}
+        <RechercheDrive
+          dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
           placeholder="Ajouter un fichier du Drive"
           surChoix={(f) => actions.ajouterFichier(p, f)}
+          onErreur={actions.erreur}
         />
       )}
     </div>
@@ -296,7 +240,12 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
         {admin && p.a_confirmer && (
           <>
             {p.mode_fichiers === "unique" && (
-              <Rattachement preuve={p} onChange={actions} surChoix={(f) => actions.lier(p, f)} />
+              <RechercheDrive
+                candidats={p.candidats || []}
+                dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
+                surChoix={(f) => actions.lier(p, f)}
+                onErreur={actions.erreur}
+              />
             )}
             <div className="preuve-actions">
               <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>

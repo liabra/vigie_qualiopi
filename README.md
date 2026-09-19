@@ -253,6 +253,7 @@ d'origine n'est jamais modifié.
 | `{{prenom_stagiaire}}` | prénom du stagiaire, idem |
 | `{{date_debut}}` | début de session, jj/mm/aaaa |
 | `{{date_fin}}` | fin de session, jj/mm/aaaa |
+| `{{date_attestation}}` | date portée sur l'attestation, identique à `{{date_fin}}` |
 | `{{duree}}` | durée réelle de la session, à défaut celle de la version |
 | `{{intitule_formation}}` | intitulé de la formation |
 | `{{lieu}}` | lieu du groupe, à défaut celui de la session |

@@ -10,8 +10,8 @@ import {
 
 test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
-    "civilite", "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "duree",
-    "intitule_formation", "lieu", "formateur", "nom_organisme",
+    "civilite", "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "date_attestation",
+    "duree", "intitule_formation", "lieu", "formateur", "nom_organisme",
   ]);
 });
 
@@ -19,6 +19,16 @@ test("les dates passent en jj/mm/aaaa", () => {
   assert.equal(formaterDate("2026-01-05"), "05/01/2026");
   assert.equal(formaterDate(new Date("2026-03-05T00:00:00Z")), "05/03/2026");
   assert.equal(formaterDate(null), "");
+});
+
+test("la date d'attestation reprend la date de fin de session", () => {
+  const v = valeursMarqueurs(contexte);
+  assert.equal(v.date_attestation, "05/03/2026");
+  assert.equal(v.date_attestation, v.date_fin, "même donnée, même formatage");
+  // sans session renseignée, les deux restent vides plutôt que « Invalid Date »
+  const sansSession = valeursMarqueurs({ organisme: "A2C" });
+  assert.equal(sansSession.date_attestation, "");
+  assert.equal(sansSession.date_attestation, sansSession.date_fin);
 });
 
 test("les durées s'écrivent en heures, sans décimale inutile", () => {

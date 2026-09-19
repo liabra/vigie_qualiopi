@@ -264,13 +264,18 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
                 </div>
               </div>
               <div className="actions-stagiaire">
-                <select
-                  value={st.civilite || ""} aria-label={`Civilité de ${st.prenom} ${st.nom}`}
-                  onChange={(e) => reglerCivilite(st, e.target.value)}
-                >
-                  <option value="">Civilité ?</option>
-                  {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                {/* Corriger une fiche passe par PATCH /stagiaires/:id, qui
+                    est réservé à l'admin : inutile de proposer un réglage
+                    qui répondrait 403. */}
+                {admin && (
+                  <select
+                    value={st.civilite || ""} aria-label={`Civilité de ${st.prenom} ${st.nom}`}
+                    onChange={(e) => reglerCivilite(st, e.target.value)}
+                  >
+                    <option value="">Civilité ?</option>
+                    {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                )}
                 {peutSaisir && st.statut !== "abandon" && (
                   <button className="btn petit danger" onClick={() => marquerAbandon(st)}>Abandon</button>
                 )}

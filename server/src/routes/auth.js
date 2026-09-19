@@ -27,10 +27,15 @@ async function resolveUser(identity) {
   const { rows } = await query("SELECT * FROM utilisateurs WHERE lower(email) = $1", [identity.email]);
   let user = rows[0];
   if (!user) {
-    if (!config.adminEmails.includes(identity.email)) return { error: "non_autorise" };
+    // ADMIN_EMAILS l'emporte : une adresse listée dans les deux crée un
+    // compte admin, jamais un compte au rabais.
+    const role = config.adminEmails.includes(identity.email) ? "admin"
+      : config.contributeurEmails.includes(identity.email) ? "contributeur"
+      : null;
+    if (!role) return { error: "non_autorise" };
     ({ rows: [user] } = await query(
-      "INSERT INTO utilisateurs (email, nom, role) VALUES ($1, $2, 'admin') RETURNING *",
-      [identity.email, identity.name]
+      "INSERT INTO utilisateurs (email, nom, role) VALUES ($1, $2, $3) RETURNING *",
+      [identity.email, identity.name, role]
     ));
   }
   if (!user.actif) return { error: "compte_desactive" };

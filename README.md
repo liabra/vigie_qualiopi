@@ -308,6 +308,25 @@ le scope `drive` complet, qui donnerait accès en écriture à tout le Drive.
 > toute tentative de génération répond « Reconnectez-le pour autoriser la
 > création de documents ».
 
+## Rôles : admin et contributeur
+
+| Qui | Ce qu'il peut faire |
+| --- | --- |
+| **Admin** | tout : référentiel, preuves, formations, sessions, groupes, modèles, audits, connexion Drive |
+| **Contributeur** | consulter tous les écrans, **plus** ajouter un stagiaire, gérer son inscription et son abandon, et générer des documents pour une session |
+
+Un contributeur ne configure rien : ni formation, ni session, ni groupe,
+ni modèle, ni référentiel, ni preuve, ni audit. Ces refus tiennent côté
+**serveur** (`requireAdmin`), pas seulement par des boutons masqués : un
+appel direct à ces routes en compte contributeur répond 403. Seules trois
+routes passent sous `requireRedacteur` : l'ajout d'un stagiaire, la
+modification d'une inscription, et la génération de documents.
+
+Le rôle est attribué à la première connexion : `ADMIN_EMAILS` d'abord,
+puis `CONTRIBUTEUR_EMAILS`, sinon l'accès est refusé. Une adresse
+présente dans les deux listes devient admin. Ensuite, c'est la table
+`utilisateurs` qui fait foi.
+
 ## Historique des audits
 
 L'onglet **Audits** tient la mémoire de ce qui a été contrôlé : type

@@ -89,3 +89,15 @@ export function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Réservé aux administrateurs." });
   next();
 }
+
+// Saisie courante : ajouter un stagiaire, gérer son abandon, générer des
+// documents. Ouvert aux contributeurs EN PLUS des admins. Tout le reste
+// — formations, sessions, groupes, modèles, référentiel, preuves, audits,
+// connexion Drive — reste sous requireAdmin.
+export function requireRedacteur(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: "Connexion requise." });
+  if (!["admin", "contributeur"].includes(req.user.role)) {
+    return res.status(403).json({ error: "Réservé aux administrateurs et aux contributeurs." });
+  }
+  next();
+}

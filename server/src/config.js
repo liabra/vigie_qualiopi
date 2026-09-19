@@ -16,6 +16,9 @@ export const config = {
     redirectUri: env.GOOGLE_REDIRECT_URI || "",
   },
   adminEmails: list(env.ADMIN_EMAILS),
+  // Comptes autorisés à SAISIR sans être administrateurs : ils ajoutent
+  // des stagiaires et génèrent des documents, rien d'autre.
+  contributeurEmails: list(env.CONTRIBUTEUR_EMAILS),
   driveAccountEmail: (env.DRIVE_ACCOUNT_EMAIL || "actions.a2c@gmail.com").trim().toLowerCase(),
   // Nom de l'organisme, injecté dans les documents via {{nom_organisme}}.
   organismeNom: (env.ORGANISME_NOM || "A2C").trim(),

@@ -119,7 +119,7 @@ function Formations({ formations, onChange, erreur }) {
 }
 
 // ── Détail d'une session ─────────────────────────────────────
-function DetailSession({ sessionId, modeles, onChange, erreur }) {
+function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir }) {
   const [d, setD] = useState(null);
   const [groupe, setGroupe] = useState({ nom: "", lieu: "", formateur: "" });
   const [stagiaire, setStagiaire] = useState({ civilite: "", nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
@@ -240,12 +240,14 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
           ))}
           {d.groupes.length === 0 && <li className="muted">Aucun groupe. Une session sur un seul lieu n'en a qu'un.</li>}
         </ul>
-        <div className="formulaire ligne">
-          <Champ label="Nom du groupe" value={groupe.nom} onChange={(e) => setGroupe({ ...groupe, nom: e.target.value })} />
-          <Champ label="Lieu" value={groupe.lieu} onChange={(e) => setGroupe({ ...groupe, lieu: e.target.value })} />
-          <Champ label="Formateur" value={groupe.formateur} onChange={(e) => setGroupe({ ...groupe, formateur: e.target.value })} />
-          <button className="btn" onClick={ajouterGroupe}>Ajouter le groupe</button>
-        </div>
+        {admin && (
+          <div className="formulaire ligne">
+            <Champ label="Nom du groupe" value={groupe.nom} onChange={(e) => setGroupe({ ...groupe, nom: e.target.value })} />
+            <Champ label="Lieu" value={groupe.lieu} onChange={(e) => setGroupe({ ...groupe, lieu: e.target.value })} />
+            <Champ label="Formateur" value={groupe.formateur} onChange={(e) => setGroupe({ ...groupe, formateur: e.target.value })} />
+            <button className="btn" onClick={ajouterGroupe}>Ajouter le groupe</button>
+          </div>
+        )}
       </Bloc>
 
       <Bloc titre={`Stagiaires (${d.stagiaires.filter((x) => x.statut !== "abandon").length} actifs sur ${d.stagiaires.length})`} ouvertParDefaut>
@@ -269,7 +271,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
                   <option value="">Civilité ?</option>
                   {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
-                {st.statut !== "abandon" && (
+                {peutSaisir && st.statut !== "abandon" && (
                   <button className="btn petit danger" onClick={() => marquerAbandon(st)}>Abandon</button>
                 )}
               </div>
@@ -277,6 +279,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
           ))}
           {d.stagiaires.length === 0 && <li className="muted">Aucun stagiaire inscrit.</li>}
         </ul>
+        {peutSaisir && (
         <div className="formulaire ligne">
           <label className="champ">
             <span className="muted small">Civilité</span>
@@ -308,9 +311,11 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
           </label>
           <button className="btn" onClick={ajouterStagiaire}>Ajouter le stagiaire</button>
         </div>
+        )}
       </Bloc>
 
       <Bloc titre={`Documents générés (${d.documents.length})`} ouvertParDefaut>
+        {peutSaisir && (
         <div className="formulaire ligne">
           <label className="champ">
             <span className="muted small">Modèle</span>
@@ -332,6 +337,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
             {occupe ? "Génération…" : "Générer les documents"}
           </button>
         </div>
+        )}
         <ul className="liste-simple">
           {d.documents.map((doc) => (
             <li key={doc.id}>
@@ -349,7 +355,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur }) {
 }
 
 // ── Écran ────────────────────────────────────────────────────
-export default function Sessions({ admin, onChange }) {
+export default function Sessions({ admin, peutSaisir, onChange }) {
   const [formations, setFormations] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [modeles, setModeles] = useState([]);
@@ -382,14 +388,16 @@ export default function Sessions({ admin, onChange }) {
     } catch (e) { setErr(e.message); }
   }
 
-  if (!admin) return <p className="muted">La gestion des sessions est réservée aux administrateurs.</p>;
+  if (!admin && !peutSaisir) {
+    return <p className="muted">Vous n'avez pas accès à la saisie des sessions.</p>;
+  }
 
   return (
     <section className="sessions">
       <h1>Sessions</h1>
       {err && <p className="flash erreur">{err}</p>}
 
-      <Formations formations={formations} onChange={charger} erreur={setErr} />
+      {admin && <Formations formations={formations} onChange={charger} erreur={setErr} />}
 
       <Bloc titre={`Sessions (${sessions.length})`} ouvertParDefaut>
         <ul className="liste-simple">
@@ -406,6 +414,7 @@ export default function Sessions({ admin, onChange }) {
           ))}
           {sessions.length === 0 && <li className="muted">Aucune session.</li>}
         </ul>
+        {admin && (
         <div className="formulaire ligne">
           <label className="champ">
             <span className="muted small">Formation</span>
@@ -423,9 +432,15 @@ export default function Sessions({ admin, onChange }) {
             onChange={(e) => setForm({ ...form, duree_heures_reelle: e.target.value })} />
           <button className="btn primary" onClick={creerSession}>Créer la session</button>
         </div>
+        )}
       </Bloc>
 
-      {choisie && <DetailSession sessionId={choisie} modeles={modeles} onChange={onChange} erreur={setErr} />}
+      {choisie && (
+        <DetailSession
+          sessionId={choisie} modeles={modeles} onChange={onChange} erreur={setErr}
+          admin={admin} peutSaisir={peutSaisir}
+        />
+      )}
     </section>
   );
 }

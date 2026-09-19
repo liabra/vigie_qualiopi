@@ -42,6 +42,8 @@ export default function App() {
   if (!me.user) return <Login flash={flash} googleConfigured={me.googleConfigured} />;
 
   const isAdmin = me.user.role === "admin";
+  // Un contributeur saisit stagiaires et documents, sans rien configurer.
+  const peutSaisir = isAdmin || me.user.role === "contributeur";
   return (
     <>
       <header className="topbar">
@@ -65,7 +67,7 @@ export default function App() {
           <button className={onglet === "audits" ? "actif" : ""} onClick={() => setOnglet("audits")}>
             Audits
           </button>
-          {isAdmin && (
+          {peutSaisir && (
             <button className={onglet === "sessions" ? "actif" : ""} onClick={() => setOnglet("sessions")}>
               Sessions
             </button>
@@ -81,7 +83,9 @@ export default function App() {
             ouverts et renverrait en haut de page. */}
         {onglet === "referentiel" && <Referentiel admin={isAdmin} rafraichir={version} />}
         {onglet === "preuves" && <Preuves admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
-        {onglet === "sessions" && <Sessions admin={isAdmin} onChange={() => setVersion((v) => v + 1)} />}
+        {onglet === "sessions" && (
+          <Sessions admin={isAdmin} peutSaisir={peutSaisir} onChange={() => setVersion((v) => v + 1)} />
+        )}
         {onglet === "audits" && <AuditsHistory admin={isAdmin} />}
         {onglet === "modeles" && <Modeles admin={isAdmin} />}
       </main>

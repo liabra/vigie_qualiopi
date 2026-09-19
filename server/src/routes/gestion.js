@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import { Router } from "express";
 import { getPool, query } from "../db.js";
-import { requireAdmin, requireAuth } from "../session.js";
+import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
 
@@ -200,7 +200,7 @@ router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
 // Ajouter un stagiaire à un groupe crée la personne si besoin, puis son
 // inscription. C'est l'inscription qui porte le prescripteur, l'état du
 // dossier et l'abandon éventuel.
-router.post("/sessions/:id/stagiaires", requireAdmin, wrap(async (req, res) => {
+router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) => {
   const sessionId = Number(req.params.id);
   const { civilite, nom, prenom, email, telephone, groupe_id, prescripteur, dossier_complet, date_inscription, stagiaire_id } = req.body || {};
   if (!stagiaire_id && (!nom?.trim() || !prenom?.trim())) return manque(res, "nom et prenom");
@@ -243,7 +243,7 @@ router.post("/sessions/:id/stagiaires", requireAdmin, wrap(async (req, res) => {
 // Abandon, changement de groupe, dossier complet… Un abandon sort
 // automatiquement le stagiaire du décompte « par stagiaire » des preuves,
 // logique déjà en place.
-router.patch("/inscriptions/:id", requireAdmin, wrap(async (req, res) => {
+router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   const id = Number(req.params.id);
   const { statut, date_abandon, motif_abandon, groupe_id, prescripteur, dossier_complet } = req.body || {};
   if (statut && !STATUTS_INSCRIPTION.includes(statut)) return res.status(400).json({ error: "Statut d'inscription inconnu." });
@@ -366,7 +366,7 @@ router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
 }));
 
 // ── Génération ───────────────────────────────────────────────
-router.post("/generations", requireAdmin, wrap(async (req, res) => {
+router.post("/generations", requireRedacteur, wrap(async (req, res) => {
   const { modele_id, session_id, groupe_id = null, remplacer = false } = req.body || {};
   if (!modele_id) return manque(res, "modele_id");
   if (!session_id) return manque(res, "session_id");

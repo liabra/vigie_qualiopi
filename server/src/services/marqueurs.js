@@ -14,6 +14,9 @@
 //    {{date_attestation}}    Date portée sur l attestation : la date de
 //                            fin de session, même donnée et même format
 //                            que {{date_fin}}
+//    {{horaire}}             Horaire indiqué sur la session, texte libre
+//                            (« 8h30–12h00 / 13h00–16h30 »), vide s il
+//                            n est pas renseigné
 //    {{duree}}               Durée en heures : la durée réelle de la
 //                            session si elle est renseignée, sinon celle
 //                            de la version de formation
@@ -36,6 +39,7 @@ export const MARQUEURS = [
   "date_debut",
   "date_fin",
   "date_attestation",
+  "horaire",
   "duree",
   "intitule_formation",
   "lieu",
@@ -74,6 +78,7 @@ export function valeursMarqueurs({ formation, version, session, groupe, stagiair
     date_debut: formaterDate(session?.date_debut),
     date_fin: formaterDate(session?.date_fin),
     date_attestation: formaterDate(session?.date_fin),
+    horaire: session?.horaire ?? "",
     duree: formaterDuree(duree),
     intitule_formation: formation?.intitule ?? "",
     lieu: groupe?.lieu || session?.lieu || "",

@@ -19,7 +19,16 @@ export function getPool() {
   return pool;
 }
 
-export const query = (text, params) => getPool().query(text, params);
+// Point d'injection, utilisé UNIQUEMENT par les tests : il permet d'éprouver
+// une route sans PostgreSQL (voir test/horaire.test.js). La production ne
+// l'appelle jamais ; passer null rétablit le comportement normal.
+let executer = (text, params) => getPool().query(text, params);
+
+export const query = (text, params) => executer(text, params);
+
+export function setQueryExecutor(fn) {
+  executer = fn || ((text, params) => getPool().query(text, params));
+}
 
 export async function closePool() {
   if (pool) await pool.end();

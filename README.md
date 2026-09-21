@@ -235,6 +235,13 @@ une cohorte, avec son propre lieu et son propre formateur : deux groupes
 d'une même session peuvent se tenir sur deux sites aux mêmes dates. Une
 session sur un seul lieu n'a qu'un groupe.
 
+Une session porte aussi un **horaire**, facultatif et en **texte libre**
+(« 8h30–12h00 / 13h00–16h30 »). Il n'est volontairement pas modélisé en
+journées, demi-journées ni créneaux d'émargement : cette structure viendra
+avec le chantier présence et assiduité. D'ici là, son seul usage est d'être
+imprimé sur les documents via `{{horaire}}`. Une session sans horaire reste
+valide : le marqueur est alors remplacé par du vide, jamais imprimé tel quel.
+
 Le prescripteur et l'état du dossier sont portés par l'**inscription**, pas
 par la personne : ils peuvent différer d'une session à l'autre pour un
 même stagiaire. Marquer un abandon date l'abandon et sort aussitôt le
@@ -254,6 +261,7 @@ d'origine n'est jamais modifié.
 | `{{date_debut}}` | début de session, jj/mm/aaaa |
 | `{{date_fin}}` | fin de session, jj/mm/aaaa |
 | `{{date_attestation}}` | date portée sur l'attestation, identique à `{{date_fin}}` |
+| `{{horaire}}` | horaire indiqué sur la session, texte libre |
 | `{{duree}}` | durée réelle de la session, à défaut celle de la version |
 | `{{intitule_formation}}` | intitulé de la formation |
 | `{{lieu}}` | lieu du groupe, à défaut celui de la session |

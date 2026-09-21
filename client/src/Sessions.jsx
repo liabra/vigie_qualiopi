@@ -125,13 +125,36 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
   const [stagiaire, setStagiaire] = useState({ civilite: "", nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
   const [generation, setGeneration] = useState({ modele_id: "", groupe_id: "" });
   const [occupe, setOccupe] = useState(false);
+  // Horaire en cours de saisie. Il se recale sur la session OUVERTE, et non
+  // à chaque rechargement : ajouter un groupe ou un stagiaire ne doit pas
+  // effacer une correction commencée.
+  const [horaireSaisi, setHoraireSaisi] = useState("");
+  const [horaireEnCours, setHoraireEnCours] = useState(false);
 
   const charger = useCallback(async () => {
     try { setD(await api(`/api/sessions/${sessionId}`)); } catch (e) { erreur(e.message); }
   }, [sessionId, erreur]);
   useEffect(() => { charger(); }, [charger]);
+  const idSession = d?.session?.id;
+  useEffect(() => { setHoraireSaisi(d?.session?.horaire || ""); }, [idSession]);
 
   if (!d) return <p className="muted">Chargement de la session…</p>;
+
+  // Renseigner, corriger ou effacer l'horaire — le seul champ d'une session
+  // que l'admin peut reprendre après coup : les dates, le lieu, le formateur
+  // et la durée figent ce qui a été déclaré, et la durée est déjà imprimée
+  // sur les documents générés. Un texte vide efface l'horaire (NULL en base).
+  async function enregistrerHoraire(valeur) {
+    setHoraireEnCours(true);
+    try {
+      const r = await api(`/api/sessions/${sessionId}`, {
+        method: "PATCH", body: JSON.stringify({ horaire: valeur }),
+      });
+      setHoraireSaisi(r.session.horaire || "");   // la valeur retenue par le serveur
+      erreur(null);
+      await charger();
+    } catch (e) { erreur(e.message); } finally { setHoraireEnCours(false); }
+  }
 
   async function ajouterGroupe() {
     if (!groupe.nom.trim()) return erreur("Indiquez un nom de groupe.");
@@ -224,10 +247,27 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
           <p className="muted small">
             du {s.date_debut} au {s.date_fin} · version {s.version_numero} de la formation ·{" "}
             {s.duree_heures_reelle || s.duree_heures_defaut || "?"} h
+            {s.horaire && <> · {s.horaire}</>}
             {s.lieu && <> · {s.lieu}</>}{s.formateur && <> · {s.formateur}</>}
           </p>
         </div>
       </div>
+
+      {/* Le contributeur lit l'horaire comme le reste de la session, mais ne
+          dispose d'aucune commande pour le changer. */}
+      {admin && (
+        <div className="formulaire ligne">
+          <Champ label="Horaire" value={horaireSaisi} placeholder="8h30–12h00 / 13h00–16h30"
+            onChange={(e) => setHoraireSaisi(e.target.value)} />
+          <button className="btn petit" onClick={() => enregistrerHoraire(horaireSaisi)} disabled={horaireEnCours}>
+            Enregistrer l'horaire
+          </button>
+          <button className="btn petit" onClick={() => enregistrerHoraire("")}
+            disabled={horaireEnCours || !s.horaire}>
+            Effacer
+          </button>
+        </div>
+      )}
 
       <Bloc titre={`Groupes (${d.groupes.length})`} ouvertParDefaut>
         <ul className="liste-simple">
@@ -366,7 +406,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
   const [modeles, setModeles] = useState([]);
   const [err, setErr] = useState(null);
   const [choisie, setChoisie] = useState(null);
-  const [form, setForm] = useState({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "" });
+  const [form, setForm] = useState({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "", horaire: "" });
 
   const charger = useCallback(async () => {
     try {
@@ -386,7 +426,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
         method: "POST",
         body: JSON.stringify({ ...form, formation_id: Number(form.formation_id), duree_heures_reelle: form.duree_heures_reelle || null }),
       });
-      setForm({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "" });
+      setForm({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "", horaire: "" });
       setErr(null);
       await charger();
       setChoisie(r.session.id);
@@ -435,6 +475,8 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
           <Champ label="Formateur" value={form.formateur} onChange={(e) => setForm({ ...form, formateur: e.target.value })} />
           <Champ label="Durée réelle (h)" type="number" min="0" value={form.duree_heures_reelle}
             onChange={(e) => setForm({ ...form, duree_heures_reelle: e.target.value })} />
+          <Champ label="Horaire" value={form.horaire} placeholder="8h30–12h00 / 13h00–16h30"
+            onChange={(e) => setForm({ ...form, horaire: e.target.value })} />
           <button className="btn primary" onClick={creerSession}>Créer la session</button>
         </div>
         )}

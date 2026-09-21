@@ -27,6 +27,16 @@ const CHAMPS_VERSION = [
   "certifiante", "code_rncp_rs", "tarif_ht", "accessibilite_handicap",
 ];
 
+// Horaire d'une session : texte libre, facultatif. La MÊME règle sert à la
+// création et à la correction — sinon un horaire saisi puis corrigé ne
+// s'imprimerait pas de la même façon selon le chemin emprunté. Une chaîne
+// vide, faite d'espaces, ou une valeur absente valent NULL : le marqueur
+// {{horaire}} devient alors du vide, jamais le texte du marqueur.
+export function normaliserHoraire(valeur) {
+  if (valeur === undefined || valeur === null) return null;
+  return String(valeur).trim() || null;
+}
+
 // ── Formations ───────────────────────────────────────────────
 
 router.get("/formations", requireAuth, wrap(async (_req, res) => {
@@ -124,7 +134,7 @@ router.get("/formations/:id/versions", requireAuth, wrap(async (req, res) => {
 // ── Sessions et groupes ──────────────────────────────────────
 
 router.post("/sessions", requireAdmin, wrap(async (req, res) => {
-  const { formation_id, date_debut, date_fin, reference, lieu, modalite, formateur, duree_heures_reelle } = req.body || {};
+  const { formation_id, date_debut, date_fin, reference, lieu, modalite, formateur, duree_heures_reelle, horaire } = req.body || {};
   if (!formation_id) return manque(res, "formation_id");
   if (!date_debut) return manque(res, "date_debut");
   if (!date_fin) return manque(res, "date_fin");
@@ -140,10 +150,11 @@ router.post("/sessions", requireAdmin, wrap(async (req, res) => {
 
   const { rows: [session] } = await query(
     `INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin,
-       lieu, modalite, formateur, duree_heures_reelle)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       lieu, modalite, formateur, duree_heures_reelle, horaire)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [formation_id, version.id, reference?.trim() || null, date_debut, date_fin,
-     lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree_heures_reelle || null]
+     lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree_heures_reelle || null,
+     normaliserHoraire(horaire)]
   );
   res.status(201).json({ session });
 }));
@@ -177,6 +188,22 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
     [id]
   );
   res.json({ session, groupes, stagiaires, documents });
+}));
+
+// Corriger l'horaire d'une session — c'est le SEUL champ que cette route
+// sait modifier, volontairement. Les autres champs d'une session figent ce
+// qui a été déclaré : la durée et les dates, en particulier, sont déjà
+// imprimées sur les documents générés. Comme les autres PATCH du projet,
+// un corps sans le champ attendu est refusé, et tout champ surnuméraire
+// est ignoré plutôt que modifié en silence.
+router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
+  if (req.body?.horaire === undefined) return res.status(400).json({ error: "Rien à modifier." });
+  const { rows } = await query(
+    "UPDATE sessions SET horaire = $2 WHERE id = $1 RETURNING *",
+    [Number(req.params.id), normaliserHoraire(req.body.horaire)]
+  );
+  if (!rows.length) return res.status(404).json({ error: "Session introuvable." });
+  res.json({ session: rows[0] });
 }));
 
 router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {

@@ -11,7 +11,7 @@ import {
 test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
     "civilite", "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "date_attestation",
-    "duree", "intitule_formation", "lieu", "formateur", "nom_organisme",
+    "horaire", "duree", "intitule_formation", "lieu", "formateur", "nom_organisme",
   ]);
 });
 
@@ -19,6 +19,24 @@ test("les dates passent en jj/mm/aaaa", () => {
   assert.equal(formaterDate("2026-01-05"), "05/01/2026");
   assert.equal(formaterDate(new Date("2026-03-05T00:00:00Z")), "05/03/2026");
   assert.equal(formaterDate(null), "");
+});
+
+test("l'horaire de la session est repris tel quel, et vide s'il manque", () => {
+  assert.equal(valeursMarqueurs(contexte).horaire, "8h30–12h00 / 13h00–16h30");
+  // session sans horaire : chaîne vide, jamais « {{horaire}} » imprimé
+  const sansHoraire = valeursMarqueurs({ ...contexte, session: { date_debut: "2026-01-05" } });
+  assert.equal(sansHoraire.horaire, "");
+  assert.equal(valeursMarqueurs({}).horaire, "");
+  // le remplacement fonctionne dans les deux cas
+  assert.equal(remplacer("Horaires : {{horaire}}", valeursMarqueurs(contexte)), "Horaires : 8h30–12h00 / 13h00–16h30");
+  assert.equal(remplacer("Horaires : {{horaire}}", sansHoraire), "Horaires : ");
+});
+
+test("{{horaire}} n'est plus tenu pour un marqueur inconnu", () => {
+  assert.ok(MARQUEURS.includes("horaire"));
+  assert.deepEqual(marqueursInconnus("Convocation {{horaire}} {{nom_stagiaire}}"), []);
+  // un vrai inconnu reste détecté
+  assert.deepEqual(marqueursInconnus("{{horaire}} {{salle}}"), ["salle"]);
 });
 
 test("la date d'attestation reprend la date de fin de session", () => {
@@ -41,7 +59,7 @@ test("les durées s'écrivent en heures, sans décimale inutile", () => {
 const contexte = {
   formation: { intitule: "Atelier numérique" },
   version: { duree_heures_defaut: 21 },
-  session: { date_debut: "2026-01-05", date_fin: "2026-03-05", lieu: "Cayenne", formateur: "Mme Carr" },
+  session: { date_debut: "2026-01-05", date_fin: "2026-03-05", lieu: "Cayenne", formateur: "Mme Carr", horaire: "8h30–12h00 / 13h00–16h30" },
   groupe: { lieu: "Soula", formateur: "M. Jones" },
   stagiaire: { civilite: "Mme", nom: "Dupont", prenom: "Jean" },
   organisme: "A2C",

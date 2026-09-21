@@ -319,3 +319,132 @@ Deux régressions ont été introduites volontairement, puis retirées :
 
 **Aucun commit, aucun push, aucun stash ; la base Railway de production n'a
 jamais été écrite.**
+
+> **Suites données le même jour** : le commit `b834d6b` a été créé puis poussé
+> sur `origin/main`, et le service a été déployé en production. Les points 4
+> (génération réelle) et 5 (migration 010) de la liste ci-dessus sont donc
+> levés — voir la section suivante.
+
+---
+
+## 2026-09-21 (suite 3) — Déploiement en production et validation
+
+### Commit et push
+
+| | |
+| --- | --- |
+| Commit | `b834d6bd49043dff5e729d864bef087e11061043` — « Sessions : ajouter et modifier l'horaire » |
+| Contenu | 9 fichiers, +632 / −9 |
+| Push | `e011a25..b834d6b  main -> main`, **sans `--force`** |
+| Contrôles avant push | arbre propre ; HEAD conforme ; `origin/main` toujours en `e011a25`, **0 commit non examiné** ; `origin/main` ancêtre de `main` (aucune divergence) |
+| `origin/main` après push | `b834d6bd49043dff5e729d864bef087e11061043` |
+
+### Déploiement Railway
+
+Projet `Vigie Qualiopi` (`6a1d0145-7b57-494c-acd3-f4c3b2784999`), environnement
+`production` (`da6ebbe4-675c-4937-8f7c-b3f74dcd71cb`), service `vigie_qualiopi`
+(`0aa5dbd9-dd30-4869-b466-cc7b5f3031ea`).
+
+- Déploiement `ec7c8e7e-b7be-4069-afbc-fb32ff52ba63`, déclenché par le push sur
+  `main`, commit `b834d6b`.
+- Cycle : `BUILDING` (16:21:50) → `DEPLOYING` (16:22:08) → **`SUCCESS`** (16:22:26).
+- Build : `✓ 41 modules transformed`, `✓ built in 682ms`, Node 22.23.2. Aucune erreur.
+- Aucun déploiement déclenché à la main, aucune modification de configuration.
+
+### Migration 010 appliquée
+
+Logs de démarrage (intégralité — 13 lignes) :
+
+```
+Starting Container
+> vigie-qualiopi@0.1.0 start
+> npm start -w server
+> @vigie-qualiopi/server@0.1.0 start
+> node src/index.js
+
+Migration appliquée : 010_horaire_session.sql
+Vigie Qualiopi en ligne sur le port 8080 (Node v22.23.2)
+```
+
+- **Une seule** migration appliquée : `010_horaire_session.sql`. Aucune autre
+  migration inattendue.
+- Contrôle en **lecture seule** de la base de production : **10 migrations**
+  présentes, `001` → `010`, dans l'ordre ; colonne `sessions.horaire` de type
+  `text`, nullable. Table `sessions` : 1 ligne, 0 avec horaire (session
+  antérieure, désormais modifiable depuis l'écran Sessions).
+- La migration a été appliquée **par le démarrage normal du serveur**. Aucune
+  migration lancée à la main, **aucune écriture manuelle en base**.
+
+### Healthcheck
+
+```
+GET https://vigiequaliopi-production.up.railway.app/api/health
+{"ok":true}
+HTTP 200 (0,10 s puis 0,06 s au second appel)
+```
+
+### Smoke tests production (exécutés par l'utilisateur)
+
+| Test | Résultat |
+| --- | --- |
+| Ajout d'un horaire sur une session existante | OK |
+| Persistance après rechargement | OK |
+| Modification de l'horaire | OK |
+| Effacement de l'horaire | OK |
+| Affichage sans séparateur parasite quand l'horaire est vide | OK |
+| Création d'une nouvelle session avec horaire | OK |
+| Génération réelle d'un document Google avec `{{horaire}}` | OK |
+| Comportement général après déploiement | OK |
+| Test manuel du compte **contributeur** en production | **non réalisé** — aucune adresse courriel disponible |
+
+### Réserve : contributeur non testé manuellement en production
+
+Le compte contributeur n'a pas pu être essayé « en vrai » en production, faute
+d'une adresse courriel disponible pour ouvrir une session. Ce qui protège ce
+point malgré tout :
+
+- **tests automatisés dans le dépôt** (`server/test/horaire.test.js`) :
+  contributeur → **403**, avec vérification qu'**aucune écriture** n'est tentée
+  ni effectuée ; non connecté → 401 ;
+- **harnais sur base jetable** : contributeur → 403, horaire inchangé en base,
+  aucune session créée ;
+- **vérification en navigateur sur base jetable** : le contributeur **voit**
+  l'horaire en lecture dans l'en-tête de session, et dispose de **aucun champ
+  ni bouton** d'édition ; l'onglet Modèles et le formulaire de création de
+  session ne lui sont pas proposés ;
+- côté code, la route est sous `requireAdmin` et le bloc d'édition de
+  l'interface est sous `{admin && …}` : le contributeur ne peut donc pas y
+  accéder par l'interface, et une requête directe recevrait 403.
+
+À refaire si un second compte est créé : un essai manuel en production
+resterait la seule vérification de bout en bout non couverte.
+
+### Erreurs et alertes relevées
+
+- Runtime : **0 ligne d'erreur** sur l'ensemble des logs du déploiement.
+- Logs HTTP : une seule requête, `GET /api/health 200` — aucun 4xx/5xx.
+- Deux avertissements **préexistants**, sans rapport avec cette évolution :
+  `npm warn config production Use --omit=dev instead.` (bruit npm) et la
+  dépréciation par Railway de `railway.json` (Config as Code) au profit de
+  `.railway/railway.ts` — les fichiers actuels continuent de fonctionner
+  **jusqu'au 2026-12-01**.
+
+### Statut final
+
+**Fonctionnalité « horaire de session » : VALIDÉE EN PRODUCTION.**
+
+- création d'une session avec horaire, et modification / effacement de
+  l'horaire d'une session existante : validés en production ;
+- propagation jusqu'au document Google généré via `{{horaire}}` : validée en
+  production ;
+- migration 010 appliquée en production par le démarrage normal du serveur ;
+- `npm test` : 70/70 ; `npm run build` : OK.
+
+### Points restants (inchangés par ce déploiement)
+
+1. Test manuel du contributeur en production — voir la réserve ci-dessus.
+2. Les autres champs d'une session (référence, dates, lieu, formateur, durée)
+   restent **non modifiables** : périmètre volontairement étroit.
+3. `GET /api/sessions/abc` → 500 : défaut préexistant, hors périmètre.
+4. `railway.json` déprécié par Railway : à migrer vers Infrastructure as Code
+   avant le **2026-12-01** (chantier dédié, non engagé).

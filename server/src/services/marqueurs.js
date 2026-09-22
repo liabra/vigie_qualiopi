@@ -17,9 +17,10 @@
 //    {{horaire}}             Horaire indiqué sur la session, texte libre
 //                            (« 8h30–12h00 / 13h00–16h30 »), vide s il
 //                            n est pas renseigné
-//    {{duree}}               Durée en heures : la durée réelle de la
-//                            session si elle est renseignée, sinon celle
-//                            de la version de formation
+//    {{duree}}               Durée en heures : la durée prévue (déclarée)
+//                            de la session (sessions.duree_heures_reelle)
+//                            si elle est renseignée, sinon celle de la
+//                            version de formation (duree_heures_defaut)
 //    {{intitule_formation}}  Intitulé de la formation
 //    {{lieu}}                Lieu du groupe, à défaut celui de la session
 //    {{formateur}}           Formateur du groupe, à défaut celui de la session

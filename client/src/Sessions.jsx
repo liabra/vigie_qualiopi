@@ -418,7 +418,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
             {abs.session.heures_prevues !== null ? (
               <> Durée prévue de la session : <strong>{abs.session.heures_prevues} h</strong>
                 {abs.session.source_heures_prevues === "duree_heures_defaut"
-                  && " (durée par défaut de la formation : aucune durée réelle n'est déclarée)"}
+                  && " (durée par défaut de la formation : aucune durée prévue n'est déclarée)"}
                 {" "}· total des absences : <strong>{abs.total_heures_absence} h</strong>.</>
             ) : (
               <> <span className="text-erreur">Durée prévue inconnue</span> : seules les heures d'absence
@@ -646,7 +646,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
           <Champ label="Fin" type="date" value={form.date_fin} onChange={(e) => setForm({ ...form, date_fin: e.target.value })} />
           <Champ label="Lieu" value={form.lieu} onChange={(e) => setForm({ ...form, lieu: e.target.value })} />
           <Champ label="Formateur" value={form.formateur} onChange={(e) => setForm({ ...form, formateur: e.target.value })} />
-          <Champ label="Durée réelle (h)" type="number" min="0" value={form.duree_heures_reelle}
+          <Champ label="Durée prévue (h)" type="number" min="0" value={form.duree_heures_reelle}
             onChange={(e) => setForm({ ...form, duree_heures_reelle: e.target.value })} />
           <Champ label="Horaire" value={form.horaire} placeholder="8h30–12h00 / 13h00–16h30"
             onChange={(e) => setForm({ ...form, horaire: e.target.value })} />

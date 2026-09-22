@@ -262,7 +262,7 @@ d'origine n'est jamais modifié.
 | `{{date_fin}}` | fin de session, jj/mm/aaaa |
 | `{{date_attestation}}` | date portée sur l'attestation, identique à `{{date_fin}}` |
 | `{{horaire}}` | horaire indiqué sur la session, texte libre |
-| `{{duree}}` | durée réelle de la session, à défaut celle de la version |
+| `{{duree}}` | durée prévue (déclarée) de la session — colonne `duree_heures_reelle` — à défaut celle de la version (`duree_heures_defaut`) |
 | `{{intitule_formation}}` | intitulé de la formation |
 | `{{lieu}}` | lieu du groupe, à défaut celui de la session |
 | `{{formateur}}` | formateur du groupe, à défaut celui de la session |

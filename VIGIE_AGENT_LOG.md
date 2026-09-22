@@ -709,8 +709,8 @@ d'utilisateur.
   - modification (formulaire pré-rempli, 7 h → 3,5 h et passage en justifiée) → total **7 h**,
     assiduité **75 %**, l'autre absence intacte ;
   - suppression (confirmation nominative) → total revenu à **3,5 h**, assiduité **88 %** ;
-  - durée de repli : sur la session sans durée réelle, l'écran affiche « 21 h (durée par défaut de
-    la formation : aucune durée réelle n'est déclarée) » ;
+  - durée de repli : sur la session sans durée prévue déclarée, l'écran affiche « 21 h (durée par
+    défaut de la formation : aucune durée prévue n'est déclarée) » ;
   - **contributeur** : peut lire, ajouter (vérifié : absence créée, total 7 h, Noé 88 %) et
     supprimer ; ne voit **aucun** contrôle admin — ni le champ Horaire, ni le sélecteur de civilité,
     ni le formulaire de création de groupe, ni le bloc Formations, ni l'onglet Modèles.
@@ -730,3 +730,21 @@ d'utilisateur.
 ### Prochaine étape
 
 Déploiement du lot L2 après validation, puis lot suivant. **Aucun push effectué.**
+
+---
+
+## 2026-09-22 (suite 3) — Relibellage de la durée d'une session
+
+Décision métier : le terme historique « durée réelle » est ambigu — il peut laisser croire à des
+heures effectivement réalisées, alors que `sessions.duree_heures_reelle` contient la durée
+**déclarée/planifiée** de la session. L'interface utilise désormais **« Durée prévue (h) »**.
+
+Périmètre volontairement étroit :
+
+- **colonne SQL non renommée** : `sessions.duree_heures_reelle` reste tel quel, aucune migration ;
+- **marqueur `{{duree}}` inchangé** dans son comportement, priorité inchangée
+  (`duree_heures_reelle` puis `duree_heures_defaut`) ;
+- **calcul d'assiduité inchangé** ;
+- seuls les libellés visibles et la documentation ont été réalignés :
+  formulaire de création de session, texte d'aide du repli de durée (L2), commentaire de la
+  convention de marqueurs, ligne `{{duree}}` du README, et cette note.

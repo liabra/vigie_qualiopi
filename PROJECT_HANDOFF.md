@@ -1,16 +1,25 @@
 # Vigie Qualiopi — PROJECT_HANDOFF
 
-> **Projet** : `liabra/vigie_qualiopi` — branche `main`  
-> **Production** : Railway  
-> **État consolidé** : 22/09/2026  
-> **HEAD / origin/main** : `d1be9f9d82d68607e6b146f74ddf9e9674864cb6`  
-> **Dernière évolution métier livrée** : horaire de session, validé en production  
-> **Migration de production actuelle** : `010_horaire_session.sql`  
-> **Suite de tests actuelle** : **70/70 au vert**  
-> **Source de suivi récente** : `VIGIE_AGENT_LOG.md`
+| Repère | Valeur |
+| --- | --- |
+| **Projet** | `liabra/vigie_qualiopi` — branche `main` |
+| **Production** | Railway |
+| **État validé au** | 22/09/2026 |
+| **Dernier lot métier validé en production** | preuves — création et rattachement manuels (`1dd4763`) |
+| **Migration de production actuelle** | `010_horaire_session.sql` |
+| **Suite de tests validée** | **91/91 au vert** |
+| **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
 Il doit être lu avec `README.md`, `VIGIE_AGENT_LOG.md`, la spec fonctionnelle et les migrations concernées.
+
+**Ce document ne consigne volontairement aucun hash de `HEAD` ni d'`origin/main`** : une telle
+valeur est périmée dès le commit suivant. Pour connaître la position réelle du dépôt :
+
+```bash
+git log --oneline -5
+git rev-list --count origin/main..HEAD   # commits locaux non poussés
+```
 
 ---
 
@@ -231,6 +240,9 @@ Ces tables se rattachent à l'inscription, pas directement au stagiaire.
 - Inscriptions abandonnées exclues des comptes attendus.
 - Alertes de péremption.
 - Statuts et dates.
+- **Création manuelle d'une preuve** (sans import préalable), pour un ou plusieurs indicateurs.
+- **Rattachement / remplacement / retrait manuel d'un fichier Drive** sur une preuve existante.
+- **Modification manuelle** du titre, de la description et de l'indicateur d'une preuve.
 
 ### Formations / sessions / groupes / stagiaires
 
@@ -282,7 +294,7 @@ Le chantier historique `{{horaire}}` est **clos** et ne doit plus être remis au
 
 ### Tests
 
-- `npm test` : **70/70**
+- `npm test` : **70/70** au moment de ce lot (repère courant : voir §14)
 - build Vite : OK
 - tests de route PATCH hermétiques avec base simulée
 - tests sur PostgreSQL jetable
@@ -300,6 +312,42 @@ Le chantier historique `{{horaire}}` est **clos** et ne doit plus être remis au
 - aucun incident de déploiement
 
 Réserve : le compte contributeur n'a pas été rejoué manuellement en production faute d'adresse disponible, mais son comportement est couvert par tests automatisés et vérifications locales.
+
+---
+
+## 7 bis. Lot L1 — preuves : ajout et rattachement manuel — TERMINÉ
+
+C'était le **blocage principal** identifié par l'audit produit : une preuve ne pouvait naître que
+d'un import de classeur, d'une recherche Drive ou d'une génération documentaire. Impossible de
+créer une preuve à la main ni d'en corriger une — ce qui bloquait de fait le rattachement EduSign
+et la reprise indicateur par indicateur des preuves de l'auditrice.
+
+### Implémenté
+
+- `POST /api/preuves` (`requireAdmin`) : création manuelle, un ou plusieurs indicateurs, fichier
+  Drive facultatif ; un fichier partagé par N indicateurs produit N preuves liées.
+- `PATCH /api/preuves/:id` étendu : titre, description, indicateur.
+- Écran Preuves : formulaire de création, édition en ligne, remplacement / rattachement /
+  retrait d'un fichier Drive, suppression avec rafraîchissement du compteur.
+- Vérification que l'indicateur visé appartient bien à une version **active** du référentiel.
+
+### Tests
+
+- `server/test/preuves.test.js` : 21 tests hermétiques (application Express réelle + base simulée).
+- `npm test` : **91/91** (contre 70/70 avant ce lot)
+- build Vite : OK
+- test navigateur réel sur PostgreSQL jetable
+- suppression mutante rejouée pour vérifier que les tests mordent
+
+### Production
+
+- commit métier : `1dd4763` — `Preuves : compléter l'ajout et le rattachement manuel`
+- commit documentaire : `40e9d54` — `Documentation : ajouter le handoff projet`
+- déployé en production, Railway **SUCCESS**
+- migration inchangée : **010**
+- smoke test manuel en production par l'utilisatrice : **8/8 OK**
+  (bouton d'ajout, création, affichage, modification titre/description, changement d'indicateur,
+  rattachement / remplacement d'un fichier unique, suppression et compteur, preuves antérieures intactes)
 
 ---
 
@@ -435,6 +483,12 @@ Décision historique :
 - classement Drive ;
 - lien avec assiduité.
 
+**Mise à jour 22/09/2026** : le rattachement manuel d'un fichier Drive comme preuve **n'est plus
+bloqué** par l'absence de création de preuve — c'est précisément ce qu'a livré le lot L1 (§7 bis).
+Un export EduSign peut donc désormais être déposé comme preuve sans passer par un import de classeur.
+Ce qui reste à décider est le **modèle d'émargement** et le **classement Drive**, pas la mécanique
+de rattachement.
+
 ### 11.2 Présence / assiduité / absences
 
 Infrastructure historique : table `absences`.
@@ -547,6 +601,11 @@ Chantier de fond :
 - conserver les liens Drive ;
 - appliquer les non-applicables confirmés.
 
+**Mise à jour 22/09/2026** : ce chantier **n'est plus bloqué par l'outil**. La création manuelle
+d'une preuve, la modification de son titre / description / indicateur et le rattachement ou le
+remplacement d'un fichier Drive sont livrés et validés en production (§7 bis). Il ne reste donc
+qu'un travail de **contenu** — indicateur par indicateur, avec l'auditrice.
+
 ### 11.10 Historique anciennes formations
 
 **REPORTÉ**
@@ -610,17 +669,20 @@ Ne pas sur-concevoir maintenant.
 
 ## 14. Niveau actuel de validation
 
-Référence actuelle connue :
+Référence connue au **22/09/2026** :
 
-- `npm test` : **70/70**
+- `npm test` : **91/91**
 - `npm run build` : OK
 - production Railway : OK
-- migration : 010
+- migration de production : **010**
 - healthcheck : OK
-- arbre Git propre après `d1be9f9`
+- arbre Git : propre, aucun commit en attente de push au moment de cette rédaction
 
-Ces valeurs sont des **repères de passation**.  
-Toujours les revérifier au début d'un nouveau chantier.
+Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
+chantier.
+
+Une fonctionnalité n'est considérée comme validée que si elle a été vérifiée **en production**
+(ou sur une base jetable équivalente), pas seulement parce que ses tests passent.
 
 ---
 
@@ -641,6 +703,11 @@ Avant nouvelle implémentation, réaliser un audit exhaustif qui fusionne :
 5. écarts récents ;
 6. couverture de tests ;
 7. besoins de la prochaine session.
+
+État de la feuille de route au **22/09/2026** :
+
+- **L1 — preuves : ajout et rattachement manuel** : exécuté, déployé, validé en production (§7 bis).
+- **L2 — absences / assiduité** : lot suivant, en cours de développement.
 
 Classer ensuite :
 

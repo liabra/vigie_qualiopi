@@ -559,3 +559,48 @@ comportement normal.
 ### Prochaine étape
 
 Lot **L2** (présence / absences) — non commencé. Aucun push effectué.
+
+---
+
+## 2026-09-22 (suite) — Validation du lot L1 en production
+
+### Push
+
+- commit métier : `1dd4763` — `Preuves : compléter l'ajout et le rattachement manuel`
+- commit documentaire : `40e9d54` — `Documentation : ajouter le handoff projet`
+- `git fetch` avant push : `origin/main` inchangé (`d1be9f9`), **avance simple, aucune
+  divergence**, 0 nouveau commit distant
+- push `main` **sans `--force`** : `d1be9f9..40e9d54`
+- contrôles préalables : `git status` propre, `npm test` **91/91**, `npm run build` OK,
+  `git diff --check` propre
+
+### Déploiement Railway
+
+- déploiement `58383ba8-90da-43e9-8f8e-0a74ad409da3`, commit `40e9d547`
+- statut : **SUCCESS**
+- `/api/health` : **HTTP 200** → `{"ok":true}`
+- **aucune ligne « Migration appliquée »** au démarrage : **migration toujours 010**
+- base de production inchangée (28 tables ; `preuves` 143, `preuve_fichiers` 114, `sessions` 1)
+- erreurs : **aucune** ; seuls les avertissements bénins déjà connus
+  (`npm warn config production`, dépendances dépréciées, dépréciation `railway.json`)
+
+### Smoke test production (effectué par l'utilisatrice) — 8/8 OK
+
+1. bouton « Ajouter une preuve » ;
+2. création d'une preuve ;
+3. affichage ;
+4. modification du titre et de la description ;
+5. changement d'indicateur ;
+6. rattachement / remplacement d'un fichier unique ;
+7. suppression et recalcul du compteur ;
+8. preuves antérieures intactes.
+
+### État
+
+- `npm test` : **91/91**
+- `npm run build` : OK
+- **Lot L1 TERMINÉ.**
+
+### Prochaine étape
+
+Lot **L2** — absences / assiduité des stagiaires.

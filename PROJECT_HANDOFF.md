@@ -7,7 +7,7 @@
 | **État validé au** | 22/09/2026 |
 | **Dernier lot métier validé en production** | absences et assiduité — lot L2 (`2f4fd84`) |
 | **Migration de production actuelle** | `010_horaire_session.sql` |
-| **Suite de tests validée** | **135/135 au vert** |
+| **Suite de tests validée** | **183/183 au vert** |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -255,6 +255,9 @@ Ces tables se rattachent à l'inscription, pas directement au stagiaire.
 - Civilité.
 - Absences par inscription : date, demi-journée, durée en heures, justifiée ou non, motif.
 - Assiduité par inscription, calculée seulement lorsqu'elle est fiable.
+- Import en masse de stagiaires (CSV, aperçu puis confirmation transactionnelle).
+- Fiche stagiaire complète : civilité, contact, entreprise, financeur, situation de handicap, besoins d'adaptation.
+- Inscription : groupe, prescripteur, dossier complet, statut, abandon.
 
 ### Documents
 
@@ -427,6 +430,78 @@ pour une saisie manuelle à un seul poste ; à revoir si la saisie devient concu
 
 ---
 
+## 7 quater. Lot L3 — stagiaires et dossiers : import CSV, fiches, inscriptions — livré, non déployé
+
+Objectif : rendre la préparation d'une session rapide et fiable à plusieurs stagiaires.
+
+### Schéma réutilisé — aucune migration nécessaire
+
+Toutes les colonnes utiles existaient déjà :
+
+- `stagiaires` : `civilite` (008), `nom`, `prenom`, `email`, `telephone`, `entreprise`, `financeur`,
+  `situation_handicap`, `besoins_adaptation` ;
+- `inscriptions` : `stagiaire_id`, `session_id` (UNIQUE sur le couple), `groupe_id`, `prescripteur`,
+  `dossier_complet`, `statut`, `date_abandon`, `motif_abandon` ;
+- `groupes` : `session_id`, `nom` (UNIQUE par session) ;
+- `sessions` : dates, référence, etc.
+
+**Aucune contrainte UNIQUE n'a été ajoutée sur l'email**, conformément à la consigne : le
+rapprochement est fait par la route, jamais par le schéma.
+
+### Import CSV
+
+- parseur **sans dépendance** (`server/src/services/csvStagiaires.js`), virgule ou point-virgule,
+  guillemets, BOM, détection d'encodage illisible (U+FFFD) ;
+- en-têtes tolérants (« Prénom », « E-mail », « Situation de handicap »…) ;
+- une colonne non reconnue est **signalée, jamais devinée** ; deux colonnes rappelant le même champ
+  sont refusées comme ambiguës ;
+- parcours en deux temps : **aperçu** (aucune écriture) puis **confirmation transactionnelle**
+  (`BEGIN`/`COMMIT`, tout ou rien) ;
+- bilan : créés, réutilisés, inscrits, déjà inscrits, ignorés (avec motif).
+
+### Rapprochement et doublons
+
+- un **email unique** normalisé (minuscules) rapproche exactement : réutilisation sans ambiguïté ;
+- un email partagé par plusieurs stagiaires → « à vérifier », aucune fusion ;
+- nom/prénom sans email → « doublon possible », **jamais** fusionné automatiquement ;
+- un email déjà présent deux fois dans le fichier → ligne invalide ;
+- un stagiaire déjà inscrit dans la session → « déjà inscrit », pas de doublon d'inscription.
+
+### Routes
+
+- `POST /api/sessions/:id/stagiaires/import-apercu` (`requireRedacteur`) — classification, pas d'écriture.
+- `POST /api/sessions/:id/stagiaires/import` (`requireRedacteur`) — import transactionnel.
+- `PATCH /api/stagiaires/:id` (`requireRedacteur`) — fiche complète (toutes les colonnes ci-dessus).
+- `PATCH /api/inscriptions/:id` (`requireRedacteur`) — groupe (validé contre la session), prescripteur,
+  dossier, statut/abandon.
+
+### Droits
+
+ADMIN et CONTRIBUTEUR : import CSV, création/correction de fiche, inscription, groupe, prescripteur,
+dossier, abandon. Aucun droit admin supplémentaire n'est ouvert au contributeur (formations, sessions,
+groupes, preuves, modèles, référentiel, audits, Drive) — vérifié en direct : **403**.
+
+### Données sensibles
+
+`situation_handicap` et `besoins_adaptation` ne sont affichés que dans le panneau « Dossier » de la
+gestion du stagiaire, jamais dans l'aperçu d'import, jamais dans les logs ni les messages d'erreur.
+
+### Tests
+
+- `server/test/csvStagiaires.test.js` (15 tests purs) et `server/test/stagiaires.test.js` (33 tests
+  HTTP, application Express réelle + base simulée).
+- `npm test` : **183/183**
+- test navigateur réel sur PostgreSQL jetable (admin + contributeur).
+- deux mutations rejouées pour vérifier que les tests mordent.
+
+### Limite connue
+
+Le rapprochement par email se fait par une lecture puis une écriture, sans contrainte unique : deux
+imports concurrents d'un même email pourraient créer deux fiches. Acceptable à un seul poste ; le
+chantier de déduplication, s'il devient nécessaire, est distinct.
+
+---
+
 ## 8. Droits
 
 Historique de principe :
@@ -440,7 +515,10 @@ Le contributeur peut historiquement :
 
 - consulter les données autorisées ;
 - ajouter un stagiaire sur une session ;
-- gérer inscription, groupe, prescripteur et dossier ;
+- gérer inscription, groupe, prescripteur et dossier ;lot L2, §7 ter) ;
+- **importer des stagiaires en masse (CSV)** : aperçu puis confirmation (lot L3, §7 quater) ;
+- **corriger une fiche stagiaire** : civilité, nom, prénom, email, téléphone, entreprise,
+  financeur, situation de handicap, besoins d'adaptation (lot L3, §7 qua
 - gérer l'abandon ;
 - générer des documents ;
 - **gérer les absences d'un stagiaire** : ajout, modification, suppression (tranché et livré, lot L2 §7 ter).
@@ -750,7 +828,7 @@ Ne pas sur-concevoir maintenant.
 
 Référence connue au **22/09/2026** :
 
-- `npm test` : **135/135**
+- `npm test` : **183/183**
 - `npm run build` : OK
 - production Railway : OK
 - migration de production : **010**
@@ -774,8 +852,8 @@ Objectif :
 > rendre Vigie réellement exploitable de bout en bout pour une nouvelle session de formation, puis fermer les principaux écarts Qualiopi.
 
 Avant nouvelle implémentation, réaliser un audit exhaustif qui fusionne :
-exécuté, déployé, validé en production (§7 ter).
-- **L3 — stagiaires et dossiers (import CSV, fiches, inscriptions)** : lot suivante de ce document ;
+
+1. backlog historique de ce document ;
 2. état réel du dépôt ;
 3. `VIGIE_AGENT_LOG.md` ;
 4. spec fonctionnelle ;
@@ -786,8 +864,9 @@ exécuté, déployé, validé en production (§7 ter).
 État de la feuille de route au **22/09/2026** :
 
 - **L1 — preuves : ajout et rattachement manuel** : exécuté, déployé, validé en production (§7 bis).
-- **L2 — absences / assiduité** : développé, testé et vérifié sur base jetable ; **pas encore
-  déployé** (§7 ter).
+- **L2 — absences / assiduité** : exécuté, déployé, validé en production (§7 ter).
+- **L3 — stagiaires et dossiers (import CSV, fiches, inscriptions)** : développé, testé et vérifié
+  sur base jetable ; **pas encore déployé** (§7 quater).
 
 Classer ensuite :
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 
 const PRESCRIPTEURS = {
@@ -227,6 +227,223 @@ function PanneauAbsences({ fiche, session, peutSaisir, recharger, erreur }) {
   );
 }
 
+// ── Dossier d'un stagiaire ───────────────────────────────────
+// La fiche (personne) et l'inscription (session) sont deux choses
+// distinctes : la fiche vit dans `stagiaires`, l'inscription porte le
+// groupe, le prescripteur, le dossier et l'abandon. Les champs
+// `situation_handicap` et `besoins_adaptation` ne sont visibles qu'ici,
+// dans le contexte de la gestion du dossier, et jamais ailleurs.
+function PanneauDossier({ st, groupes, recharger, erreur }) {
+  const [fiche, setFiche] = useState({
+    civilite: st.civilite || "", nom: st.nom || "", prenom: st.prenom || "",
+    email: st.email || "", telephone: st.telephone || "", entreprise: st.entreprise || "",
+    financeur: st.financeur || "", situation_handicap: st.situation_handicap === true,
+    besoins_adaptation: st.besoins_adaptation || "",
+  });
+  const [insc, setInsc] = useState({
+    groupe_id: st.groupe_id || "", prescripteur: st.prescripteur || "",
+    dossier_complet: st.dossier_complet === true,
+  });
+  const [occupe, setOccupe] = useState(false);
+
+  async function enregistrerFiche() {
+    if (!fiche.nom.trim() || !fiche.prenom.trim()) return erreur("Nom et prénom sont obligatoires.");
+    setOccupe(true);
+    try {
+      await api(`/api/stagiaires/${st.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...fiche, civilite: fiche.civilite || null, besoins_adaptation: fiche.besoins_adaptation || null }),
+      });
+      erreur(null);
+      await recharger();
+    } catch (e) { erreur(e.message); } finally { setOccupe(false); }
+  }
+
+  async function enregistrerInscription() {
+    setOccupe(true);
+    try {
+      await api(`/api/inscriptions/${st.inscription_id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          groupe_id: insc.groupe_id || null,
+          prescripteur: insc.prescripteur || null,
+          dossier_complet: insc.dossier_complet,
+        }),
+      });
+      erreur(null);
+      await recharger();
+    } catch (e) { erreur(e.message); } finally { setOccupe(false); }
+  }
+
+  return (
+    <div className="dossier-stagiaire">
+      <div className="formulaire">
+        <strong>Fiche stagiaire</strong>
+        <div className="formulaire ligne">
+          <label className="champ">
+            <span className="muted small">Civilité</span>
+            <select value={fiche.civilite} onChange={(e) => setFiche({ ...fiche, civilite: e.target.value })}>
+              <option value="">Non renseignée</option>
+              {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <Champ label="Nom" value={fiche.nom} onChange={(e) => setFiche({ ...fiche, nom: e.target.value })} />
+          <Champ label="Prénom" value={fiche.prenom} onChange={(e) => setFiche({ ...fiche, prenom: e.target.value })} />
+          <Champ label="Courriel" type="email" value={fiche.email} onChange={(e) => setFiche({ ...fiche, email: e.target.value })} />
+          <Champ label="Téléphone" value={fiche.telephone} onChange={(e) => setFiche({ ...fiche, telephone: e.target.value })} />
+          <Champ label="Entreprise" value={fiche.entreprise} onChange={(e) => setFiche({ ...fiche, entreprise: e.target.value })} />
+          <Champ label="Financeur" value={fiche.financeur} onChange={(e) => setFiche({ ...fiche, financeur: e.target.value })} />
+          <label className="champ case">
+            <input type="checkbox" checked={fiche.situation_handicap}
+              onChange={(e) => setFiche({ ...fiche, situation_handicap: e.target.checked })} />
+            <span className="muted small">Situation de handicap</span>
+          </label>
+          <Champ label="Besoins d'adaptation" multiligne rows={2} value={fiche.besoins_adaptation}
+            onChange={(e) => setFiche({ ...fiche, besoins_adaptation: e.target.value })} />
+        </div>
+        <div className="preuve-actions">
+          <button className="btn primary" onClick={enregistrerFiche} disabled={occupe}>Enregistrer la fiche</button>
+        </div>
+      </div>
+
+      <div className="formulaire ligne">
+        <label className="champ">
+          <span className="muted small">Groupe</span>
+          <select value={insc.groupe_id} onChange={(e) => setInsc({ ...insc, groupe_id: e.target.value })}>
+            <option value="">Sans groupe</option>
+            {groupes.map((g) => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </select>
+        </label>
+        <label className="champ">
+          <span className="muted small">Prescripteur</span>
+          <select value={insc.prescripteur} onChange={(e) => setInsc({ ...insc, prescripteur: e.target.value })}>
+            <option value="">Aucun</option>
+            {Object.entries(PRESCRIPTEURS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+        <label className="champ case">
+          <input type="checkbox" checked={insc.dossier_complet}
+            onChange={(e) => setInsc({ ...insc, dossier_complet: e.target.checked })} />
+          <span className="muted small">Dossier complet</span>
+        </label>
+        <button className="btn" onClick={enregistrerInscription} disabled={occupe}>
+          Enregistrer l'inscription
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Import CSV de stagiaires ─────────────────────────────────
+// Deux temps : APERÇU (aucune écriture) puis CONFIRMATION (transactionnelle).
+// Le texte du fichier est conservé tel quel pour la confirmation, qui relit
+// et reclasse côté serveur : ce qui est affiché est exactement ce qui sera
+// importé.
+const STATUT_LIGNE = {
+  pret: "Prêt à importer",
+  existant: "Existant identifié",
+  deja_inscrit: "Déjà inscrit",
+  doublon_possible: "Doublon possible",
+  a_verifier: "À vérifier",
+  invalide: "Invalide",
+  vide: "Ligne vide",
+};
+
+function ImportStagiaires({ sessionId, recharger, erreur }) {
+  const [apercu, setApercu] = useState(null);
+  const [bilan, setBilan] = useState(null);
+  const [occupe, setOccupe] = useState(false);
+  const texteRef = useRef(null);
+
+  async function lireFichier(e) {
+    const fichier = e.target.files?.[0];
+    if (!fichier) return;
+    const texte = await fichier.text();
+    texteRef.current = texte;
+    setBilan(null);
+    try {
+      const r = await api(`/api/sessions/${sessionId}/stagiaires/import-apercu`, {
+        method: "POST", body: JSON.stringify({ texte }),
+      });
+      setApercu(r);
+      erreur(null);
+    } catch (err) { setApercu(null); erreur(err.message); }
+    e.target.value = "";   // permet de relire le même fichier
+  }
+
+  async function confirmer() {
+    if (!texteRef.current) return erreur("Choisissez d'abord un fichier.");
+    setOccupe(true);
+    try {
+      const r = await api(`/api/sessions/${sessionId}/stagiaires/import`, {
+        method: "POST", body: JSON.stringify({ texte: texteRef.current }),
+      });
+      setBilan(r.bilan);
+      setApercu(null);
+      texteRef.current = null;
+      erreur(null);
+      await recharger();
+    } catch (err) { erreur(err.message); } finally { setOccupe(false); }
+  }
+
+  const r = apercu?.resume;
+
+  return (
+    <div className="import-stagiaires">
+      <input type="file" accept=".csv,text/csv" onChange={lireFichier} />
+      <p className="muted small">
+        Fichier CSV (virgule ou point-virgule), exportable depuis Excel, LibreOffice ou Google Sheets.
+        Colonnes reconnues : civilité, nom, prénom, email, téléphone, entreprise, financeur, situation
+        de handicap, besoins d'adaptation, groupe, prescripteur, dossier complet.
+      </p>
+
+      {apercu && (
+        <>
+          {apercu.colonnesInconnues?.length > 0 && (
+            <p className="flash info">
+              Colonnes non reconnues (ignorées) : {apercu.colonnesInconnues.join(", ")}.
+            </p>
+          )}
+          <div className="resume-import">
+            <span className="pill ok">{r.nouveaux} nouveaux stagiaires</span>
+            <span className="pill">{r.existants} stagiaires existants</span>
+            <span className="pill off">{r.invalides} lignes invalides</span>
+            <span className="pill warn">{r.doublons} doublons potentiels</span>
+            <span className="pill">{r.dejaInscrits} déjà inscrits</span>
+            <span className="pill">{r.vides} lignes vides</span>
+          </div>
+          <ul className="liste-import">
+            {apercu.lignes.map((l) => (
+              <li key={l.index} className={"import-" + l.statut}>
+                <span className="muted small">ligne {l.index + 1}</span>
+                <strong>{l.nom} {l.prenom}</strong>
+                {l.email && <span className="muted small">{l.email}</span>}
+                <span className={"pill " + (l.statut === "invalide" ? "off" : l.statut === "pret" ? "ok" : l.statut === "existant" ? "ok" : "warn")}>
+                  {STATUT_LIGNE[l.statut] || l.statut}
+                </span>
+                {l.motif && <span className="muted small">{l.motif}</span>}
+              </li>
+            ))}
+          </ul>
+          <div className="preuve-actions">
+            <button className="btn primary" onClick={confirmer} disabled={occupe || r.nouveaux + r.existants === 0}>
+              {occupe ? "Import en cours…" : `Confirmer l'import (${r.nouveaux + r.existants} stagiaire(s))`}
+            </button>
+            <button className="btn" onClick={() => { setApercu(null); texteRef.current = null; }}>Annuler</button>
+          </div>
+        </>
+      )}
+
+      {bilan && (
+        <p className="flash ok">
+          Import terminé : {bilan.crees} créé(s), {bilan.reutilises} réutilisé(s), {bilan.inscrits} inscrit(s),
+          {bilan.dejaInscrits} déjà inscrit(s), {bilan.ignores.length} ignoré(s).
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Détail d'une session ─────────────────────────────────────
 function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir }) {
   const [d, setD] = useState(null);
@@ -244,6 +461,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
   // de chaque stagiaire.
   const [abs, setAbs] = useState(null);
   const [detailAbsence, setDetailAbsence] = useState(null);
+  const [detailDossier, setDetailDossier] = useState(null);
 
   const charger = useCallback(async () => {
     try {
@@ -430,9 +648,10 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
           {d.stagiaires.map((st) => {
             const fiche = abs?.stagiaires.find((x) => x.inscription_id === st.inscription_id) || null;
             const deplie = detailAbsence === st.inscription_id;
+            const deplieDossier = detailDossier === st.inscription_id;
             return (
             <li key={st.inscription_id}
-              className={[st.statut === "abandon" ? "abandonne" : "", deplie ? "avec-detail" : ""].join(" ").trim()}>
+              className={[st.statut === "abandon" ? "abandonne" : "", (deplie || deplieDossier) ? "avec-detail" : ""].join(" ").trim()}>
               <div>
                 <strong>{st.nom} {st.prenom}</strong>
                 <div className="muted small">
@@ -467,8 +686,9 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
               </div>
               <div className="actions-stagiaire">
                 {/* Corriger une fiche passe par PATCH /stagiaires/:id, qui
-                    est réservé à l'admin : inutile de proposer un réglage
-                    qui répondrait 403. */}
+                    est ouvert aux admins ET aux contributeurs : la civilité
+                    rapide reste un raccourci admin, le panneau « Dossier »
+                    couvre la fiche entière pour les deux rôles. */}
                 {admin && (
                   <select
                     value={st.civilite || ""} aria-label={`Civilité de ${st.prenom} ${st.nom}`}
@@ -477,6 +697,12 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
                     <option value="">Civilité ?</option>
                     {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
+                )}
+                {peutSaisir && (
+                  <button className="btn petit"
+                    onClick={() => setDetailDossier(deplieDossier ? null : st.inscription_id)}>
+                    {deplieDossier ? "Fermer le dossier" : "Dossier"}
+                  </button>
                 )}
                 {fiche && (
                   <button className="btn petit"
@@ -491,6 +717,9 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
               {deplie && fiche && (
                 <PanneauAbsences fiche={fiche} session={abs.session} peutSaisir={peutSaisir}
                   recharger={charger} erreur={erreur} />
+              )}
+              {deplieDossier && (
+                <PanneauDossier st={st} groupes={d.groupes} recharger={charger} erreur={erreur} />
               )}
             </li>
             );
@@ -531,6 +760,12 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
         </div>
         )}
       </Bloc>
+
+      {peutSaisir && (
+        <Bloc titre="Importer des stagiaires (CSV)" ouvertParDefaut={d.stagiaires.length === 0}>
+          <ImportStagiaires sessionId={sessionId} recharger={charger} erreur={erreur} />
+        </Bloc>
+      )}
 
       <Bloc titre={`Documents générés (${d.documents.length})`} ouvertParDefaut>
         {peutSaisir && (

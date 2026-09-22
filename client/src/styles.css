@@ -268,3 +268,24 @@ p { margin: 0; }
 .liste-absences li.justifiee { border-left-color: var(--ok); }
 .liste-absences li.injustifiee { border-left-color: var(--err); }
 .absence-motif { flex: 1 1 12rem; min-width: 0; }
+
+/* ── Dossier stagiaire et import CSV ───────────────────────── */
+.dossier-stagiaire {
+  flex-basis: 100%; display: grid; gap: .6rem;
+  padding-top: .5rem; border-top: 1px dashed var(--border);
+}
+.import-stagiaires { display: grid; gap: .6rem; }
+.import-stagiaires input[type="file"] {
+  padding: .4rem; border: 1px dashed var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text);
+}
+.resume-import { display: flex; gap: .35rem; flex-wrap: wrap; }
+.liste-import { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.liste-import li {
+  display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  padding: .35rem .6rem; border: 1px solid var(--border);
+  border-left: 4px solid var(--border); border-radius: 8px;
+}
+.liste-import li.import-pret, .liste-import li.import-existant { border-left-color: var(--ok); }
+.liste-import li.import-invalide { border-left-color: var(--err); }
+.liste-import li.import-doublon_possible, .liste-import li.import-a_verifier { border-left-color: var(--warn); }

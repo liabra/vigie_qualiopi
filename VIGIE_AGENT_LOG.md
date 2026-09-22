@@ -783,3 +783,81 @@ Périmètre volontairement étroit :
 ### Prochaine étape
 
 Lot **L3** — stagiaires et dossiers : import CSV en masse, fiches stagiaires, inscriptions.
+
+---
+
+## 2026-09-22 (suite 5) — L3 : stagiaires et dossiers
+
+### Schéma réellement réutilisé — aucune migration
+
+Toutes les colonnes utiles existaient déjà : `stagiaires` (`civilite`, `nom`, `prenom`, `email`,
+`telephone`, `entreprise`, `financeur`, `situation_handicap`, `besoins_adaptation`),
+`inscriptions` (`stagiaire_id`, `session_id` UNIQUE, `groupe_id`, `prescripteur`,
+`dossier_complet`, `statut`, `date_abandon`), `groupes` (`session_id`, `nom`), `sessions`.
+**Aucune contrainte UNIQUE sur l'email** ajoutée : le rapprochement est fait par la route.
+
+### Format CSV retenu
+
+- séparateur virgule **ou** point-virgule détecté sur la première ligne (point-virgule prioritaire) ;
+- guillemets, BOM UTF-8, fins de ligne CRLF ;
+- en-têtes tolérants, sans casse ni accents (« Prénom », « E-mail », « Situation handicap »…) ;
+- colonne inconnue signalée, jamais devinée ; deux colonnes rappelant le même champ refusées ;
+- encodage illisible détecté (U+FFFD) ;
+- parseur **sans dépendance** (`services/csvStagiaires.js`, fonctions pures testées).
+
+### Règles de rapprochement / doublons
+
+- email unique normalisé → rapprochement exact, réutilisation sans ambiguïté ;
+- email partagé par plusieurs stagiaires → « à vérifier », jamais fusionné ;
+- nom/prénom sans email → « doublon possible », jamais fusionné ;
+- email deux fois dans le fichier → ligne invalide ;
+- stagiaire déjà inscrit dans la session → « déjà inscrit », pas de doublon.
+
+### Routes
+
+- `POST /api/sessions/:id/stagiaires/import-apercu` (`requireRedacteur`) — classification, aucune écriture.
+- `POST /api/sessions/:id/stagiaires/import` (`requireRedacteur`) — confirmation **transactionnelle**.
+- `PATCH /api/stagiaires/:id` (`requireRedacteur`) — fiche complète (toutes les colonnes).
+- `PATCH /api/inscriptions/:id` (`requireRedacteur`) — groupe validé contre la session, prescripteur,
+  dossier, statut/abandon.
+
+### Parcours UI
+
+Dans le détail de session : bouton « Dossier » par stagiaire (fiche + inscription) et bloc
+« Importer des stagiaires (CSV) » en deux temps — aperçu classé et résumé, puis confirmation avec
+bilan. `situation_handicap` et `besoins_adaptation` ne sont affichés que dans le panneau Dossier.
+
+### Droits
+
+ADMIN et CONTRIBUTEUR : import, création/correction de fiche, inscription, groupe, prescripteur,
+dossier, abandon. Aucun droit admin supplémentaire ouvert au contributeur — vérifié en direct : 403
+sur `POST /api/sessions`, `POST /api/preuves`, `PUT /api/formations/:id`, etc. ; 401 sans cookie.
+
+### Vérifications effectuées
+
+- `npm test` : **183/183** (135 avant → 48 nouveaux : 15 purs CSV + 33 HTTP).
+- `npm run build` : OK ; `git diff --check` : propre.
+- **Preuve que les tests mordent** (deux mutations, code restauré à l'identique) :
+  1. `requireRedacteur` → `requireAdmin` sur l'import → 182/183, échec de
+     « un contributeur importe un stagiaire » ;
+  2. validation de groupe neutralisée → 182/183, échec de « un groupe d'une autre session est refusé ».
+- **Navigateur réel** sur PostgreSQL jetable : import d'un CSV de 4 lignes → aperçu exact
+  (2 prêts, 1 doublon possible, 1 invalide) → confirmation → 2 créés, 2 inscrits, 2 ignorés ;
+  groupe/prescripteur/dossier appliqués ; correction de fiche (entreprise, situation de handicap,
+  besoins) ; changement de prescripteur et de dossier ; stagiaires antérieurs et abandon intacts ;
+  contributeur : voit « Dossier » et l'import, aucun contrôle admin.
+- **Bug réel corrigé en cours de route** : `cx.query` passé nu perdait sa liaison (`this`) → 500
+  contre le vrai client pg alors que la base simulée passait. Corrigé en flèche
+  `(sql, params) => cx.query(sql, params)`, et le faux client de test exige désormais la liaison
+  pour attraper ce genre de régression.
+- Le chemin zsh : une variable locale nommée `path` a écrasé `PATH` (piège zsh connu) ; restauré.
+
+### Limites restantes
+
+1. Rapprochement par email non transactionnel face à deux imports concurrents : fenêtre résiduelle.
+2. Pas d'export CSV des stagiaires, ni d'import des absences/QCM dans ce lot.
+3. Le chantier D1 (identifiants invalides sur les autres routes) reste entier.
+
+### Prochaine étape
+
+Déploiement du lot L3 après validation. **Aucun push effectué.**

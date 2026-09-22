@@ -8,6 +8,10 @@ import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
+import {
+  parserCsv, construireMapping, lireBooleen, normaliserEmail, validerEmail,
+  normaliserCivilite, normaliserPrescripteur, normaliser,
+} from "../services/csvStagiaires.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -256,7 +260,8 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   );
   const { rows: stagiaires } = await query(
     `SELECT i.id AS inscription_id, i.groupe_id, i.statut, i.date_inscription, i.date_abandon,
-            i.prescripteur, i.dossier_complet, s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone
+            i.prescripteur, i.dossier_complet, s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone,
+            s.entreprise, s.financeur, s.situation_handicap, s.besoins_adaptation
      FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
      WHERE i.session_id = $1 ORDER BY s.nom, s.prenom`,
     [id]
@@ -351,10 +356,25 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
 // automatiquement le stagiaire du décompte « par stagiaire » des preuves,
 // logique déjà en place.
 router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
   const { statut, date_abandon, motif_abandon, groupe_id, prescripteur, dossier_complet } = req.body || {};
   if (statut && !STATUTS_INSCRIPTION.includes(statut)) return res.status(400).json({ error: "Statut d'inscription inconnu." });
   if (prescripteur && !PRESCRIPTEURS.includes(prescripteur)) return res.status(400).json({ error: "Prescripteur inconnu." });
+
+  // Un groupe ne se rattache qu'à SA session : le corps ne doit pas pouvoir
+  // déplacer une inscription vers un groupe d'une autre session.
+  const gid = groupe_id === undefined ? undefined
+    : (groupe_id === "" || groupe_id === null ? null : Number(groupe_id));
+  if (gid !== undefined && gid !== null) {
+    if (!Number.isInteger(gid) || gid <= 0) return res.status(400).json({ error: "Groupe invalide." });
+    const { rowCount } = await query(
+      "SELECT 1 FROM groupes g JOIN inscriptions i ON i.session_id = g.session_id WHERE g.id = $1 AND i.id = $2",
+      [gid, id]
+    );
+    if (!rowCount) return res.status(400).json({ error: "Ce groupe n'appartient pas à la session." });
+  }
+
   const sets = [];
   const params = [id];
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
@@ -364,7 +384,7 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
     if (statut === "abandon") set("date_abandon", date_abandon || new Date().toISOString().slice(0, 10));
   } else if (date_abandon !== undefined) set("date_abandon", date_abandon || null);
   if (motif_abandon !== undefined) set("motif_abandon", motif_abandon || null);
-  if (groupe_id !== undefined) set("groupe_id", groupe_id || null);
+  if (groupe_id !== undefined) set("groupe_id", gid);
   if (prescripteur !== undefined) set("prescripteur", prescripteur || null);
   if (dossier_complet !== undefined) set("dossier_complet", dossier_complet === true);
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
@@ -595,14 +615,19 @@ router.delete("/absences/:id", requireRedacteur, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Modifier une personne déjà saisie. Indispensable pour la civilité :
-// les stagiaires enregistrés avant la migration 008 n'en ont aucune, et
-// rien d'autre ne permettait jusqu'ici de corriger une fiche.
-router.patch("/stagiaires/:id", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
-  const { civilite, nom, prenom, email, telephone } = req.body || {};
+// Modifier une personne déjà saisie. Ouvert aux admins ET aux contributeurs :
+// corriger une fiche stagiaire est de la saisie courante, pas de
+// l'administration. `situation_handicap` et `besoins_adaptation` sont gérés
+// ici sans jamais être journalisés ni insérés dans un message d'erreur.
+router.patch("/stagiaires/:id", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
+  const { civilite, nom, prenom, email, telephone, entreprise, financeur, situation_handicap, besoins_adaptation } = req.body || {};
   if (civilite !== undefined && civilite !== null && !CIVILITES.includes(civilite)) {
     return res.status(400).json({ error: "Civilité inconnue." });
+  }
+  if (email !== undefined && email !== null && email.trim() !== "" && !validerEmail(normaliserEmail(email))) {
+    return res.status(400).json({ error: "Email invalide." });
   }
   const sets = [];
   const params = [id];
@@ -612,12 +637,230 @@ router.patch("/stagiaires/:id", requireAdmin, wrap(async (req, res) => {
   if (civilite !== undefined) set("civilite", civilite || null);
   if (nom !== undefined && nom.trim()) set("nom", nom.trim());
   if (prenom !== undefined && prenom.trim()) set("prenom", prenom.trim());
-  if (email !== undefined) set("email", email?.trim() || null);
+  if (email !== undefined) set("email", normaliserEmail(email) || null);
   if (telephone !== undefined) set("telephone", telephone?.trim() || null);
+  if (entreprise !== undefined) set("entreprise", entreprise?.trim() || null);
+  if (financeur !== undefined) set("financeur", financeur?.trim() || null);
+  if (situation_handicap !== undefined) set("situation_handicap", situation_handicap === true);
+  if (besoins_adaptation !== undefined) set("besoins_adaptation", besoins_adaptation?.trim() || null);
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
   const { rows } = await query("UPDATE stagiaires SET " + sets.join(", ") + " WHERE id = $1 RETURNING *", params);
   if (!rows.length) return res.status(404).json({ error: "Stagiaire introuvable." });
   res.json({ stagiaire: rows[0] });
+}));
+
+// ── Import CSV de stagiaires ─────────────────────────────────
+// Parcours en deux temps : APERÇU (aucune écriture) puis CONFIRMATION
+// (transactionnelle). Un stagiaire n'est jamais rapproché d'un autre sur la
+// seule foi du nom/prénom ; seul un email unique, normalisé, autorise la
+// réutilisation. `situation_handicap` et `besoins_adaptation` circulent ici
+// uniquement entre le CSV et la base : jamais dans un log ni un message.
+
+function extraireValeurs(cellules, colonnes) {
+  const v = {};
+  for (const [idx, cle] of Object.entries(colonnes)) v[cle] = (cellules[Number(idx)] ?? "").trim();
+  return v;
+}
+
+// req : fonction de requête (query() pour l'aperçu, cx.query dans la
+// transaction de confirmation). Renvoie { erreur } ou le détail classifié.
+async function classerStagiaires({ req, sessionId, texte }) {
+  const analyse = parserCsv(texte);
+  if (analyse.erreur) return { erreur: analyse.erreur };
+  const { colonnes, inconnus, ambigus } = construireMapping(analyse.enTetes);
+  if (ambigus.length) {
+    return {
+      erreur: "Colonnes ambiguës : " +
+        ambigus.map((a) => `${a.cle} (${a.noms.join(", ")})`).join(" ; ") + ".",
+    };
+  }
+  if (!Object.values(colonnes).includes("nom") || !Object.values(colonnes).includes("prenom")) {
+    return { erreur: "Colonnes obligatoires absentes : « nom » et « prénom »." };
+  }
+
+  const { rows: groupes } = await req("SELECT id, nom FROM groupes WHERE session_id = $1", [sessionId]);
+  const emailsVus = new Set();
+  const nomsVus = new Set();
+  const resultats = [];
+  const resume = { nouveaux: 0, existants: 0, invalides: 0, doublons: 0, dejaInscrits: 0, vides: 0 };
+
+  for (let i = 0; i < analyse.lignes.length; i++) {
+    const cellules = analyse.lignes[i];
+    if (cellules.every((c) => !c)) {
+      resultats.push({ index: i, statut: "vide", motif: "ligne vide" });
+      resume.vides++;
+      continue;
+    }
+    const v = extraireValeurs(cellules, colonnes);
+    const nom = v.nom || "";
+    const prenom = v.prenom || "";
+    const email = normaliserEmail(v.email);
+
+    const ligne = { index: i, nom, prenom, email, statut: "pret", motif: null };
+    if (!nom || !prenom) {
+      ligne.statut = "invalide"; ligne.motif = "nom et prénom obligatoires";
+    } else if (v.email && !validerEmail(email)) {
+      ligne.statut = "invalide"; ligne.motif = "email invalide";
+    } else {
+      const dossier = lireBooleen(v.dossier_complet);
+      const handicap = lireBooleen(v.situation_handicap);
+      if (dossier === undefined) {
+        ligne.statut = "invalide"; ligne.motif = "« dossier complet » attendu en oui/non";
+      } else if (handicap === undefined) {
+        ligne.statut = "invalide"; ligne.motif = "« situation de handicap » attendue en oui/non";
+      } else {
+        const prescripteur = normaliserPrescripteur(v.prescripteur);
+        if (prescripteur === undefined) {
+          ligne.statut = "invalide"; ligne.motif = "prescripteur inconnu";
+        } else {
+          let groupeId = null;
+          if (v.groupe) {
+            const g = groupes.find((x) => normaliser(x.nom) === normaliser(v.groupe));
+            if (!g) { ligne.statut = "invalide"; ligne.motif = `groupe inconnu : ${v.groupe}`; }
+            else groupeId = g.id;
+          }
+          ligne.groupeId = groupeId;
+          ligne.prescripteur = prescripteur;
+          ligne.dossier_complet = dossier === true;
+
+          if (ligne.statut === "pret") {
+            const valeursFiche = {
+              nom, prenom, email, civilite: normaliserCivilite(v.civilite),
+              telephone: v.telephone || null, entreprise: v.entreprise || null,
+              financeur: v.financeur || null,
+              situation_handicap: handicap === true,
+              besoins_adaptation: v.besoins_adaptation || null,
+            };
+            if (email) {
+              if (emailsVus.has(email)) {
+                ligne.statut = "invalide"; ligne.motif = "doublon dans le fichier (email déjà présent)";
+              } else {
+                emailsVus.add(email);
+                const { rows } = await req("SELECT id FROM stagiaires WHERE lower(trim(email)) = $1", [email]);
+                if (rows.length > 1) {
+                  ligne.statut = "a_verifier"; ligne.motif = "plusieurs stagiaires partagent cet email";
+                } else if (rows.length === 1) {
+                  const { rows: ins } = await req("SELECT 1 FROM inscriptions WHERE stagiaire_id = $1 AND session_id = $2", [rows[0].id, sessionId]);
+                  if (ins.length) { ligne.statut = "deja_inscrit"; ligne.motif = "déjà inscrit dans cette session"; }
+                  else { ligne.statut = "existant"; ligne.stagiaireId = rows[0].id; }
+                }
+              }
+            } else {
+              const cle = normaliser(nom) + "|" + normaliser(prenom);
+              if (nomsVus.has(cle)) {
+                ligne.statut = "doublon_possible"; ligne.motif = "même nom/prénom déjà présent dans le fichier";
+              } else {
+                nomsVus.add(cle);
+                // `lower(trim(...))` en base : on compare des minuscules des
+                // deux côtés, sans toucher aux accents.
+                const { rows } = await req("SELECT id FROM stagiaires WHERE lower(trim(nom)) = $1 AND lower(trim(prenom)) = $2", [nom.toLowerCase(), prenom.toLowerCase()]);
+                if (rows.length) { ligne.statut = "doublon_possible"; ligne.motif = "nom/prénom déjà connu"; }
+              }
+            }
+            if (ligne.statut === "pret") ligne.valeurs = valeursFiche;
+          }
+        }
+      }
+    }
+
+    if (ligne.statut === "pret") resume.nouveaux++;
+    else if (ligne.statut === "existant") resume.existants++;
+    else if (ligne.statut === "deja_inscrit") resume.dejaInscrits++;
+    else if (ligne.statut === "invalide") resume.invalides++;
+    else if (ligne.statut === "doublon_possible" || ligne.statut === "a_verifier") resume.doublons++;
+    else if (ligne.statut === "vide") resume.vides++;
+    resultats.push(ligne);
+  }
+
+  return { sep: analyse.sep, enTetes: analyse.enTetes, inconnus, resultats, resume };
+}
+
+// Vue « légère » pour l'aperçu : on n'expose ni la situation de handicap ni
+// les besoins d'adaptation, qui ne concernent que la fiche une fois créée.
+function vueApercu(r) {
+  return {
+    sep: r.sep,
+    enTetes: r.enTetes,
+    colonnesInconnues: r.inconnus,
+    resume: r.resume,
+    lignes: r.resultats.map((l) => ({
+      index: l.index, statut: l.statut, motif: l.motif, nom: l.nom, prenom: l.prenom, email: l.email,
+      groupe: l.groupeId !== undefined ? l.groupeId : null,
+      prescripteur: l.prescripteur ?? null,
+      dossier_complet: l.dossier_complet === true,
+    })),
+  };
+}
+
+router.post("/sessions/:id/stagiaires/import-apercu", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const texte = req.body?.texte;
+  if (!texte || !String(texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const r = await classerStagiaires({ req: query, sessionId, texte });
+  if (r.erreur) return res.status(400).json({ error: r.erreur });
+  res.json(vueApercu(r));
+}));
+
+// Confirmer : relit le CSV et écrit DANS UNE TRANSACTION. Toute erreur
+// annule tout — pas de demi-import silencieux.
+router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const texte = req.body?.texte;
+  if (!texte || !String(texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+    if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+
+    const r = await classerStagiaires({ req: (sql, params) => cx.query(sql, params), sessionId, texte });
+    if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
+
+    const bilan = { crees: 0, reutilises: 0, inscrits: 0, dejaInscrits: 0, ignores: [] };
+    const inscrire = (stagiaireId, ligne) => cx.query(
+      `INSERT INTO inscriptions (stagiaire_id, session_id, groupe_id, prescripteur, dossier_complet)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (stagiaire_id, session_id) DO NOTHING`,
+      [stagiaireId, sessionId, ligne.groupeId ?? null, ligne.prescripteur ?? null, ligne.dossier_complet === true]
+    );
+
+    for (const ligne of r.resultats) {
+      if (ligne.statut === "pret") {
+        const f = ligne.valeurs;
+        const { rows: [nouveau] } = await cx.query(
+          `INSERT INTO stagiaires (civilite, nom, prenom, email, telephone, entreprise, financeur, situation_handicap, besoins_adaptation)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+          [f.civilite, f.nom, f.prenom, f.email, f.telephone, f.entreprise, f.financeur,
+           f.situation_handicap, f.besoins_adaptation]
+        );
+        await inscrire(nouveau.id, ligne);
+        bilan.crees++;
+        bilan.inscrits++;
+      } else if (ligne.statut === "existant") {
+        const { rowCount } = await inscrire(ligne.stagiaireId, ligne);
+        bilan.reutilises++;
+        if (rowCount) bilan.inscrits++;
+        else bilan.dejaInscrits++;
+      } else if (ligne.statut === "deja_inscrit") {
+        // Déjà détecté à la classification : rien à écrire, à compter tel quel.
+        bilan.dejaInscrits++;
+      } else {
+        bilan.ignores.push({ index: ligne.index, statut: ligne.statut, motif: ligne.motif });
+      }
+    }
+
+    await cx.query("COMMIT");
+    res.json({ bilan });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally {
+    cx.release();
+  }
 }));
 
 // ── Modèles de documents ─────────────────────────────────────

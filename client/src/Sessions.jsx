@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
+import { messageDepassementDuree } from "./messages.js";
 
 const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
 // Valeurs admises en base (migration 008). La chaîne vide vaut « non
@@ -13,6 +14,14 @@ const DEMI_JOURNEES = { matin: "Matin", apres_midi: "Après-midi", journee: "Jou
 // liste ne le connaît pas (ne devrait pas arriver après la migration 011).
 const libellePrescripteur = (code, prescripteurs) =>
   prescripteurs?.find((p) => p.code === code)?.nom || code || "";
+
+// Statuts d'une session (migration 001). Aucun changement automatique : c'est
+// l'utilisateur qui choisit, l'interface ne fait qu'avertir d'une incohérence.
+const STATUTS_SESSION = {
+  planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée",
+};
+const classeStatut = (statut) =>
+  statut === "terminee" ? "ok" : statut === "en_cours" ? "warn" : statut === "annulee" ? "off" : "";
 
 // Petit formulaire repliable : la Phase 2 en compte beaucoup, autant
 // qu'ils se ressemblent tous.
@@ -454,11 +463,10 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
   const [stagiaire, setStagiaire] = useState({ civilite: "", nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
   const [generation, setGeneration] = useState({ modele_id: "", groupe_id: "" });
   const [occupe, setOccupe] = useState(false);
-  // Horaire en cours de saisie. Il se recale sur la session OUVERTE, et non
-  // à chaque rechargement : ajouter un groupe ou un stagiaire ne doit pas
-  // effacer une correction commencée.
-  const [horaireSaisi, setHoraireSaisi] = useState("");
-  const [horaireEnCours, setHoraireEnCours] = useState(false);
+  // Formulaire « Modifier la session », pré-rempli une fois la session ouverte
+  // et jamais recalculé à chaque rechargement : ajouter un groupe ou un
+  // stagiaire ne doit pas effacer une correction commencée.
+  const [fs, setFs] = useState(null);
   // Absences et assiduité de la session, chargées avec le détail : deux
   // appels en parallèle plutôt qu'un aller-retour supplémentaire à l'ouverture
   // de chaque stagiaire.
@@ -478,24 +486,53 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
   }, [sessionId, erreur]);
   useEffect(() => { charger(); }, [charger]);
   const idSession = d?.session?.id;
-  useEffect(() => { setHoraireSaisi(d?.session?.horaire || ""); }, [idSession]);
+  useEffect(() => {
+    if (d?.session) {
+      setFs({
+        reference: d.session.reference || "", date_debut: d.session.date_debut, date_fin: d.session.date_fin,
+        lieu: d.session.lieu || "", formateur: d.session.formateur || "",
+        duree_heures_reelle: d.session.duree_heures_reelle || "", horaire: d.session.horaire || "",
+        statut: d.session.statut,
+      });
+    }
+  }, [idSession]);
 
   if (!d) return <p className="muted">Chargement de la session…</p>;
 
-  // Renseigner, corriger ou effacer l'horaire — le seul champ d'une session
-  // que l'admin peut reprendre après coup : les dates, le lieu, le formateur
-  // et la durée figent ce qui a été déclaré, et la durée est déjà imprimée
-  // sur les documents générés. Un texte vide efface l'horaire (NULL en base).
-  async function enregistrerHoraire(valeur) {
-    setHoraireEnCours(true);
+  // Corriger une session (admin). La modification ne touche jamais les
+  // documents déjà générés : s'ils existent et qu'un champ imprimé change,
+  // on le signale — jamais de régénération silencieuse.
+  async function enregistrerSession() {
+    setOccupe(true);
     try {
       const r = await api(`/api/sessions/${sessionId}`, {
-        method: "PATCH", body: JSON.stringify({ horaire: valeur }),
+        method: "PATCH",
+        body: JSON.stringify({
+          reference: fs.reference, date_debut: fs.date_debut, date_fin: fs.date_fin,
+          lieu: fs.lieu, formateur: fs.formateur,
+          duree_heures_reelle: fs.duree_heures_reelle === "" ? null : fs.duree_heures_reelle,
+          horaire: fs.horaire, statut: fs.statut,
+        }),
       });
-      setHoraireSaisi(r.session.horaire || "");   // la valeur retenue par le serveur
+      setFs({
+        reference: r.session.reference || "", date_debut: r.session.date_debut, date_fin: r.session.date_fin,
+        lieu: r.session.lieu || "", formateur: r.session.formateur || "",
+        duree_heures_reelle: r.session.duree_heures_reelle || "", horaire: r.session.horaire || "",
+        statut: r.session.statut,
+      });
       erreur(null);
+      if (r.absencesDepassentDuree) {
+        window.alert(messageDepassementDuree({
+          total_heures_absence: r.total_heures_absence,
+          duree_prevue: r.session.duree_heures_reelle,
+        }));
+      }
+      if (r.documentsObsoletes && d.documents.length > 0) {
+        window.alert(`${d.documents.length} document(s) généré(s) peuvent être obsolètes après cette modification : régénérez-les si nécessaire.`);
+      }
       await charger();
-    } catch (e) { erreur(e.message); } finally { setHoraireEnCours(false); }
+      onChange?.();
+    } catch (e) { erreur(e.message); } finally { setOccupe(false); }
   }
 
   async function ajouterGroupe() {
@@ -581,12 +618,20 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
   const s = d.session;
   const modelesUtiles = modeles.filter((m) => ["session", "groupe", "stagiaire"].includes(m.portee));
 
+  // Avertissement d'incohérence entre le statut et les dates, sans jamais
+  // changer le statut automatiquement : les dates peuvent être indicatives.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const incoherences = [];
+  if (s.statut === "planifiee" && s.date_fin < aujourdhui) incoherences.push("session « planifiée » dont la date de fin est passée");
+  if (s.statut === "terminee" && s.date_debut > aujourdhui) incoherences.push("session « terminée » dont la date de début est future");
+
   return (
     <div className="detail-session">
       <div className="ref-head">
         <div>
           <h2>{s.formation} · {s.reference || "sans référence"}</h2>
           <p className="muted small">
+            <span className={"pill " + classeStatut(s.statut)}>{STATUTS_SESSION[s.statut] || s.statut}</span>{" "}
             du {s.date_debut} au {s.date_fin} · version {s.version_numero} de la formation ·{" "}
             {s.duree_heures_reelle || s.duree_heures_defaut || "?"} h
             {s.horaire && <> · {s.horaire}</>}
@@ -595,20 +640,49 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
         </div>
       </div>
 
-      {/* Le contributeur lit l'horaire comme le reste de la session, mais ne
-          dispose d'aucune commande pour le changer. */}
+      {incoherences.length > 0 && (
+        <p className="flash info">
+          Attention : {incoherences.join(" ; ")}. Les dates peuvent être indicatives ou corrigées
+          après coup — le statut n'est pas modifié automatiquement.
+        </p>
+      )}
+
+      {/* L'admin corrige la session ; le contributeur ne voit que la lecture.
+          Formulaire repliable pour ne pas surcharger le détail. */}
       {admin && (
-        <div className="formulaire ligne">
-          <Champ label="Horaire" value={horaireSaisi} placeholder="8h30–12h00 / 13h00–16h30"
-            onChange={(e) => setHoraireSaisi(e.target.value)} />
-          <button className="btn petit" onClick={() => enregistrerHoraire(horaireSaisi)} disabled={horaireEnCours}>
-            Enregistrer l'horaire
-          </button>
-          <button className="btn petit" onClick={() => enregistrerHoraire("")}
-            disabled={horaireEnCours || !s.horaire}>
-            Effacer
-          </button>
-        </div>
+        <Bloc titre="Modifier la session">
+          {fs && (
+            <>
+              <div className="formulaire ligne">
+                <Champ label="Référence" value={fs.reference}
+                  onChange={(e) => setFs({ ...fs, reference: e.target.value })} />
+                <Champ label="Début" type="date" value={fs.date_debut}
+                  onChange={(e) => setFs({ ...fs, date_debut: e.target.value })} />
+                <Champ label="Fin" type="date" value={fs.date_fin}
+                  onChange={(e) => setFs({ ...fs, date_fin: e.target.value })} />
+                <Champ label="Lieu" value={fs.lieu}
+                  onChange={(e) => setFs({ ...fs, lieu: e.target.value })} />
+                <Champ label="Formateur" value={fs.formateur}
+                  onChange={(e) => setFs({ ...fs, formateur: e.target.value })} />
+                <Champ label="Durée prévue (h)" type="number" min="0" value={fs.duree_heures_reelle}
+                  onChange={(e) => setFs({ ...fs, duree_heures_reelle: e.target.value })} />
+                <Champ label="Horaire" value={fs.horaire} placeholder="8h30–12h00 / 13h00–16h30"
+                  onChange={(e) => setFs({ ...fs, horaire: e.target.value })} />
+                <label className="champ">
+                  <span className="muted small">Statut</span>
+                  <select value={fs.statut} onChange={(e) => setFs({ ...fs, statut: e.target.value })}>
+                    {Object.entries(STATUTS_SESSION).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="preuve-actions">
+                <button className="btn primary" onClick={enregistrerSession} disabled={occupe}>
+                  Enregistrer la session
+                </button>
+              </div>
+            </>
+          )}
+        </Bloc>
       )}
 
       <Bloc titre={`Groupes (${d.groupes.length})`} ouvertParDefaut>
@@ -954,7 +1028,11 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
             <li key={s.id} className={choisie === s.id ? "actif" : ""}>
               <div>
                 <strong>{s.reference || s.formation}</strong>
-                <div className="muted small">{s.formation} · du {s.date_debut} au {s.date_fin} · {s.nb_inscrits} inscrit(s)</div>
+                <div className="muted small">
+                  <span className={"pill " + classeStatut(s.statut)}>{STATUTS_SESSION[s.statut] || s.statut}</span>{" "}
+                  {s.formation} · du {s.date_debut} au {s.date_fin}
+                  {s.horaire && <> · {s.horaire}</>}{s.lieu && <> · {s.lieu}</>} · {s.nb_inscrits} inscrit(s)
+                </div>
               </div>
               <button className="btn petit" onClick={() => setChoisie(choisie === s.id ? null : s.id)}>
                 {choisie === s.id ? "Fermer" : "Ouvrir"}
@@ -988,7 +1066,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
 
       {choisie && (
         <DetailSession
-          sessionId={choisie} modeles={modeles} prescripteurs={prescripteurs} onChange={onChange} erreur={setErr}
+          sessionId={choisie} modeles={modeles} prescripteurs={prescripteurs} onChange={charger} erreur={setErr}
           admin={admin} peutSaisir={peutSaisir}
         />
       )}

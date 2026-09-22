@@ -188,7 +188,8 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
 // qui servira de nombre attendu en mode « par stagiaire ».
 router.get("/sessions", requireAuth, wrap(async (_req, res) => {
   const { rows } = await query(
-    `SELECT s.id, s.reference, s.date_debut, s.date_fin, f.intitule AS formation,
+    `SELECT s.id, s.reference, s.date_debut, s.date_fin, s.statut, s.lieu, s.horaire,
+            f.intitule AS formation,
             (SELECT count(*)::int FROM inscriptions i WHERE i.session_id = s.id AND i.statut <> 'abandon') AS nb_inscrits,
             COALESCE(
               (SELECT json_agg(json_build_object(

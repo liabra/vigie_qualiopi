@@ -970,3 +970,106 @@ Déploiement de L3 + L3-bis après validation. **Aucun push effectué.**
 ### Prochaine étape
 
 Lot **L4** — sessions corrigeables et cycle de vie (statut).
+
+---
+
+## 2026-09-22 (suite 8) — L4 : sessions corrigeables et cycle de vie
+
+### Audit préalable
+
+- `sessions.statut` existait depuis 001 (`DEFAULT 'planifiee'` + CHECK 4 valeurs) mais n'était ni
+  exposé ni modifiable : `GET /api/sessions` ne le renvoyait pas, `PATCH /api/sessions/:id` ne
+  gérait que `horaire`.
+- **Aucune migration nécessaire** : le lot est purement applicatif (route + client + tests).
+
+### Backend
+
+- `PATCH /api/sessions/:id` (`requireAdmin`) réécrit : charge la ligne, applique uniquement les
+  champs reconnus (`reference`, `date_debut`, `date_fin`, `lieu`, `formateur`,
+  `duree_heures_reelle`, `horaire`, `statut`), valide chaque saisie, calcule `documentsObsoletes`
+  sur les 7 champs imprimés (durée comparée numériquement), `23505` → 409.
+- `GET /api/sessions` (`requireAuth`) renvoie en plus `statut`, `lieu`, `horaire`.
+
+### Client
+
+- liste : pilule de statut + horaire + lieu ;
+- détail : pilule de statut, avertissement d'incohérence sans correction automatique
+  (planifiée/fin passée, terminée/début futur), bloc admin « Modifier la session » repliable ;
+- après enregistrement, la liste se rafraîchit (`onChange` repassé sur le `charger` parent).
+
+### Tests
+
+- `server/test/sessions.test.js` (16 tests, app réelle + base simulée) ;
+- `server/test/horaire.test.js` recentré sur `normaliserHoraire` (le contrat HTTP du PATCH vit
+  désormais dans `sessions.test.js`) ;
+- `npm test` : **208/208** (199 → 208) ; `npm run build` OK ; `git diff --check` propre.
+
+### Vérification navigateur (PostgreSQL jetable `/tmp/vq-pgtest`)
+
+- admin : édition lieu/durée/statut/formateur → persistée, liste rafraîchie à vif, assiduité
+  recalculée (30 h), avertissement « planifiée » fin passée présent puis absent selon le statut ;
+- contributeur : détail en lecture seule (pas de bloc « Modifier la session »), 403 direct en API ;
+- API : `documentsObsoletes` true/false corrects (lieu changé / statut / sans changement réel),
+  statut invalide 400, contributeur 403.
+
+### État
+
+- **L4 TERMINÉ.** Aucun push effectué ; attente de validation pour pousser et déployer.
+
+### Prochaine étape
+
+Validation L4 par l'utilisateur, puis push + déploiement Railway.
+
+---
+
+## 2026-09-22 (suite 9) — L4 : arbitrage appliqué (dates/absences, durée, référence)
+
+Après audit lecture seule et arbitrage de l'utilisateur, trois corrections minimales :
+
+### 1. Dates vs absences existantes — BLOQUER
+
+`PATCH /api/sessions/:id` : si `date_debut`/`date_fin` changent réellement, la nouvelle période est
+comparée aux absences des inscriptions de la session. Si au moins une absence tombe hors période,
+réponse **400** « Impossible : N absence(s) tomberaient hors des nouvelles dates… », sans aucune
+écriture. Aucun changement de schéma.
+
+### 2. Durée prévue vs absences — NE PAS bloquer, signaler
+
+Si `duree_heures_reelle` est réduite sous le total d'heures d'absence, la réponse porte
+`absencesDepassentDuree: true` et `total_heures_absence`. Le client alerte :
+« Attention : N h d'absence dépassent la nouvelle durée prévue de M h. » (fonction pure
+`messageDepassementDuree` dans `client/src/messages.js`). Le calcul d'assiduité reste inchangé
+(taux borné à 0 %, heures suivies plancher 0, dépassement signalé dans le détail).
+
+### 3. Référence — FACULTATIVE
+
+Référence de session **facultative, unique lorsqu'elle est renseignée**. Confirmé par le schéma
+(`reference text UNIQUE`, nullable), le formulaire de création (seuls formation + dates sont
+obligatoires) et la production (session existante sans référence). Aucune modification : comportement
+documenté seulement.
+
+### Tests
+
+- `server/test/sessions.test.js` : +8 (dates excluant une absence sur `date_debut`, `date_fin`,
+  les deux, comptage multiple, aucune écriture partielle ; durée < absences → drapeau, durée >=
+  absences → rien, effacement → rien).
+- `server/test/avertissements.test.js` (nouveau, 2 tests) : message client de dépassement.
+- `npm test` : **218/218** (208 avant → +10) ; `npm run build` OK ; `git diff --check` propre.
+
+### Vérification navigateur (PostgreSQL jetable)
+
+- blocage dates : `date_debut` 2026-01-10 (exclut l'absence du 06) → erreur « 1 absence tomberait
+  hors… » affichée, rien modifié ;
+- durée 2 h (< 3,5 h d'absences) → dialogue « Attention : 3.5 h d'absence dépassent la nouvelle
+  durée prévue de 2 h. », puis détail « Assiduité 0 % · 0 h suivies sur 2 h » + pilule
+  « Absences supérieures à la durée prévue » ;
+- modification normale (lieu → Kourou, durée → 28) toujours fonctionnelle, liste rafraîchie ;
+- contributeur toujours en lecture seule (pas de bloc « Modifier la session », 403 direct en API).
+
+### État
+
+- Corrections appliquées, tests et navigateur OK. **Aucun push effectué.**
+
+### Prochaine étape
+
+Push + déploiement après validation finale.

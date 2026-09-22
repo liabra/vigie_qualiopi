@@ -19,6 +19,8 @@ const manque = (res, champ) => res.status(400).json({ error: `Champ obligatoire 
 
 const PORTEES = ["formation", "session", "groupe", "stagiaire"];
 const MODALITES = ["presentiel", "distanciel", "mixte"];
+// Valeurs admises par la contrainte de la migration 001 sur sessions.statut.
+const STATUTS_SESSION = ["planifiee", "en_cours", "terminee", "annulee"];
 // Valeurs admises par la contrainte de la migration 008.
 const CIVILITES = ["M.", "Mme"];
 
@@ -283,20 +285,136 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   res.json({ session, groupes, stagiaires, documents });
 }));
 
-// Corriger l'horaire d'une session — c'est le SEUL champ que cette route
-// sait modifier, volontairement. Les autres champs d'une session figent ce
-// qui a été déclaré : la durée et les dates, en particulier, sont déjà
-// imprimées sur les documents générés. Comme les autres PATCH du projet,
-// un corps sans le champ attendu est refusé, et tout champ surnuméraire
-// est ignoré plutôt que modifié en silence.
+// Corriger une session. L'admin reprend la référence, les dates, le lieu, le
+// formateur, la durée prévue, l'horaire et le statut. La modification ne touche
+// JAMAIS les documents déjà générés : on signale seulement qu'ils peuvent être
+// devenus obsolètes — pas de moteur de version documentaire ici, et aucune
+// régénération silencieuse.
+const CHAMPS_DOCUMENT = ["reference", "date_debut", "date_fin", "lieu", "formateur", "duree_heures_reelle", "horaire"];
+
 router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
-  if (req.body?.horaire === undefined) return res.status(400).json({ error: "Rien à modifier." });
-  const { rows } = await query(
-    "UPDATE sessions SET horaire = $2 WHERE id = $1 RETURNING *",
-    [Number(req.params.id), normaliserHoraire(req.body.horaire)]
-  );
-  if (!rows.length) return res.status(404).json({ error: "Session introuvable." });
-  res.json({ session: rows[0] });
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const corps = req.body || {};
+
+  const { rows: [actuelle] } = await query("SELECT * FROM sessions WHERE id = $1", [id]);
+  if (!actuelle) return res.status(404).json({ error: "Session introuvable." });
+
+  // Valeurs retenues pour chaque champ (l'ancienne par défaut), pour comparer
+  // ce qui change réellement — sans quoi un PATCH ne modifiant rien serait
+  // annoncé comme « documents obsolètes ».
+  const nouvelles = {
+    reference: actuelle.reference, date_debut: actuelle.date_debut, date_fin: actuelle.date_fin,
+    lieu: actuelle.lieu, formateur: actuelle.formateur, duree_heures_reelle: actuelle.duree_heures_reelle,
+    horaire: actuelle.horaire,
+  };
+  const sets = [];
+  const params = [id];
+  const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
+
+  if (corps.reference !== undefined) {
+    if (corps.reference === null) { nouvelles.reference = null; set("reference", null); }
+    else {
+      const r = String(corps.reference).trim();
+      if (!r) return res.status(400).json({ error: "La référence ne peut pas être vide." });
+      nouvelles.reference = r; set("reference", r);
+    }
+  }
+
+  let debut = actuelle.date_debut;
+  let fin = actuelle.date_fin;
+  if (corps.date_debut !== undefined) {
+    if (!estDateValide(corps.date_debut)) return res.status(400).json({ error: "Date de début invalide." });
+    debut = corps.date_debut; nouvelles.date_debut = debut; set("date_debut", debut);
+  }
+  if (corps.date_fin !== undefined) {
+    if (!estDateValide(corps.date_fin)) return res.status(400).json({ error: "Date de fin invalide." });
+    fin = corps.date_fin; nouvelles.date_fin = fin; set("date_fin", fin);
+  }
+  if (fin < debut) return res.status(400).json({ error: "La date de fin précède la date de début." });
+
+  // Une correction de dates ne doit jamais laisser une absence existante
+  // hors période : les routes d'absences bornent la saisie à la période, une
+  // telle absence deviendrait incohérente et non modifiable.
+  const datesModifiees = debut !== actuelle.date_debut || fin !== actuelle.date_fin;
+  if (datesModifiees) {
+    const { rows: [hors] } = await query(
+      `SELECT count(*)::int AS n FROM absences a JOIN inscriptions i ON i.id = a.inscription_id
+       WHERE i.session_id = $1 AND (a.date_absence < $2 OR a.date_absence > $3)`,
+      [id, debut, fin]
+    );
+    if (hors.n > 0) {
+      const verbe = hors.n > 1 ? "tomberaient" : "tomberait";
+      return res.status(400).json({
+        error: `Impossible : ${hors.n} absence${hors.n > 1 ? "s" : ""} ${verbe} hors des nouvelles dates de la session. Modifiez ou supprimez d'abord ces absences.`,
+      });
+    }
+  }
+
+  if (corps.duree_heures_reelle !== undefined) {
+    if (corps.duree_heures_reelle === null || corps.duree_heures_reelle === "") {
+      nouvelles.duree_heures_reelle = null; set("duree_heures_reelle", null);
+    } else {
+      const d = Number(corps.duree_heures_reelle);
+      if (!Number.isFinite(d) || d <= 0) return res.status(400).json({ error: "Durée prévue invalide : nombre d'heures positif." });
+      nouvelles.duree_heures_reelle = d; set("duree_heures_reelle", d);
+    }
+  }
+
+  // Réduire la durée prévue reste possible : le calcul d'assiduité borne déjà
+  // le taux à 0 %. On signale seulement si les absences dépassent la nouvelle
+  // durée, pour que l'admin le sache au moment d'enregistrer.
+  let avertissementAbsences = null;
+  if (corps.duree_heures_reelle !== undefined && nouvelles.duree_heures_reelle !== null) {
+    const prevues = Number(nouvelles.duree_heures_reelle);
+    if (Number.isFinite(prevues) && prevues > 0) {
+      const { rows: [tot] } = await query(
+        `SELECT COALESCE(sum(a.duree_heures), 0)::float8 AS total
+         FROM absences a JOIN inscriptions i ON i.id = a.inscription_id
+         WHERE i.session_id = $1`,
+        [id]
+      );
+      const totalHeures = Math.round((Number(tot.total) || 0) * 100) / 100;
+      if (totalHeures > prevues) {
+        avertissementAbsences = { absencesDepassentDuree: true, total_heures_absence: totalHeures };
+      }
+    }
+  }
+
+  for (const champ of ["lieu", "formateur"]) {
+    if (corps[champ] !== undefined) {
+      const v = corps[champ] === null ? null : (String(corps[champ]).trim() || null);
+      nouvelles[champ] = v; set(champ, v);
+    }
+  }
+
+  if (corps.horaire !== undefined) {
+    const h = normaliserHoraire(corps.horaire);
+    nouvelles.horaire = h; set("horaire", h);
+  }
+
+  if (corps.statut !== undefined) {
+    if (!STATUTS_SESSION.includes(corps.statut)) return res.status(400).json({ error: "Statut de session inconnu." });
+    set("statut", corps.statut);
+  }
+
+  if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
+
+  // Un champ « document » a-t-il réellement changé ? Les textes sont comparés
+  // tels quels, la durée est comparée numériquement (« 28 » = « 28.00 »).
+  const documentsObsoletes = CHAMPS_DOCUMENT.some((c) => {
+    if (c === "duree_heures_reelle") return Number(nouvelles[c] ?? 0) !== Number(actuelle[c] ?? 0);
+    return String(nouvelles[c] ?? "") !== String(actuelle[c] ?? "");
+  });
+
+  try {
+    const { rows } = await query(`UPDATE sessions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
+    if (!rows.length) return res.status(404).json({ error: "Session introuvable." });
+    res.json({ session: rows[0], documentsObsoletes, ...(avertissementAbsences || {}) });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Cette référence est déjà utilisée par une autre session." });
+    throw e;
+  }
 }));
 
 router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {

@@ -529,7 +529,92 @@ chantier de déduplication, s'il devient nécessaire, est distinct.
 
 ---
 
-## 8. Droits
+## 7 quinquies. Lot L4 — sessions corrigeables et cycle de vie — TERMINÉ
+
+Objectif : permettre à l'admin de **corriger** une session déjà créée et de suivre son **statut**,
+sans jamais toucher aux documents déjà générés.
+
+### État initial du champ `statut`
+
+`sessions.statut` existait depuis la migration 001 (`text NOT NULL DEFAULT 'planifiee'` avec
+`CHECK (statut IN ('planifiee','en_cours','terminee','annulee'))`) mais n'était **ni exposé ni
+modifiable** : `GET /api/sessions` ne le renvoyait pas, `PATCH /api/sessions/:id` ne gérait que
+l'horaire (héritage du lot « horaire »). Aucune migration n'a donc été nécessaire.
+
+### Champs rendus modifiables
+
+`PATCH /api/sessions/:id` (`requireAdmin`) accepte désormais :
+
+- `reference`, `date_debut`, `date_fin`, `lieu`, `formateur`, `duree_heures_reelle`, `horaire`,
+  `statut`.
+
+### Règles métier retenues
+
+- dates : format strict `AAAA-MM-JJ`, et `date_fin >= date_debut` (contre la date restée en base
+  si une seule est envoyée) ;
+- durée : nombre strictement positif, ou `null`/`""` pour l'effacer ;
+- **si `date_debut`/`date_fin` changent réellement**, les absences des inscriptions de la session
+  sont contrôlées : toute absence qui tomberait hors de la nouvelle période bloque la modification
+  (**400** « Impossible : N absence(s) tomberaient hors des nouvelles dates… »), sans aucune
+  écriture partielle ;
+- **réduction de la durée prévue** : jamais bloquée (le calcul d'assiduité borne déjà le taux à
+  0 %), mais si `total_heures_absence > nouvelle durée`, la réponse porte `absencesDepassentDuree:
+  true` et `total_heures_absence`, et le client avertit explicitement ;
+- référence : **facultative**, unique lorsqu'elle est renseignée (`reference text UNIQUE`, nullable) ;
+  non vide sinon, ou `null` pour l'effacer ; collision `23505` → **409** « Cette référence est déjà
+  utilisée par une autre session » ;
+- statut : strictement dans `planifiee|en_cours|terminee|annulee`, sinon **400** ;
+- horaire : normalisé par `normaliserHoraire` (rogné, `NULL` si vide) — partagé avec la création ;
+- corps vide ou sans champ reconnu → **400** « Rien à modifier » ;
+- identifiant non numérique → **400**, session introuvable → **404**.
+
+### Comportement face aux documents déjà générés
+
+La modification **ne régénère jamais** un document. La route compare les champs **imprimés**
+(`reference`, `date_debut`, `date_fin`, `lieu`, `formateur`, `duree_heures_reelle`, `horaire`)
+à leur valeur en base (durée comparée numériquement : « 28 » = « 28.00 ») et renvoie
+`documentsObsoletes`. Si des documents existent et qu'un de ces champs a réellement changé, le
+client alerte « peuvent être obsolètes : régénérez-les si nécessaire » — aucune régénération
+silencieuse, aucun moteur de version documentaire.
+
+### Droits
+
+- `PATCH /api/sessions/:id` : **requireAdmin** (401 anonyme, 403 contributeur) — vérifié en test et
+  en navigateur ;
+- `GET /api/sessions` (`requireAuth`) renvoie en plus `statut`, `lieu`, `horaire` pour la liste.
+
+### UI
+
+- liste des sessions : pilule de statut (Planifiée / En cours / Terminée / Annulée) + horaire + lieu ;
+- détail : pilule de statut, avertissement d'incohérence **sans correction automatique** (session
+  « planifiée » dont la fin est passée ; « terminée » dont le début est futur) ;
+- bloc « Modifier la session » repliable, admin uniquement ; la liste se rafraîchit après l'enregistrement.
+
+### Tests
+
+- `server/test/sessions.test.js` (24 tests HTTP, application Express réelle + base simulée) :
+  champs modifiables, multi-champs, 400 (vide, dates, durée, statut, référence, identifiant),
+  404, 409, 401/403, `documentsObsoletes`, aucune écriture dans `generations`/`documents_generes`,
+  **blocage des dates qui excluraient une absence** et signal `absencesDepassentDuree` ;
+- `server/test/avertissements.test.js` (2 tests) : message client de dépassement de durée
+  (`messageDepassementDuree` dans `client/src/messages.js`) ;
+- `server/test/horaire.test.js` recentré sur la règle de normalisation (le contrat HTTP vit dans
+  `sessions.test.js`) ;
+- `npm test` : **218/218** (208 avant → +10).
+
+### Limites restantes
+
+1. Aucun contrôle croisé du statut au-delà de l'avertissement d'affichage : les dates peuvent être
+   indicatives, le statut n'est jamais déduit ni corrigé automatiquement.
+2. Le passage d'un statut à l'autre n'écrit pas d'historique (pas de table de journal des statuts).
+3. L'alerte « documents obsolètes » repose sur le nombre de documents affichés dans le détail ;
+   si l'utilisateur navigue hors du détail, l'alerte n'est pas rejouée.
+4. L'avertissement « absences supérieures à la durée prévue » n'apparaît qu'au moment de
+   l'enregistrement : il n'est pas rejoué si l'utilisateur reconsulte la session plus tard
+   (le détail, lui, continue d'afficher le dépassement via le calcul d'assiduité).
+
+---
+
 
 Historique de principe :
 

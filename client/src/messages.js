@@ -11,3 +11,10 @@ export const ERREURS = {
   mauvais_compte_drive: "Le Drive doit être connecté avec le compte de l'organisme.",
   scope_drive_refuse: "L'accès en lecture au Drive n'a pas été accordé.",
 };
+
+// Avertissement affiché après enregistrement quand les heures d'absence
+// dépassent la nouvelle durée prévue d'une session. Fonction pure, testable
+// sans navigateur.
+export function messageDepassementDuree({ total_heures_absence, duree_prevue }) {
+  return `Attention : ${total_heures_absence} h d'absence dépassent la nouvelle durée prévue de ${Number(duree_prevue)} h.`;
+}

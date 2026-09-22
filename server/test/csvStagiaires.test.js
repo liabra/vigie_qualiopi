@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   detecterSeparateur, decouperLigne, parserCsv, normaliser, construireMapping,
-  lireBooleen, normaliserEmail, validerEmail, normaliserCivilite, normaliserPrescripteur,
+  lireBooleen, normaliserEmail, validerEmail, normaliserCivilite, trouverPrescripteur,
 } from "../src/services/csvStagiaires.js";
 
 test("le séparateur est détecté sur la première ligne", () => {
@@ -98,12 +98,16 @@ test("la civilité tolère les variantes sans inventer", () => {
   assert.equal(normaliserCivilite("Autre chose"), null);
 });
 
-test("le prescripteur tolère les variantes mais refuse l'inconnu", () => {
-  assert.equal(normaliserPrescripteur("Pôle Emploi"), "pole_emploi");
-  assert.equal(normaliserPrescripteur("France Travail"), "pole_emploi");
-  assert.equal(normaliserPrescripteur("Mission Locale"), "mission_locale");
-  assert.equal(normaliserPrescripteur("Organisme de formation"), "of");
-  assert.equal(normaliserPrescripteur("Autre"), "autre");
-  assert.equal(normaliserPrescripteur(""), null);
-  assert.equal(normaliserPrescripteur("Trésor public"), undefined);
+test("le prescripteur est rapproché de la table par code ou par libellé", () => {
+  const prescripteurs = [
+    { id: 1, code: "pole_emploi", nom: "Pôle Emploi", actif: true },
+    { id: 2, code: "mission_locale", nom: "Mission Locale", actif: true },
+    { id: 3, code: "cap_emploi", nom: "CAP Emploi", actif: false },
+  ];
+  assert.equal(trouverPrescripteur("Pôle Emploi", prescripteurs)?.code, "pole_emploi");
+  assert.equal(trouverPrescripteur("pôle emploi", prescripteurs)?.code, "pole_emploi");
+  assert.equal(trouverPrescripteur("pole_emploi", prescripteurs)?.code, "pole_emploi");
+  assert.equal(trouverPrescripteur("CAP Emploi", prescripteurs)?.code, "cap_emploi");
+  assert.equal(trouverPrescripteur("", prescripteurs), null, "vide = non renseigné");
+  assert.equal(trouverPrescripteur("Trésor public", prescripteurs), null, "inconnu");
 });

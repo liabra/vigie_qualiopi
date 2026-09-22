@@ -7,7 +7,7 @@
 | **État validé au** | 22/09/2026 |
 | **Dernier lot métier validé en production** | absences et assiduité — lot L2 (`2f4fd84`) |
 | **Migration de production actuelle** | `010_horaire_session.sql` |
-| **Suite de tests validée** | **183/183 au vert** |
+| **Suite de tests validée** | **199/199 au vert** |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -193,6 +193,7 @@ La vue `preuves_enrichies` centralise la logique de statut, incomplet et alertes
 - `groupes`
 - `stagiaires`
 - `inscriptions`
+- `prescripteurs` (migration 011 : liste configurable, `code` stable + `nom` + `actif`)
 
 Tables existantes historiquement mais non exploitées ou partiellement exploitées :
 
@@ -488,11 +489,27 @@ gestion du stagiaire, jamais dans l'aperçu d'import, jamais dans les logs ni le
 
 ### Tests
 
-- `server/test/csvStagiaires.test.js` (15 tests purs) et `server/test/stagiaires.test.js` (33 tests
-  HTTP, application Express réelle + base simulée).
-- `npm test` : **183/183**
+- `server/test/csvStagiaires.test.js` (15 tests purs), `server/test/stagiaires.test.js` (33 tests
+  HTTP, application Express réelle + base simulée) et `server/test/prescripteurs.test.js` (11 tests).
+- `npm test` : **199/199**
 - test navigateur réel sur PostgreSQL jetable (admin + contributeur).
 - deux mutations rejouées pour vérifier que les tests mordent.
+- migration 011 testée en deux phases sur une base contenant des données réelles (aucune perte).
+
+### Prescripteurs configurables (L3-bis)
+
+La liste des prescripteurs, jusqu'ici figée dans un CHECK SQL (`pole_emploi`, `mission_locale`,
+`of`, `autre`), devient **configurable** via la migration 011 :
+
+- `inscriptions.prescripteur` reste du TEXTE et continue de stocker le `code` : aucune inscription
+  existante n'est réécrite, aucune FK n'est ajoutée ;
+- table `prescripteurs` (`code` UNIQUE, `nom`, `actif`) : afficher, ajouter, renommer (le code ne
+  bouge jamais), désactiver sans supprimer ;
+- seed historique inchangé (Pôle Emploi, Mission Locale, Organisme de formation, Autre) + CAP Emploi ;
+- un prescripteur est **facultatif** : CSV sans colonne ou cellule vide = non renseigné, sans erreur ;
+- valeur CSV inconnue ou désactivée : signalée dans l'aperçu, jamais devinée, jamais créée
+  automatiquement — l'admin la crée dans Vigie, puis le CSV se réanalyse ;
+- droits : ADMIN crée/renomme/désactive ; CONTRIBUTEUR sélectionne seulement.
 
 ### Limite connue
 
@@ -828,7 +845,7 @@ Ne pas sur-concevoir maintenant.
 
 Référence connue au **22/09/2026** :
 
-- `npm test` : **183/183**
+- `npm test` : **199/199**
 - `npm run build` : OK
 - production Railway : OK
 - migration de production : **010**

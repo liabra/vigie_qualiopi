@@ -142,19 +142,13 @@ export function normaliserCivilite(valeur) {
   return null;
 }
 
-// Prescripteur : null (vide) / valeur canonique / undefined (inconnue).
-const PRESCRIPTEURS_IMPORT = {
-  pole_emploi: ["poleemploi", "francetravail", "ft"],
-  mission_locale: ["missionlocale"],
-  of: ["of", "organismedeformation", "organismeformation"],
-  autre: ["autre", "autres"],
-};
-
-export function normaliserPrescripteur(valeur) {
+// Prescripteur : la liste vit désormais en base (`prescripteurs`). On
+// rapproche une valeur CSV d'un prescripteur connu en normalisant LE code ET
+// le libellé : « Pôle Emploi », « pôle emploi » et « pole_emploi » désignent
+// le même prescripteur. Renvoie l'entrée trouvée, ou null si inconnue.
+export function trouverPrescripteur(valeur, prescripteurs) {
   const t = normaliser(valeur);
   if (!t) return null;
-  for (const [canonique, noms] of Object.entries(PRESCRIPTEURS_IMPORT)) {
-    if (noms.includes(t)) return canonique;
-  }
-  return undefined;
+  return (prescripteurs || []).find((p) =>
+    normaliser(p.code) === t || normaliser(p.nom) === t) || null;
 }

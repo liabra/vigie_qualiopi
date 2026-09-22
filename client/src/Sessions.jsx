@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 
-const PRESCRIPTEURS = {
-  pole_emploi: "Pôle Emploi", mission_locale: "Mission Locale", of: "Organisme de formation", autre: "Autre",
-};
 const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
 // Valeurs admises en base (migration 008). La chaîne vide vaut « non
 // renseignée » : le marqueur {{civilite}} est alors remplacé par du vide.
 const CIVILITES = ["M.", "Mme"];
 // Valeurs admises par la contrainte SQL sur absences.demi_journee.
 const DEMI_JOURNEES = { matin: "Matin", apres_midi: "Après-midi", journee: "Journée" };
+
+// Libellé d'un prescripteur à partir de son code, y compris un prescripteur
+// désactivé resté sur une ancienne inscription. Retombe sur le code si la
+// liste ne le connaît pas (ne devrait pas arriver après la migration 011).
+const libellePrescripteur = (code, prescripteurs) =>
+  prescripteurs?.find((p) => p.code === code)?.nom || code || "";
 
 // Petit formulaire repliable : la Phase 2 en compte beaucoup, autant
 // qu'ils se ressemblent tous.
@@ -233,7 +236,7 @@ function PanneauAbsences({ fiche, session, peutSaisir, recharger, erreur }) {
 // groupe, le prescripteur, le dossier et l'abandon. Les champs
 // `situation_handicap` et `besoins_adaptation` ne sont visibles qu'ici,
 // dans le contexte de la gestion du dossier, et jamais ailleurs.
-function PanneauDossier({ st, groupes, recharger, erreur }) {
+function PanneauDossier({ st, groupes, prescripteurs, recharger, erreur }) {
   const [fiche, setFiche] = useState({
     civilite: st.civilite || "", nom: st.nom || "", prenom: st.prenom || "",
     email: st.email || "", telephone: st.telephone || "", entreprise: st.entreprise || "",
@@ -318,7 +321,7 @@ function PanneauDossier({ st, groupes, recharger, erreur }) {
           <span className="muted small">Prescripteur</span>
           <select value={insc.prescripteur} onChange={(e) => setInsc({ ...insc, prescripteur: e.target.value })}>
             <option value="">Aucun</option>
-            {Object.entries(PRESCRIPTEURS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {prescripteurs.filter((p) => p.actif).map((p) => <option key={p.id} value={p.code}>{p.nom}</option>)}
           </select>
         </label>
         <label className="champ case">
@@ -445,7 +448,7 @@ function ImportStagiaires({ sessionId, recharger, erreur }) {
 }
 
 // ── Détail d'une session ─────────────────────────────────────
-function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir }) {
+function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, admin, peutSaisir }) {
   const [d, setD] = useState(null);
   const [groupe, setGroupe] = useState({ nom: "", lieu: "", formateur: "" });
   const [stagiaire, setStagiaire] = useState({ civilite: "", nom: "", prenom: "", email: "", groupe_id: "", prescripteur: "pole_emploi", dossier_complet: false });
@@ -656,7 +659,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
                 <strong>{st.nom} {st.prenom}</strong>
                 <div className="muted small">
                   {d.groupes.find((g) => g.id === st.groupe_id)?.nom || "sans groupe"}
-                  {st.prescripteur && <> · {PRESCRIPTEURS[st.prescripteur]}</>}
+                  {st.prescripteur && <> · {libellePrescripteur(st.prescripteur, prescripteurs)}</>}
                   {" · dossier "}{st.dossier_complet ? "complet" : "incomplet"}
                   {fiche && <> · {fiche.absences.length} absence(s)
                     {fiche.absences.length > 0 && <> · {fiche.total_heures_absence} h</>}</>}
@@ -719,7 +722,7 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
                   recharger={charger} erreur={erreur} />
               )}
               {deplieDossier && (
-                <PanneauDossier st={st} groupes={d.groupes} recharger={charger} erreur={erreur} />
+                <PanneauDossier st={st} groupes={d.groupes} prescripteurs={prescripteurs} recharger={charger} erreur={erreur} />
               )}
             </li>
             );
@@ -748,7 +751,8 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
           <label className="champ">
             <span className="muted small">Prescripteur</span>
             <select value={stagiaire.prescripteur} onChange={(e) => setStagiaire({ ...stagiaire, prescripteur: e.target.value })}>
-              {Object.entries(PRESCRIPTEURS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              <option value="">Aucun</option>
+              {prescripteurs.filter((p) => p.actif).map((p) => <option key={p.id} value={p.code}>{p.nom}</option>)}
             </select>
           </label>
           <label className="champ case">
@@ -807,21 +811,111 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
   );
 }
 
+// ── Gestion des prescripteurs (admin) ────────────────────────
+// Petite liste configurable : afficher, ajouter, renommer, désactiver.
+// La désactivation ne touche pas les inscriptions passées ; un prescripteur
+// inactif n'est plus proposé aux nouvelles inscriptions.
+function GestionPrescripteurs({ prescripteurs, onChange, erreur }) {
+  const [nom, setNom] = useState("");
+  const [edite, setEdite] = useState(null);
+
+  async function ajouter() {
+    if (!nom.trim()) return erreur("Indiquez un nom de prescripteur.");
+    try {
+      await api("/api/prescripteurs", { method: "POST", body: JSON.stringify({ nom }) });
+      setNom("");
+      erreur(null);
+      await onChange();
+    } catch (e) { erreur(e.message); }
+  }
+
+  async function renommer(p) {
+    if (!p.nom.trim()) return erreur("Le nom ne peut pas être vide.");
+    try {
+      await api(`/api/prescripteurs/${p.id}`, { method: "PATCH", body: JSON.stringify({ nom: p.nom }) });
+      setEdite(null);
+      erreur(null);
+      await onChange();
+    } catch (e) { erreur(e.message); }
+  }
+
+  async function desactiver(p) {
+    if (!window.confirm(`Désactiver « ${p.nom} » ? Les inscriptions existantes le conservent, mais il ne sera plus proposé.`)) return;
+    try {
+      await api(`/api/prescripteurs/${p.id}`, { method: "DELETE" });
+      erreur(null);
+      await onChange();
+    } catch (e) { erreur(e.message); }
+  }
+
+  async function reactiver(p) {
+    try {
+      await api(`/api/prescripteurs/${p.id}`, { method: "PATCH", body: JSON.stringify({ actif: true }) });
+      erreur(null);
+      await onChange();
+    } catch (e) { erreur(e.message); }
+  }
+
+  return (
+    <Bloc titre={`Prescripteurs (${prescripteurs.length})`}>
+      <ul className="liste-simple">
+        {prescripteurs.map((p) => (
+          <li key={p.id} className={p.actif ? "" : "abandonne"}>
+            <div>
+              {edite?.id === p.id ? (
+                <Champ label="Nom" value={edite.nom} onChange={(e) => setEdite({ ...edite, nom: e.target.value })} />
+              ) : (
+                <>
+                  <strong>{p.nom}</strong>
+                  <div className="muted small">{p.actif ? "Actif" : "Désactivé"}</div>
+                </>
+              )}
+            </div>
+            <div className="preuve-actions">
+              {edite?.id === p.id ? (
+                <>
+                  <button className="btn petit primary" onClick={() => renommer(edite)}>Enregistrer</button>
+                  <button className="btn petit" onClick={() => setEdite(null)}>Annuler</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn petit" onClick={() => setEdite({ id: p.id, nom: p.nom })}>Renommer</button>
+                  {p.actif
+                    ? <button className="btn petit danger" onClick={() => desactiver(p)}>Désactiver</button>
+                    : <button className="btn petit" onClick={() => reactiver(p)}>Réactiver</button>}
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="formulaire ligne">
+        <Champ label="Nouveau prescripteur" value={nom} onChange={(e) => setNom(e.target.value)} />
+        <button className="btn primary" onClick={ajouter}>Ajouter</button>
+      </div>
+    </Bloc>
+  );
+}
+
 // ── Écran ────────────────────────────────────────────────────
 export default function Sessions({ admin, peutSaisir, onChange }) {
   const [formations, setFormations] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [modeles, setModeles] = useState([]);
+  const [prescripteurs, setPrescripteurs] = useState([]);
   const [err, setErr] = useState(null);
   const [choisie, setChoisie] = useState(null);
   const [form, setForm] = useState({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "", horaire: "" });
 
   const charger = useCallback(async () => {
     try {
-      const [f, s, m] = await Promise.all([api("/api/formations"), api("/api/sessions"), api("/api/modeles")]);
+      const [f, s, m, p] = await Promise.all([
+        api("/api/formations"), api("/api/sessions"), api("/api/modeles"), api("/api/prescripteurs"),
+      ]);
       setFormations(f.formations);
       setSessions(s.sessions);
       setModeles(m.modeles);
+      setPrescripteurs(p.prescripteurs);
     } catch (e) { setErr(e.message); }
   }, []);
   useEffect(() => { charger(); }, [charger]);
@@ -851,6 +945,8 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
       {err && <p className="flash erreur">{err}</p>}
 
       {admin && <Formations formations={formations} onChange={charger} erreur={setErr} />}
+
+      {admin && <GestionPrescripteurs prescripteurs={prescripteurs} onChange={charger} erreur={setErr} />}
 
       <Bloc titre={`Sessions (${sessions.length})`} ouvertParDefaut>
         <ul className="liste-simple">
@@ -892,7 +988,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
 
       {choisie && (
         <DetailSession
-          sessionId={choisie} modeles={modeles} onChange={onChange} erreur={setErr}
+          sessionId={choisie} modeles={modeles} prescripteurs={prescripteurs} onChange={onChange} erreur={setErr}
           admin={admin} peutSaisir={peutSaisir}
         />
       )}

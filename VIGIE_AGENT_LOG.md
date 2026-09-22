@@ -861,3 +861,77 @@ sur `POST /api/sessions`, `POST /api/preuves`, `PUT /api/formations/:id`, etc. ;
 ### Prochaine étape
 
 Déploiement du lot L3 après validation. **Aucun push effectué.**
+
+---
+
+## 2026-09-22 (suite 6) — L3-bis : prescripteurs configurables
+
+### État initial du schéma
+
+- `inscriptions.prescripteur` : `text`, **nullable**, sans défaut ;
+- **CHECK SQL présent** : `inscriptions_prescripteur_check` = `IN ('pole_emploi','mission_locale',
+  'of','autre')` (posé par la migration 005) ;
+- liste figée à 4 endroits : le CHECK, `PRESCRIPTEURS` dans `gestion.js`, la map `PRESCRIPTEURS`
+  dans `Sessions.jsx`, `normaliserPrescripteur` dans `csvStagiaires.js` ;
+- valeurs réelles en production : `pole_emploi` (4), `mission_locale` (1), `of` (1).
+
+### Architecture choisie — migration 011
+
+**Table de référence + texte conservé**, sans FK : `inscriptions.prescripteur` reste du texte et
+continue de stocker le `code`. Aucune inscription n'est réécrite, aucune conversion risquée.
+
+Migration `011_prescripteurs_configurables.sql` :
+
+- `ALTER TABLE inscriptions DROP CONSTRAINT IF EXISTS inscriptions_prescripteur_check` ;
+- `CREATE TABLE prescripteurs (id, code UNIQUE, nom, actif, created_at, updated_at)` + trigger ;
+- seed inchangé : `pole_emploi` → « Pôle Emploi », `mission_locale`, `of` → « Organisme de
+  formation », `autre`, + `cap_emploi` → « CAP Emploi ».
+
+### Comportement CSV
+
+- colonne absente ou cellule vide → ligne acceptée, prescripteur NULL, aucune erreur ;
+- valeur connue (code **ou** libellé, normalisés) et **active** → rattachée ;
+- valeur inconnue → `invalide — prescripteur inconnu : <valeur>` ;
+- valeur connue mais **désactivée** → `invalide — prescripteur inactif` ;
+- jamais de création automatique : l'admin crée le prescripteur, puis le même CSV se réanalyse.
+
+### Routes
+
+- `GET /api/prescripteurs` (`requireAuth`) — liste complète avec `actif`.
+- `POST /api/prescripteurs` (`requireAdmin`) — code = nom normalisé, suffixé si collision.
+- `PATCH /api/prescripteurs/:id` (`requireAdmin`) — renomme le libellé (le code ne bouge jamais),
+  réactive/désactive.
+- `DELETE /api/prescripteurs/:id` (`requireAdmin`) — désactive (soft), ne supprime jamais.
+- `POST /sessions/:id/stagiaires` et `PATCH /inscriptions/:id` valident désormais contre la table.
+
+### Gestion UI
+
+Bloc « Prescripteurs » (admin, écran Sessions) : afficher, ajouter, renommer, désactiver/réactiver.
+Dans le dossier stagiaire : select « Aucun » + prescripteurs **actifs** uniquement. L'affichage d'une
+ancienne inscription résout le code vers le libellé, même désactivé.
+
+### Droits
+
+ADMIN : créer / renommer / désactiver. CONTRIBUTEUR : sélectionner seulement (GET 200, POST/PATCH/
+DELETE 403). Aucun autre droit modifié.
+
+### Tests
+
+- `server/test/prescripteurs.test.js` (11 tests : CRUD, droits, 401/403, 400/404).
+- `csvStagiaires.test.js` : `trouverPrescripteur` (code ou libellé, inactif inclus).
+- `stagiaires.test.js` : CSV sans colonne, cellule vide, connu, inactif, import après création.
+- `npm test` : **199/199** (183 avant → 16 nouveaux).
+- migration 011 testée en deux phases sur une base contenant des données réelles : inscriptions
+  existantes conservées (`pole_emploi`, `mission_locale`), CHECK levé, `cap_emploi` accepté après.
+- navigateur réel (admin + contributeur) : bloc de gestion, ajout « France Travail », import CSV
+  vide/connu/inconnu, contributeur sans le bloc de gestion et 403 sur la création.
+
+### Limites restantes
+
+1. Le code généré d'un nouveau prescripteur n'est pas renommable (voulu : il est référencé tel quel).
+2. Pas de contrainte d'unicité sur le `nom` (deux prescripteurs peuvent porter le même libellé).
+3. Chantier D1 toujours entier.
+
+### Prochaine étape
+
+Déploiement de L3 + L3-bis après validation. **Aucun push effectué.**

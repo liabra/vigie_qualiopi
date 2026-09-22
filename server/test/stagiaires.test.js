@@ -24,7 +24,16 @@ const ligneInseree = (sql, params) => {
   return Object.fromEntries(cols.map((c, i) => [c, /^\$\d+$/.test(vals[i]) ? params[Number(vals[i].slice(1)) - 1] : vals[i]]));
 };
 
-function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], echecInsertion = 0 } = {}) {
+// Miroir de la migration 011 : les codes historiques + CAP Emploi.
+const PRESCRIPTEURS_DEFAUT = [
+  { id: 1, code: "pole_emploi", nom: "Pôle Emploi", actif: true },
+  { id: 2, code: "mission_locale", nom: "Mission Locale", actif: true },
+  { id: 3, code: "of", nom: "Organisme de formation", actif: true },
+  { id: 4, code: "autre", nom: "Autre", actif: true },
+  { id: 5, code: "cap_emploi", nom: "CAP Emploi", actif: true },
+];
+
+function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], prescripteurs = PRESCRIPTEURS_DEFAUT, echecInsertion = 0 } = {}) {
   const appels = [];
   const etat = {
     stagiaires: stagiaires.map((s) => ({
@@ -35,8 +44,10 @@ function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], echecIn
       groupe_id: null, prescripteur: null, dossier_complet: false, date_abandon: null, statut: "inscrit", ...i,
     })),
     groupes: groupes.map((g) => ({ ...g })),
+    prescripteurs: prescripteurs.map((p) => ({ actif: true, ...p })),
     prochainStagiaire: 1 + Math.max(0, ...stagiaires.map((s) => s.id)),
     prochainInscription: 1 + Math.max(0, ...inscriptions.map((i) => i.id)),
+    prochainPrescripteur: 1 + Math.max(0, ...prescripteurs.map((p) => p.id)),
   };
   let compteurInsertion = 0;
   let sauvegarde = null;
@@ -81,6 +92,34 @@ function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], echecIn
       const i = etat.inscriptions.find((x) => x.id === params[1]);
       const ok = !!(g && i && g.session_id === i.session_id);
       return { rows: ok ? [{ "?column?": 1 }] : [], rowCount: ok ? 1 : 0 };
+    }
+    if (sql.startsWith("SELECT id, code, nom, actif FROM prescripteurs")) {
+      const rows = etat.prescripteurs.map((p) => ({ id: p.id, code: p.code, nom: p.nom, actif: p.actif }));
+      return { rows, rowCount: rows.length };
+    }
+    if (sql.startsWith("SELECT code, nom, actif FROM prescripteurs")) {
+      const rows = etat.prescripteurs.map((p) => ({ code: p.code, nom: p.nom, actif: p.actif }));
+      return { rows, rowCount: rows.length };
+    }
+    if (sql.startsWith("SELECT 1 FROM prescripteurs WHERE code = $1")) {
+      const n = etat.prescripteurs.filter((p) => p.code === params[0]).length;
+      return { rows: n ? [{ "?column?": 1 }] : [], rowCount: n };
+    }
+    if (sql.startsWith("INSERT INTO prescripteurs")) {
+      const row = ligneInseree(sql, params);
+      const id = etat.prochainPrescripteur++;
+      etat.prescripteurs.push({ id, actif: true, ...row });
+      return { rows: [{ id, code: row.code, nom: row.nom, actif: true }], rowCount: 1 };
+    }
+    if (sql.startsWith("UPDATE prescripteurs SET")) {
+      const p = etat.prescripteurs.find((x) => x.id === params[0]);
+      if (!p) return { rows: [], rowCount: 0 };
+      for (const clause of /UPDATE prescripteurs SET (.+) WHERE id = \$1/.exec(sql)[1].split(", ")) {
+        const [col, jeton] = clause.split(" = ");
+        if (col === "id") continue;
+        p[col] = /^\$\d+$/.test(jeton) ? params[Number(jeton.slice(1)) - 1] : (jeton === "false" ? false : jeton);
+      }
+      return { rows: [{ id: p.id, code: p.code, nom: p.nom, actif: p.actif }], rowCount: 1 };
     }
     if (sql.startsWith("INSERT INTO stagiaires")) {
       compteurInsertion++;
@@ -249,7 +288,57 @@ test("un prescripteur invalide rend la ligne invalide", async () => {
   baseSimulee().installer();
   const r = await apercu(csv([["", "Dupont", "Jean", "", "", "", "", "", "", "", "Trésor public", ""]]));
   assert.equal(r.corps.lignes[0].statut, "invalide");
-  assert.match(r.corps.lignes[0].motif, /prescripteur inconnu/);
+  assert.match(r.corps.lignes[0].motif, /prescripteur inconnu : Trésor public/);
+});
+
+test("un CSV sans colonne prescripteur est accepté", async () => {
+  baseSimulee().installer();
+  const texte = "nom;prenom;email\nDupont;Jean;jean@exemple.fr";
+  const r = await apercu(texte);
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.resume.nouveaux, 1);
+  assert.equal(r.corps.lignes[0].statut, "pret");
+  assert.equal(r.corps.lignes[0].prescripteur, null);
+});
+
+test("une cellule prescripteur vide est acceptée, prescripteur non renseigné", async () => {
+  const base = baseSimulee().installer();
+  const r = await importer(csv([["Mme", "Dupont", "Jean", "jean@exemple.fr", "", "", "", "", "", "", "", ""]]));
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.bilan.crees, 1);
+  assert.equal(base.etat.inscriptions[0].prescripteur, null);
+});
+
+test("un prescripteur connu est rattaché (libellé toléré)", async () => {
+  const base = baseSimulee().installer();
+  const r = await importer(csv([["Mme", "Dupont", "Jean", "jean@exemple.fr", "", "", "", "", "", "", "CAP Emploi", ""]]));
+  assert.equal(r.statut, 200);
+  assert.equal(base.etat.inscriptions[0].prescripteur, "cap_emploi");
+});
+
+test("un prescripteur désactivé est refusé à l'import", async () => {
+  baseSimulee({ prescripteurs: [
+    { id: 1, code: "pole_emploi", nom: "Pôle Emploi", actif: true },
+    { id: 5, code: "cap_emploi", nom: "CAP Emploi", actif: false },
+  ] }).installer();
+  const r = await apercu(csv([["", "Dupont", "Jean", "", "", "", "", "", "", "", "CAP Emploi", ""]]));
+  assert.equal(r.corps.lignes[0].statut, "invalide");
+  assert.match(r.corps.lignes[0].motif, /prescripteur inactif/);
+});
+
+test("après création du prescripteur, le même CSV est réanalysé et accepté", async () => {
+  const base = baseSimulee().installer();
+  const texte = csv([["", "Dupont", "Jean", "", "", "", "", "", "", "", "Trésor public", ""]]);
+  // D'abord refusé : prescripteur inconnu.
+  assert.equal((await apercu(texte)).corps.lignes[0].statut, "invalide");
+  // L'admin crée le prescripteur.
+  const cree = await appel("POST", "/api/prescripteurs", { nom: "Trésor public" }, ADMIN);
+  assert.equal(cree.statut, 201);
+  // Le même CSV est désormais accepté et rattaché.
+  const r = await importer(texte);
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.bilan.crees, 1);
+  assert.equal(base.etat.inscriptions[0].prescripteur, cree.corps.prescripteur.code);
 });
 
 test("une donnée obligatoire manquante rend la ligne invalide", async () => {

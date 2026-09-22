@@ -10,7 +10,7 @@ import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
 import {
   parserCsv, construireMapping, lireBooleen, normaliserEmail, validerEmail,
-  normaliserCivilite, normaliserPrescripteur, normaliser,
+  normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
 
 const router = Router();
@@ -18,10 +18,18 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 const manque = (res, champ) => res.status(400).json({ error: `Champ obligatoire : ${champ}.` });
 
 const PORTEES = ["formation", "session", "groupe", "stagiaire"];
-const PRESCRIPTEURS = ["pole_emploi", "mission_locale", "of", "autre"];
 const MODALITES = ["presentiel", "distanciel", "mixte"];
 // Valeurs admises par la contrainte de la migration 008.
 const CIVILITES = ["M.", "Mme"];
+
+// Un prescripteur est un CODE existant dans la table de référence
+// (migration 011). Une valeur vide ou absente vaut « non renseigné » et
+// passe ; une valeur inconnue est refusée par l'appelant.
+async function prescripteurConnu(code) {
+  if (code === undefined || code === null || code === "") return true;
+  const { rowCount } = await query("SELECT 1 FROM prescripteurs WHERE code = $1", [code]);
+  return rowCount > 0;
+}
 const STATUTS_INSCRIPTION = ["inscrit", "en_cours", "termine", "abandon"];
 
 // Champs de contenu d'une version de formation : une modification en crée
@@ -316,7 +324,7 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
   const sessionId = Number(req.params.id);
   const { civilite, nom, prenom, email, telephone, groupe_id, prescripteur, dossier_complet, date_inscription, stagiaire_id } = req.body || {};
   if (!stagiaire_id && (!nom?.trim() || !prenom?.trim())) return manque(res, "nom et prenom");
-  if (prescripteur && !PRESCRIPTEURS.includes(prescripteur)) return res.status(400).json({ error: "Prescripteur inconnu." });
+  if (!(await prescripteurConnu(prescripteur))) return res.status(400).json({ error: "Prescripteur inconnu." });
   if (civilite && !CIVILITES.includes(civilite)) return res.status(400).json({ error: "Civilité inconnue." });
 
   const cx = await getPool().connect();
@@ -360,7 +368,7 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
   const { statut, date_abandon, motif_abandon, groupe_id, prescripteur, dossier_complet } = req.body || {};
   if (statut && !STATUTS_INSCRIPTION.includes(statut)) return res.status(400).json({ error: "Statut d'inscription inconnu." });
-  if (prescripteur && !PRESCRIPTEURS.includes(prescripteur)) return res.status(400).json({ error: "Prescripteur inconnu." });
+  if (!(await prescripteurConnu(prescripteur))) return res.status(400).json({ error: "Prescripteur inconnu." });
 
   // Un groupe ne se rattache qu'à SA session : le corps ne doit pas pouvoir
   // déplacer une inscription vers un groupe d'une autre session.
@@ -679,6 +687,7 @@ async function classerStagiaires({ req, sessionId, texte }) {
   }
 
   const { rows: groupes } = await req("SELECT id, nom FROM groupes WHERE session_id = $1", [sessionId]);
+  const { rows: prescripteurs } = await req("SELECT code, nom, actif FROM prescripteurs");
   const emailsVus = new Set();
   const nomsVus = new Set();
   const resultats = [];
@@ -709,10 +718,18 @@ async function classerStagiaires({ req, sessionId, texte }) {
       } else if (handicap === undefined) {
         ligne.statut = "invalide"; ligne.motif = "« situation de handicap » attendue en oui/non";
       } else {
-        const prescripteur = normaliserPrescripteur(v.prescripteur);
-        if (prescripteur === undefined) {
-          ligne.statut = "invalide"; ligne.motif = "prescripteur inconnu";
-        } else {
+        let prescripteur = null;
+        if (v.prescripteur) {
+          const p = trouverPrescripteur(v.prescripteur, prescripteurs);
+          if (!p) {
+            ligne.statut = "invalide"; ligne.motif = `prescripteur inconnu : ${v.prescripteur}`;
+          } else if (!p.actif) {
+            ligne.statut = "invalide"; ligne.motif = `prescripteur inactif : ${v.prescripteur}`;
+          } else {
+            prescripteur = p.code;
+          }
+        }
+        if (ligne.statut === "pret") {
           let groupeId = null;
           if (v.groupe) {
             const g = groupes.find((x) => normaliser(x.nom) === normaliser(v.groupe));
@@ -861,6 +878,60 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
   } finally {
     cx.release();
   }
+}));
+
+// ── Prescripteurs (liste configurable) ───────────────────────
+// Un prescripteur est FACULTATIF. La liste vit en base (migration 011) :
+// `code` est ce que stocke `inscriptions.prescripteur`, `nom` est affiché.
+// Désactiver (actif=false) ne touche jamais les inscriptions passées.
+
+router.get("/prescripteurs", requireAuth, wrap(async (_req, res) => {
+  const { rows } = await query("SELECT id, code, nom, actif FROM prescripteurs ORDER BY nom");
+  res.json({ prescripteurs: rows, total: rows.length });
+}));
+
+router.post("/prescripteurs", requireAdmin, wrap(async (req, res) => {
+  const nom = req.body?.nom;
+  if (!nom?.trim()) return manque(res, "nom");
+  const base = normaliser(nom);
+  if (!base) return res.status(400).json({ error: "Nom illisible." });
+  // Le code est l'identifiant stable : on ne le renomme jamais une fois créé.
+  let code = base;
+  let suffixe = 2;
+  while ((await query("SELECT 1 FROM prescripteurs WHERE code = $1", [code])).rows.length) {
+    code = `${base}-${suffixe++}`;
+  }
+  const { rows: [prescripteur] } = await query(
+    "INSERT INTO prescripteurs (code, nom) VALUES ($1, $2) RETURNING *",
+    [code, nom.trim()]
+  );
+  res.status(201).json({ prescripteur });
+}));
+
+// Renommer le libellé, ou réactiver/désactiver. Le `code` ne bouge pas : il est
+// référencé tel quel par les inscriptions.
+router.patch("/prescripteurs/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de prescripteur invalide." });
+  const { nom, actif } = req.body || {};
+  if (nom !== undefined && !nom.trim()) return res.status(400).json({ error: "Le nom ne peut pas être vide." });
+  const sets = [];
+  const params = [id];
+  if (nom !== undefined) { params.push(nom.trim()); sets.push(`nom = $${params.length}`); }
+  if (actif !== undefined) { params.push(actif === true); sets.push(`actif = $${params.length}`); }
+  if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
+  const { rows } = await query(`UPDATE prescripteurs SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
+  if (!rows.length) return res.status(404).json({ error: "Prescripteur introuvable." });
+  res.json({ prescripteur: rows[0] });
+}));
+
+// Désactiver plutôt que supprimer : les inscriptions passées gardent leur code.
+router.delete("/prescripteurs/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de prescripteur invalide." });
+  const { rowCount } = await query("UPDATE prescripteurs SET actif = false WHERE id = $1", [id]);
+  if (!rowCount) return res.status(404).json({ error: "Prescripteur introuvable." });
+  res.json({ ok: true });
 }));
 
 // ── Modèles de documents ─────────────────────────────────────

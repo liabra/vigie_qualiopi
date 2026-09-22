@@ -935,3 +935,38 @@ DELETE 403). Aucun autre droit modifié.
 ### Prochaine étape
 
 Déploiement de L3 + L3-bis après validation. **Aucun push effectué.**
+
+---
+
+## 2026-09-22 (suite 7) — Validation de L3 + L3-bis en production
+
+### Push
+
+- commits poussés (fast-forward, sans `--force`) : `fbdc6c6` (stagiaires/dossiers),
+  `a2de631` (prescripteurs configurables)
+- `git fetch` préalable : `origin/main` inchangé, 0 commit distant, avance simple
+
+### Déploiement Railway
+
+- déploiement `ed08e99a-946f-4981-9e5d-5a8c6beec391`, commit `a2de631b`
+- statut : **SUCCESS** ; `/api/health` : **HTTP 200**
+- **migration 011 appliquée automatiquement UNE seule fois** (« Migration appliquée :
+  011_prescripteurs_configurables.sql ») ; `schema_migrations` : 11, dernière = 011
+- lecture seule : `prescripteurs` seedé (autre, cap_emploi, mission_locale, of, pole_emploi) ;
+  `inscriptions.prescripteur` inchangé (pole_emploi 4, mission_locale 1, of 1) — aucune perte
+- erreurs : aucune ; avertissements bénins connus uniquement
+
+### Smoke tests production
+
+- L3 : **8/8 OK**
+- L3-bis : **5/5 OK** (création, reconnaissance CSV, rattachement, vide accepté,
+  désactivation/réactivation)
+
+### État
+
+- tests au moment du déploiement : **199/199**
+- **L3 et L3-bis TERMINÉS.**
+
+### Prochaine étape
+
+Lot **L4** — sessions corrigeables et cycle de vie (statut).

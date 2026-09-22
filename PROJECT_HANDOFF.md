@@ -5,8 +5,8 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 22/09/2026 |
-| **Dernier lot métier validé en production** | absences et assiduité — lot L2 (`2f4fd84`) |
-| **Migration de production actuelle** | `010_horaire_session.sql` |
+| **Dernier lot métier validé en production** | stagiaires et dossiers (L3 `fbdc6c6`) + prescripteurs configurables (L3-bis `a2de631`) |
+| **Migration de production actuelle** | `011_prescripteurs_configurables.sql` |
 | **Suite de tests validée** | **199/199 au vert** |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
@@ -431,7 +431,7 @@ pour une saisie manuelle à un seul poste ; à revoir si la saisie devient concu
 
 ---
 
-## 7 quater. Lot L3 — stagiaires et dossiers : import CSV, fiches, inscriptions — livré, non déployé
+## 7 quater. Lot L3 — stagiaires et dossiers : import CSV, fiches, inscriptions — TERMINÉ
 
 Objectif : rendre la préparation d'une session rapide et fiable à plusieurs stagiaires.
 
@@ -510,6 +510,16 @@ La liste des prescripteurs, jusqu'ici figée dans un CHECK SQL (`pole_emploi`, `
 - valeur CSV inconnue ou désactivée : signalée dans l'aperçu, jamais devinée, jamais créée
   automatiquement — l'admin la crée dans Vigie, puis le CSV se réanalyse ;
 - droits : ADMIN crée/renomme/désactive ; CONTRIBUTEUR sélectionne seulement.
+
+### Production
+
+- commit L3 : `fbdc6c6` — `Stagiaires : importer et compléter les dossiers`, smoke test production **8/8 OK** ;
+- commit L3-bis : `a2de631` — `Prescripteurs : rendre la liste configurable` ;
+- migration **011** appliquée automatiquement **une seule fois** ;
+- déploiement Railway **SUCCESS**, `/api/health` 200 ;
+- tests au moment du déploiement : **199/199** ;
+- smoke test production L3-bis **5/5 OK** (création, reconnaissance CSV, rattachement, vide accepté,
+  désactivation/réactivation).
 
 ### Limite connue
 
@@ -882,8 +892,9 @@ Avant nouvelle implémentation, réaliser un audit exhaustif qui fusionne :
 
 - **L1 — preuves : ajout et rattachement manuel** : exécuté, déployé, validé en production (§7 bis).
 - **L2 — absences / assiduité** : exécuté, déployé, validé en production (§7 ter).
-- **L3 — stagiaires et dossiers (import CSV, fiches, inscriptions)** : développé, testé et vérifié
-  sur base jetable ; **pas encore déployé** (§7 quater).
+- **L3 — stagiaires et dossiers (import CSV, fiches, inscriptions)** : exécuté, déployé, validé en
+  production (§7 quater).
+- **L3-bis — prescripteurs configurables** : exécuté, déployé, validé en production (§7 quater).
 
 Classer ensuite :
 

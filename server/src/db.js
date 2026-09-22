@@ -7,8 +7,14 @@ import { config } from "./config.js";
 pg.types.setTypeParser(1082, (v) => v);
 
 let pool = null;
+// Point d'injection (tests uniquement) : fabrique de pool de remplacement.
+// Elle couvre les TRANSACTIONS comme les requêtes simples, là où
+// setQueryExecutor ne couvre que `query()`. `null` rétablit le pool réel.
+// Voir test/preuves.test.js.
+let fabriquePool = null;
 
 export function getPool() {
+  if (fabriquePool) return fabriquePool();
   if (!pool) {
     const local = /localhost|127\.0\.0\.1|\.railway\.internal/.test(config.databaseUrl);
     pool = new pg.Pool({
@@ -17,6 +23,10 @@ export function getPool() {
     });
   }
   return pool;
+}
+
+export function setPoolFactory(fn) {
+  fabriquePool = fn || null;
 }
 
 // Point d'injection, utilisé UNIQUEMENT par les tests : il permet d'éprouver

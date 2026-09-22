@@ -124,7 +124,8 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
   }
   if (req.query.q) { params.push(`%${req.query.q}%`); filtres.push(`p.titre ILIKE $${params.length}`); }
   const { rows } = await query(
-    `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.a_confirmer, p.motif_confirmation, p.candidats,
+    `SELECT p.id, p.titre, p.description, p.indicateur_id, p.statut, p.statut_effectif, p.a_confirmer,
+            p.motif_confirmation, p.candidats,
             p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
             p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
             p.nb_fichiers, p.fichiers_attendus, p.incomplet,
@@ -156,7 +157,8 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
 // ligne après modification, sans recharger tout l'écran.
 router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
   const { rows } = await query(
-    `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.a_confirmer, p.motif_confirmation, p.candidats,
+    `SELECT p.id, p.titre, p.description, p.indicateur_id, p.statut, p.statut_effectif, p.a_confirmer,
+            p.motif_confirmation, p.candidats,
             p.modele_nom, p.tache, p.etat_source, p.occurrences, p.lignes_source,
             p.source, p.validee_le, p.mode_fichiers, p.session_id, p.groupe_id,
             p.nb_fichiers, p.fichiers_attendus, p.incomplet,
@@ -211,17 +213,122 @@ const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, 
                            type_alerte, periodicite_mois, date_echeance, date_derniere_revision, alerte_statut
                     FROM preuves_enrichies WHERE id = $1`;
 
+// Créer une preuve à la main : un document qui vit déjà sur le Drive et
+// qu'on rattache à un ou plusieurs indicateurs (export EduSign, convention,
+// habilitation, justificatif…). Ces preuves n'existaient jusqu'ici que par
+// l'import du classeur ou par la génération documentaire.
+//
+// Un document partagé par N indicateurs donne N preuves DISTINCTES qui
+// pointent sur le même fichier : le schéma reste tel quel (une preuve =
+// un indicateur), et chaque indicateur garde son propre statut, sa propre
+// échéance et son propre comptage.
+//
+// Le fichier est facultatif : une preuve sans fichier est un état normal
+// du modèle (voir « À risque » et le comptage « 0/12 rattaché(s) »), et
+// l'écran permet de le rattacher ensuite.
+router.post("/preuves", requireAdmin, wrap(async (req, res) => {
+  const {
+    indicateur_id, indicateur_ids, titre, description, statut, mode_fichiers,
+    drive_file_id, drive_url, drive_nom, drive_mime,
+    type_alerte, periodicite_mois, date_echeance,
+  } = req.body || {};
+
+  if (!titre?.trim()) return res.status(400).json({ error: "Titre obligatoire." });
+  if (statut !== undefined && !STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
+  if (mode_fichiers !== undefined && !MODES.includes(mode_fichiers)) {
+    return res.status(400).json({ error: "Mode de fichiers inconnu." });
+  }
+  if (type_alerte !== undefined && type_alerte !== null && !TYPES_ALERTE.includes(type_alerte)) {
+    return res.status(400).json({ error: "Type d'échéance inconnu." });
+  }
+  if (type_alerte === "revision_periodique" && !periodicite_mois) {
+    return res.status(400).json({ error: "Indiquez la périodicité en mois." });
+  }
+  if (type_alerte === "echeance_fixe" && !date_echeance) {
+    return res.status(400).json({ error: "Indiquez la date d'échéance." });
+  }
+
+  // `indicateur_ids` fait foi ; `indicateur_id` reste accepté pour un appel
+  // simple. Les doublons sont retirés : un même indicateur ne reçoit qu'une
+  // preuve, jamais deux dans le même appel.
+  const demandes = (Array.isArray(indicateur_ids) ? indicateur_ids : [indicateur_id])
+    .map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const ids = [...new Set(demandes)];
+  if (!ids.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    // Seuls les indicateurs du référentiel ACTIF sont acceptés : une preuve
+    // rattachée à une version inexploitée n'apparaîtrait nulle part.
+    const { rows: trouves } = await client.query(
+      `SELECT i.id, i.numero FROM indicateurs i
+       JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+       WHERE i.id = ANY($1::int[]) ORDER BY i.numero`,
+      [ids]
+    );
+    if (trouves.length !== ids.length) {
+      const connus = new Set(trouves.map((t) => t.id));
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: `Indicateur(s) introuvable(s) dans le référentiel actif : ${ids.filter((n) => !connus.has(n)).join(", ")}.`,
+      });
+    }
+
+    const creees = [];
+    for (const ind of trouves) {
+      const { rows: [preuve] } = await client.query(
+        `INSERT INTO preuves (indicateur_id, titre, description, statut, mode_fichiers,
+           type_alerte, periodicite_mois, date_echeance, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [ind.id, titre.trim(), description?.trim() || null, statut || "a_risque",
+         mode_fichiers || "unique", type_alerte || null,
+         type_alerte === "revision_periodique" ? periodicite_mois : null,
+         type_alerte === "echeance_fixe" ? date_echeance : null, req.user.id]
+      );
+      // Le même fichier est rattaché à chacune des preuves créées : la
+      // contrainte d'unicité porte sur (preuve_id, drive_file_id), donc
+      // l'unique chose interdite est de rattacher deux fois le même fichier
+      // à la MÊME preuve.
+      if (drive_file_id) {
+        await client.query(
+          `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
+           VALUES ($1, $2, $3, $4, $5, 'manuel', $6)
+           ON CONFLICT (preuve_id, drive_file_id) DO NOTHING`,
+          [preuve.id, drive_file_id, drive_url || lienDrive(drive_file_id),
+           drive_nom || null, drive_mime || null, req.user.id]
+        );
+      }
+      creees.push({ id: preuve.id, indicateur: ind.numero });
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ preuves: creees, total: creees.length });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    if (e.code === "23503") return res.status(400).json({ error: "Indicateur introuvable." });
+    if (e.code === "23505") return res.status(409).json({ error: "Une preuve identique existe déjà pour cet indicateur." });
+    throw e;
+  } finally { client.release(); }
+}));
+
 // Correction du rattachement, en un appel : l'admin choisit un candidat
 // (ou colle un identifiant Drive), ajuste le statut, le mode de fichiers,
 // la session rattachée, ou déclare la preuve confirmée telle quelle.
 router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const id = Number(req.params.id);
   const {
-    statut, drive_file_id, drive_url, drive_nom, drive_mime, confirmer,
+    statut, titre, description, indicateur_id, drive_file_id, drive_url, drive_nom, drive_mime, confirmer,
     mode_fichiers, session_id, groupe_id,
     type_alerte, periodicite_mois, date_echeance, date_derniere_revision, marquer_revise,
   } = req.body || {};
   if (statut !== undefined && !STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
+  // Le titre et l'indicateur d'une preuve peuvent être corrigés : une preuve
+  // rattachée au mauvais indicateur, ou mal nommée, doit pouvoir être
+  // réparée sans être supprimée puis recréée.
+  if (titre !== undefined && !titre?.trim()) return res.status(400).json({ error: "Titre obligatoire." });
+  if (indicateur_id !== undefined && !Number.isInteger(Number(indicateur_id))) {
+    return res.status(400).json({ error: "Indicateur invalide." });
+  }
   if (mode_fichiers !== undefined && !MODES.includes(mode_fichiers)) {
     return res.status(400).json({ error: "Mode de fichiers inconnu." });
   }
@@ -241,6 +348,9 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     // un appel séparé et l'emporte toujours de la même façon.
     sets.push("statut = CASE WHEN statut = 'a_risque' THEN 'maitrise' ELSE statut END");
   }
+  if (titre !== undefined) set("titre", titre.trim());
+  if (description !== undefined) set("description", description?.trim() || null);
+  if (indicateur_id !== undefined) set("indicateur_id", Number(indicateur_id));
   if (mode_fichiers !== undefined) set("mode_fichiers", mode_fichiers);
   if (session_id !== undefined) set("session_id", session_id || null);
   if (groupe_id !== undefined) set("groupe_id", groupe_id || null);
@@ -269,6 +379,21 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     await client.query("BEGIN");
     const { rows: [avant] } = await client.query("SELECT mode_fichiers FROM preuves WHERE id = $1 FOR UPDATE", [id]);
     if (!avant) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Preuve introuvable." }); }
+    // Changer d'indicateur impose d'en choisir un du référentiel ACTIF :
+    // une preuve rattachée à une version inexploitée disparaîtrait des
+    // deux écrans sans que personne ne s'en aperçoive.
+    if (indicateur_id !== undefined) {
+      const { rowCount } = await client.query(
+        `SELECT 1 FROM indicateurs i
+         JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+         WHERE i.id = $1`,
+        [Number(indicateur_id)]
+      );
+      if (!rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Indicateur introuvable dans le référentiel actif." });
+      }
+    }
 
     if (drive_file_id !== undefined) {
       const mode = mode_fichiers ?? avant.mode_fichiers;
@@ -293,6 +418,13 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     res.json({ ok: true, ...apres });
   } catch (e) {
     await client.query("ROLLBACK");
+    // 23505 : un import a déjà créé une preuve de ce titre pour cet
+    // indicateur (index partiel des preuves « import_drive »). On le dit
+    // plutôt que de renvoyer un 500.
+    if (e.code === "23505") {
+      return res.status(409).json({ error: "Une preuve de ce titre existe déjà pour cet indicateur." });
+    }
+    if (e.code === "23503") return res.status(400).json({ error: "Indicateur introuvable." });
     throw e;
   } finally {
     client.release();

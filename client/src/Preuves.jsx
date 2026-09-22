@@ -101,11 +101,17 @@ function Fichiers({ p, actions, admin, sessions }) {
         </div>
       )}
 
-      {admin && multi && (
+      {/* Un seul composant de recherche, deux usages : en mode multiple il
+          ajoute une pièce, en mode « un seul fichier » il remplace la
+          pièce existante. Ce second cas n'était possible que sur une preuve
+          « à confirmer » : une preuve confirmée n'était plus réparable. */}
+      {admin && (
         <RechercheDrive
           dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
-          placeholder="Ajouter un fichier du Drive"
-          surChoix={(f) => actions.ajouterFichier(p, f)}
+          placeholder={multi
+            ? "Ajouter un fichier du Drive"
+            : (p.fichiers?.length ? "Remplacer le fichier" : "Rattacher un fichier du Drive")}
+          surChoix={(f) => (multi ? actions.ajouterFichier(p, f) : actions.remplacerFichier(p, f))}
           onErreur={actions.erreur}
         />
       )}
@@ -134,6 +140,68 @@ const echeanceIncomplete = (p) =>
   (p.type_alerte === "revision_periodique" && !p.periodicite_mois) ||
   (p.type_alerte === "echeance_fixe" && !p.date_echeance);
 
+// Les indicateurs du référentiel actif, groupés par critère. Sert au
+// formulaire de création et à la correction de l'indicateur d'une preuve.
+function OptionsIndicateurs({ referentiel }) {
+  return (referentiel?.criteres || []).map((c) => (
+    <optgroup key={c.id} label={`Critère ${c.numero}`}>
+      {c.indicateurs.map((i) => (
+        <option key={i.id} value={i.id}>
+          {i.numero} · {i.libelle.length > 90 ? i.libelle.slice(0, 90) + "…" : i.libelle}
+        </option>
+      ))}
+    </optgroup>
+  ));
+}
+
+// Champs de l'échéance, partagés par le réglage d'une preuve existante et
+// par le formulaire de création : une seule définition, pour qu'une preuve
+// créée et une preuve corrigée se règlent exactement pareil. « Marquer
+// révisé » reste à part : c'est une action sur une preuve qui existe déjà.
+function ChampsEcheance({ typeAlerte, periodiciteMois, dateEcheance, onChamp }) {
+  const incomplete = (typeAlerte === "revision_periodique" && !periodiciteMois)
+    || (typeAlerte === "echeance_fixe" && !dateEcheance);
+  return (
+    <div className="reglages-fichiers">
+      <label>
+        <span className="muted small">Échéance</span>
+        <select
+          value={typeAlerte || ""} aria-label="Type d'échéance"
+          onChange={(e) => onChamp("type_alerte", e.target.value || null)}
+        >
+          <option value="">Aucune</option>
+          {Object.entries(TYPES_ALERTE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+      {incomplete && (
+        <span className="muted small">
+          {typeAlerte === "revision_periodique"
+            ? "Indiquez tous les combien de mois cette preuve doit être revue."
+            : "Indiquez la date d'expiration portée sur le document."}
+        </span>
+      )}
+      {typeAlerte === "revision_periodique" && (
+        <label>
+          <span className="muted small">Tous les combien de mois</span>
+          <input
+            type="number" min="1" value={periodiciteMois || ""} aria-label="Périodicité en mois"
+            onChange={(e) => onChamp("periodicite_mois", e.target.value ? Number(e.target.value) : null)}
+          />
+        </label>
+      )}
+      {typeAlerte === "echeance_fixe" && (
+        <label>
+          <span className="muted small">Date d'échéance</span>
+          <input
+            type="date" value={dateEcheance || ""} aria-label="Date d'échéance"
+            onChange={(e) => onChamp("date_echeance", e.target.value || null)}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
 function Echeance({ p, actions, admin }) {
   if (!admin && !p.type_alerte) return null;
   const incomplete = echeanceIncomplete(p);
@@ -146,60 +214,46 @@ function Echeance({ p, actions, admin }) {
       )}
       {incomplete && <span className="pill warn">Échéance à configurer</span>}
       {admin && (
-        <div className="reglages-fichiers">
-          <label>
-            <span className="muted small">Échéance</span>
-            <select
-              value={p.type_alerte || ""} aria-label="Type d'échéance"
-              onChange={(e) => actions.reglage(p, { type_alerte: e.target.value || null })}
-            >
-              <option value="">Aucune</option>
-              {Object.entries(TYPES_ALERTE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </label>
-          {incomplete && (
-            <span className="muted small">
-              {p.type_alerte === "revision_periodique"
-                ? "Indiquez tous les combien de mois cette preuve doit être revue."
-                : "Indiquez la date d'expiration portée sur le document."}
-            </span>
-          )}
+        <>
+          <ChampsEcheance
+            typeAlerte={p.type_alerte} periodiciteMois={p.periodicite_mois} dateEcheance={p.date_echeance}
+            onChamp={(champ, valeur) => actions.reglage(p, { [champ]: valeur })}
+          />
           {p.type_alerte === "revision_periodique" && (
-            <>
-              <label>
-                <span className="muted small">Tous les combien de mois</span>
-                <input
-                  type="number" min="1" value={p.periodicite_mois || ""} aria-label="Périodicité en mois"
-                  onChange={(e) => actions.reglage(p, { periodicite_mois: e.target.value ? Number(e.target.value) : null })}
-                />
-              </label>
+            <div className="reglages-fichiers">
               <span className="muted small">
                 Dernière révision : {p.date_derniere_revision ? new Date(p.date_derniere_revision).toLocaleDateString("fr-FR") : "jamais notée"}
               </span>
               <button className="btn petit" onClick={() => actions.reglage(p, { marquer_revise: true })}>
                 Marquer révisé aujourd'hui
               </button>
-            </>
+            </div>
           )}
-          {p.type_alerte === "echeance_fixe" && (
-            <label>
-              <span className="muted small">Date d'échéance</span>
-              <input
-                type="date" value={p.date_echeance || ""} aria-label="Date d'échéance"
-                onChange={(e) => actions.reglage(p, { date_echeance: e.target.value || null })}
-              />
-            </label>
-          )}
-        </div>
+        </>
       )}
     </div>
   );
 }
 
-function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSelection }) {
+function LignePreuve({ p, actions, admin, sessions, referentiel, selectionnee, onBasculerSelection }) {
+  // Correction du titre, de la description ou de l'indicateur : repliée par
+  // défaut, une ligne à la fois.
+  const [edite, setEdite] = useState(false);
+  const [champs, setChamps] = useState(null);
+
   function clicLigne(e) {
     if (!admin || e.target.closest(CIBLE_INTERACTIVE)) return;
     onBasculerSelection(p.id);
+  }
+
+  function basculerEdition() {
+    if (edite) { setEdite(false); return; }
+    setChamps({
+      titre: p.titre,
+      description: p.description || "",
+      indicateur_id: String(p.indicateur_id ?? ""),
+    });
+    setEdite(true);
   }
 
   return (
@@ -218,6 +272,7 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
         <span className="ind-num petit" title={`Critère ${p.critere}`}>{p.indicateur}</span>
         <div className="preuve-titre">
           <strong>{p.titre}</strong>
+          {p.description && <div className="muted small">{p.description}</div>}
           <div className="muted small">
             {MODES[p.mode_fichiers]}
             {p.etat_source && <> · classeur : « {p.etat_source} »</>}
@@ -237,6 +292,40 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
       <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
         <Fichiers p={p} actions={actions} admin={admin} sessions={sessions} />
         <Echeance p={p} actions={actions} admin={admin} />
+        {admin && (
+          <div className="preuve-actions">
+            <button className="btn petit" onClick={basculerEdition}>{edite ? "Annuler" : "Modifier"}</button>
+            <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
+          </div>
+        )}
+        {admin && edite && champs && (
+          <div className="formulaire">
+            <label className="champ">
+              <span className="muted small">Titre</span>
+              <input value={champs.titre} aria-label="Titre de la preuve"
+                onChange={(e) => setChamps({ ...champs, titre: e.target.value })} />
+            </label>
+            <label className="champ">
+              <span className="muted small">Description</span>
+              <textarea rows={2} value={champs.description} aria-label="Description de la preuve"
+                onChange={(e) => setChamps({ ...champs, description: e.target.value })} />
+            </label>
+            <label className="champ">
+              <span className="muted small">Indicateur</span>
+              <select value={champs.indicateur_id} aria-label="Indicateur de la preuve"
+                onChange={(e) => setChamps({ ...champs, indicateur_id: e.target.value })}>
+                <OptionsIndicateurs referentiel={referentiel} />
+              </select>
+            </label>
+            <div className="preuve-actions">
+              <button className="btn primary petit"
+                onClick={() => actions.modifier(p, champs).then((ok) => ok && setEdite(false))}>
+                Enregistrer
+              </button>
+              <button className="btn petit" onClick={() => setEdite(false)}>Annuler</button>
+            </div>
+          </div>
+        )}
         {admin && p.a_confirmer && (
           <>
             {p.mode_fichiers === "unique" && (
@@ -249,7 +338,6 @@ function LignePreuve({ p, actions, admin, sessions, selectionnee, onBasculerSele
             )}
             <div className="preuve-actions">
               <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
-              <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
             </div>
           </>
         )}
@@ -272,6 +360,12 @@ export default function Preuves({ admin, onChange }) {
   const [statutMasse, setStatutMasse] = useState("maitrise");
   const [enCours, setEnCours] = useState(false);
   const [sessions, setSessions] = useState([]);
+  // Référentiel actif : sert à choisir l'indicateur d'une preuve, à la
+  // création comme à la correction.
+  const [referentiel, setReferentiel] = useState(null);
+  // Formulaire de création manuelle : null quand il est fermé.
+  const [creation, setCreation] = useState(null);
+  const [creationEnCours, setCreationEnCours] = useState(false);
 
   const charger = useCallback(async () => {
     const p = new URLSearchParams();
@@ -294,6 +388,49 @@ export default function Preuves({ admin, onChange }) {
   useEffect(() => {
     api("/api/sessions").then((r) => setSessions(r.sessions)).catch(() => {});
   }, []);
+  useEffect(() => {
+    if (!admin) return;
+    api("/api/referentiel").then(setReferentiel).catch(() => {});
+  }, [admin]);
+
+  // Création manuelle : « Ajouter une preuve ».
+  function ouvrirCreation() {
+    if (creation) { setCreation(null); return; }
+    setCreation({
+      indicateur_ids: [], titre: "", description: "", statut: "a_risque",
+      mode_fichiers: "unique", type_alerte: null, periodicite_mois: null,
+      date_echeance: null, fichier: null,
+    });
+  }
+
+  async function enregistrerCreation() {
+    if (!creation.indicateur_ids.length) return setErr("Choisissez au moins un indicateur.");
+    if (!creation.titre.trim()) return setErr("Indiquez un titre.");
+    setCreationEnCours(true);
+    try {
+      await api("/api/preuves", {
+        method: "POST",
+        body: JSON.stringify({
+          indicateur_ids: creation.indicateur_ids.map(Number),
+          titre: creation.titre,
+          description: creation.description,
+          statut: creation.statut,
+          mode_fichiers: creation.mode_fichiers,
+          type_alerte: creation.type_alerte,
+          periodicite_mois: creation.periodicite_mois,
+          date_echeance: creation.date_echeance,
+          ...(creation.fichier ? {
+            drive_file_id: creation.fichier.id, drive_url: creation.fichier.url,
+            drive_nom: creation.fichier.nom, drive_mime: creation.fichier.mime,
+          } : {}),
+        }),
+      });
+      setCreation(null);
+      setErr(null);
+      await charger();
+      onChange?.();
+    } catch (e) { setErr(e.message); } finally { setCreationEnCours(false); }
+  }
 
   async function lancerImport(enApercu) {
     setOccupe(enApercu ? "apercu" : "import");
@@ -377,6 +514,30 @@ export default function Preuves({ admin, onChange }) {
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
+    // Mode « un seul fichier » : le fichier choisi REMPLACE l'ancien (le
+    // serveur retire les pièces puis insère la nouvelle). Le même appel vaut
+    // pour une preuve déjà confirmée, qui n'était pas réparable à l'écran.
+    async remplacerFichier(p, f) {
+      try {
+        const r = await api(`/api/preuves/${p.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime }),
+        });
+        majLocale(p, compteurs(r));
+        await rafraichirLigne(p);
+      } catch (e) { setErr(e.message); }
+      onChange?.();
+    },
+    // Titre, description, indicateur : la ligne est relue depuis le serveur,
+    // car l'indicateur affiché est son NUMÉRO, que seul le serveur connaît.
+    async modifier(p, champs) {
+      try {
+        await api(`/api/preuves/${p.id}`, { method: "PATCH", body: JSON.stringify(champs) });
+        await rafraichirLigne(p);
+        onChange?.();
+        return true;
+      } catch (e) { setErr(e.message); return false; }
+    },
     async retirerFichier(p, fichier) {
       majLocale(p, { fichiers: p.fichiers.filter((x) => x.id !== fichier.id) });
       try {
@@ -407,7 +568,12 @@ export default function Preuves({ admin, onChange }) {
       if (!window.confirm(`Supprimer la preuve « ${p.titre} » ?`)) return;
       setData((d) => ({ ...d, preuves: d.preuves.filter((x) => x.id !== p.id) }));
       setSelection((s) => { if (!s.has(p.id)) return s; const n = new Set(s); n.delete(p.id); return n; });
-      await api(`/api/preuves/${p.id}`, { method: "DELETE" }).catch((e) => setErr(e.message));
+      try {
+        await api(`/api/preuves/${p.id}`, { method: "DELETE" });
+        // Relecture : le total et les compteurs du tableau de bord viennent
+        // du serveur. En cas d'échec, la ligne supprimée réapparaît.
+        await charger();
+      } catch (e) { setErr(e.message); await charger(); }
       onChange?.();
     },
   };
@@ -454,6 +620,9 @@ export default function Preuves({ admin, onChange }) {
         </div>
         {admin && (
           <div className="import-actions">
+            <button className="btn" onClick={ouvrirCreation} disabled={!!occupe}>
+              {creation ? "Fermer" : "Ajouter une preuve"}
+            </button>
             <button className="btn" onClick={() => lancerImport(true)} disabled={!!occupe}>
               {occupe === "apercu" ? "Lecture…" : "Aperçu du classeur"}
             </button>
@@ -485,6 +654,82 @@ export default function Preuves({ admin, onChange }) {
         </p>
       )}
 
+      {admin && creation && (
+        <div className="card formulaire">
+          <strong>Nouvelle preuve</strong>
+          <p className="muted small">
+            Un document qui existe déjà sur le Drive : export EduSign, convention, habilitation,
+            justificatif… En choisissant plusieurs indicateurs, une preuve distincte est créée pour
+            chacun, toutes pointant sur le <strong>même fichier</strong>.
+          </p>
+          <label className="champ">
+            <span className="muted small">Indicateur(s) — un par preuve à créer</span>
+            <select
+              multiple size={8} aria-label="Indicateurs de la nouvelle preuve"
+              value={creation.indicateur_ids}
+              onChange={(e) => setCreation({ ...creation, indicateur_ids: [...e.target.selectedOptions].map((o) => o.value) })}
+            >
+              <OptionsIndicateurs referentiel={referentiel} />
+            </select>
+          </label>
+          <label className="champ">
+            <span className="muted small">Titre</span>
+            <input value={creation.titre} aria-label="Titre de la nouvelle preuve"
+              onChange={(e) => setCreation({ ...creation, titre: e.target.value })} />
+          </label>
+          <label className="champ">
+            <span className="muted small">Description (facultatif)</span>
+            <textarea rows={2} value={creation.description} aria-label="Description de la nouvelle preuve"
+              onChange={(e) => setCreation({ ...creation, description: e.target.value })} />
+          </label>
+          <div className="reglages-fichiers">
+            <label>
+              <span className="muted small">Statut</span>
+              <select value={creation.statut} aria-label="Statut de la nouvelle preuve"
+                onChange={(e) => setCreation({ ...creation, statut: e.target.value })}>
+                {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="muted small">Fichiers attendus</span>
+              <select value={creation.mode_fichiers} aria-label="Mode de fichiers de la nouvelle preuve"
+                onChange={(e) => setCreation({ ...creation, mode_fichiers: e.target.value })}>
+                {Object.entries(MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </label>
+          </div>
+          <ChampsEcheance
+            typeAlerte={creation.type_alerte} periodiciteMois={creation.periodicite_mois}
+            dateEcheance={creation.date_echeance}
+            onChamp={(champ, valeur) => setCreation({ ...creation, [champ]: valeur })}
+          />
+          <div className="rattachement">
+            <span className="muted small">
+              {creation.fichier
+                ? `Fichier choisi : ${creation.fichier.nom}`
+                : "Aucun fichier choisi — facultatif : la preuve pourra être rattachée ensuite."}
+            </span>
+            <RechercheDrive
+              dejaRattaches={creation.fichier ? [creation.fichier.id] : []}
+              placeholder="Rechercher un fichier existant sur le Drive"
+              surChoix={(f) => setCreation({ ...creation, fichier: f })}
+              onErreur={setErr}
+            />
+            {creation.fichier && (
+              <button className="btn petit" onClick={() => setCreation({ ...creation, fichier: null })}>
+                Retirer ce fichier
+              </button>
+            )}
+          </div>
+          <div className="preuve-actions">
+            <button className="btn primary" onClick={enregistrerCreation} disabled={creationEnCours}>
+              {creationEnCours ? "Création…" : "Enregistrer la preuve"}
+            </button>
+            <button className="btn" onClick={() => setCreation(null)}>Annuler</button>
+          </div>
+        </div>
+      )}
+
       <div className="filtres">
         <label><input type="checkbox" checked={filtre.a_confirmer}
           onChange={(e) => setFiltre({ ...filtre, a_confirmer: e.target.checked })} /> À confirmer d'abord</label>
@@ -502,7 +747,9 @@ export default function Preuves({ admin, onChange }) {
       </div>
 
       {data && data.preuves.length === 0 && (
-        <p className="muted">Aucune preuve. {admin && "Lancez l'import du classeur pour peupler le tableau de bord."}</p>
+        <p className="muted">
+          Aucune preuve. {admin && "Ajoutez une preuve, ou lancez l'import du classeur pour peupler le tableau de bord."}
+        </p>
       )}
 
       {admin && data && data.preuves.length > 0 && (
@@ -531,6 +778,7 @@ export default function Preuves({ admin, onChange }) {
         {data?.preuves.map((p) => (
           <LignePreuve
             key={p.id} p={p} actions={actions} admin={admin} sessions={sessions}
+            referentiel={referentiel}
             selectionnee={selection.has(p.id)} onBasculerSelection={basculerSelection}
           />
         ))}

@@ -448,3 +448,114 @@ resterait la seule vérification de bout en bout non couverte.
 3. `GET /api/sessions/abc` → 500 : défaut préexistant, hors périmètre.
 4. `railway.json` déprécié par Railway : à migrer vers Infrastructure as Code
    avant le **2026-12-01** (chantier dédié, non engagé).
+
+---
+
+## 2026-09-22 — L1 : compléter l'ajout et le rattachement manuel des preuves
+
+Premier lot issu de l'audit produit. Constat de départ, vérifié dans le code :
+**aucune route ne créait de preuve** (`INSERT INTO preuves` n'existait que dans
+`services/import.js` et `services/documents.js`), et deux capacités du backend
+étaient inatteignables depuis l'écran — supprimer une preuve non « à
+confirmer », et rattacher un fichier à une preuve `unique` déjà confirmée.
+
+### L1-A — Réparer une preuve existante
+
+- `DELETE /api/preuves/:id` **n'a pas été touchée** : elle était correcte, seul
+  le bouton était enfermé dans `admin && p.a_confirmer` (`Preuves.jsx`). Le
+  bouton « Supprimer » est désormais disponible sur toute preuve, admin, avec
+  la confirmation `window.confirm` déjà en place.
+- **Rattacher / remplacer le fichier** : le composant `RechercheDrive` existant
+  est réutilisé **sans duplication**, avec deux usages selon le mode — en mode
+  `multiple` il ajoute une pièce (`POST /api/preuves/:id/fichiers`), en mode
+  `unique` il remplace la pièce (`PATCH /api/preuves/:id`, capacité qui
+  existait déjà mais n'était proposée que sur une preuve « à confirmer »).
+- **Titre, description et indicateur** deviennent corrigeables :
+  `PATCH /api/preuves/:id` accepte `titre`, `description` et `indicateur_id`.
+  L'indicateur doit appartenir au **référentiel actif** : une preuve rattachée
+  à une version inexploitée disparaîtrait des deux écrans.
+- La ligne est relue après correction (`GET /api/preuves/:id`) car l'indicateur
+  affiché est son **numéro**, que seul le serveur connaît.
+- Suppression : la liste est relue après le `DELETE` (`charger()`), pour que le
+  total et les compteurs suivent — l'ancien code ne rafraîchissait rien.
+- `description` et `indicateur_id` sont désormais renvoyés par
+  `GET /api/preuves` et `GET /api/preuves/:id` (colonnes ajoutées aux deux
+  `SELECT`).
+
+### L1-B — Création manuelle
+
+- Nouvelle route `POST /api/preuves` (`requireAdmin`), calquée sur les
+  conventions du projet (`STATUTS`, `MODES`, `TYPES_ALERTE`, `manque`-style,
+  codes 400/403/500 cohérents), avec transaction : **tout ou rien**.
+- Champs : indicateur(s), titre (obligatoire, rogné), description, statut,
+  mode de fichiers, échéance (révision périodique ou date fixe) et fichier
+  Drive **facultatif** — une preuve sans fichier est un état normal du modèle
+  (statut « À risque », comptage « 0/12 rattaché(s) »), et L1-A permet de la
+  rattacher ensuite.
+- Écran : bouton « Ajouter une preuve » (admin), formulaire repliable avec
+  sélection d'indicateurs groupée par critère, et `RechercheDrive` réutilisé
+  pour choisir un document existant.
+- L'import du classeur et la génération documentaire n'ont **pas** été touchés.
+
+### L1-C — Un document pour plusieurs indicateurs
+
+Implémenté sans toucher au schéma : `POST /api/preuves` accepte
+`indicateur_ids`, et crée **une preuve distincte par indicateur**, toutes
+pointant sur le **même `drive_file_id`**. La contrainte d'unicité
+`(preuve_id, drive_file_id)` autorise le même fichier sur des preuves
+différentes : la seule chose interdite reste de rattacher deux fois le même
+fichier à la **même** preuve. Les doublons d'indicateur dans la liste sont
+retirés, et un indicateur hors référentiel actif fait échouer tout l'appel
+(rollback, aucune preuve créée).
+
+### Point d'injection de test étendu
+
+`server/src/db.js` : `setPoolFactory(fn)` ajouté à côté de `setQueryExecutor`.
+Le premier couvre les **transactions** (`getPool().connect()`), que le second
+ne couvrait pas — sans quoi `POST /api/preuves` n'était pas testable sans base.
+Les deux sont documentés comme réservés aux tests ; `null` rétablit le
+comportement normal.
+
+### Vérifications effectuées
+
+- `npm test` : **91/91 au vert** (70 avant + **21 nouveaux** dans
+  `server/test/preuves.test.js`), 0 échec, 0 ignoré.
+- `npm run build` : OK.
+- `git diff --check` : propre.
+- **Preuve que les tests mordent** : `requireAdmin` remplacé par
+  `requireRedacteur` sur `POST /api/preuves` → le test « un contributeur ne
+  peut pas créer de preuve » **échoue** (20 pass / 1 fail). Code restauré et
+  vérifié identique.
+- **Navigateur réel**, sur PostgreSQL jetable (`/tmp/vq-pgtest`, jamais la
+  production) :
+  - « Ajouter une preuve » → 2 indicateurs sélectionnés → 2 preuves créées,
+    titre rogné, description affichée, badges d'indicateur « 1 » et « 2 » ;
+  - « Modifier » → pré-rempli, titre et description changés, preuve déplacée
+    de l'indicateur **1 à l'indicateur 7** (badge et critère suivent) ;
+  - « Supprimer » sur une preuve **confirmée** → confirmation claire, ligne
+    retirée, **compteur recalculé sans rechargement** (2 → 1) ;
+  - mode `unique` : la recherche Drive « Rattacher un fichier du Drive » est
+    présente (elle était absente avant) ;
+  - contributeur : **aucun bouton, aucune case de sélection** — seuls les
+    filtres restent ; statut affiché en pastille.
+
+### Limites restantes
+
+1. **Rattachement Drive réel non testé** : aucun Drive n'est connecté dans
+   l'environnement local. `POST /api/preuves` n'appelle **aucune** API Google
+   (il enregistre un identifiant, une URL et un nom) : le risque se limite donc
+   au composant de recherche, déjà utilisé ailleurs. Un identifiant Drive
+   inexistant n'est pas vérifié, comme dans le reste du projet.
+2. Les calculs de la vue `preuves_enrichies` (comptage attendu, `incomplet`,
+   alertes) ne sont pas exercés par `npm test` : la base simulée ne fait pas de
+   SQL. Cela reste vérifié sur base jetable.
+3. Les tests de `GET /api/preuves` ne sont pas dans la suite : les colonnes
+   ajoutées (`description`, `indicateur_id`) ont été vérifiées à l'écran,
+   contre le PostgreSQL jetable.
+4. Toujours aucun **export**, aucune purge des documents générés, et
+   l'indicateur 3 (etc.) garde ses autres colonnes non modifiables.
+5. Contributeur : toujours en lecture seule sur les preuves — c'est voulu.
+
+### Prochaine étape
+
+Lot **L2** (présence / absences) — non commencé. Aucun push effectué.

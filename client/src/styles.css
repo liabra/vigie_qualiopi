@@ -248,3 +248,23 @@ p { margin: 0; }
 .audit-tete { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
 .liste-nc { margin: 0; padding-left: 1.1rem; display: grid; gap: .2rem; font-size: .9rem; }
 .audits .formulaire textarea { width: 100%; }
+
+/* ── Absences et assiduité ───────────────────────────────────── */
+/* Le détail d'un stagiaire passe à la ligne sous sa propre ligne, sans
+   dupliquer la liste des stagiaires. */
+.liste-simple li.avec-detail { flex-wrap: wrap; align-items: start; }
+.absences-stagiaire {
+  flex-basis: 100%; display: grid; gap: .5rem;
+  padding-top: .5rem; border-top: 1px dashed var(--border);
+}
+.liste-absences { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.liste-absences li {
+  display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  padding: .35rem .6rem; border: 1px solid var(--border);
+  border-left: 4px solid var(--border); border-radius: 8px;
+}
+/* Justifiée ou non : distingué par le bord ET par la pastille, pour ne pas
+   reposer sur la seule couleur. */
+.liste-absences li.justifiee { border-left-color: var(--ok); }
+.liste-absences li.injustifiee { border-left-color: var(--err); }
+.absence-motif { flex: 1 1 12rem; min-width: 0; }

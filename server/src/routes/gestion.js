@@ -37,6 +37,86 @@ export function normaliserHoraire(valeur) {
   return String(valeur).trim() || null;
 }
 
+// ── Absences ─────────────────────────────────────────────────
+// Principe métier : un stagiaire est PRÉSENT par défaut, on n'enregistre que
+// ses ABSENCES. Elles sont portées par l'INSCRIPTION et non par la personne :
+// un même stagiaire peut suivre deux sessions avec des absences différentes.
+const DEMI_JOURNEES = ["matin", "apres_midi", "journee"];
+const MAX_MOTIF = 500;
+// Une absence ne peut pas dépasser une journée entière : au-delà, c'est une
+// erreur de saisie, pas une donnée.
+const DUREE_MAX = 24;
+
+// Un identifiant d'URL qui n'est pas un entier positif est une erreur
+// d'appel : 400 le dit, plutôt que de laisser PostgreSQL répondre 500.
+function identifiant(valeur) {
+  const n = Number(valeur);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// « AAAA-MM-JJ » strict. Le 30 février doit être refusé, pas reporté au
+// 2 mars : on relit la date telle que JavaScript l'a comprise et on la
+// compare au texte d'origine.
+export function estDateValide(valeur) {
+  if (typeof valeur !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(valeur)) return false;
+  const d = new Date(`${valeur}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valeur;
+}
+
+// undefined : valeur refusée (hors des valeurs admises par la migration 001).
+// null : « demi-journée non précisée », que le schéma autorise.
+function lireDemiJournee(valeur) {
+  if (valeur === undefined || valeur === null || valeur === "") return null;
+  return DEMI_JOURNEES.includes(valeur) ? valeur : undefined;
+}
+
+// Aucune durée n'est DÉDUITE d'une demi-journée : elle est toujours saisie.
+// NaN : refusée. La valeur est arrondie au centième comme la colonne
+// numeric(5,2), pour que les totaux restent exacts.
+function lireDuree(valeur) {
+  if (valeur === undefined || valeur === null || valeur === "") return NaN;
+  const n = typeof valeur === "number" ? valeur : Number(String(valeur).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0 || n > DUREE_MAX) return NaN;
+  return Math.round(n * 100) / 100;
+}
+
+// undefined : trop long.
+function lireMotif(valeur) {
+  if (valeur === undefined || valeur === null) return null;
+  const t = String(valeur).trim();
+  if (t.length > MAX_MOTIF) return undefined;
+  return t || null;
+}
+
+// Assiduité d'une inscription. Le taux n'est rendu que lorsqu'il est
+// calculable ET non trompeur :
+// - abandon : les heures réellement suivies avant l'abandon ne sont pas
+//   modélisées, un taux serait un chiffre inventé ;
+// - durée prévue inconnue ou nulle : on ne peut rien rapporter ;
+// - absences supérieures à la durée prévue : le taux est plafonné à 0 %,
+//   et le dépassement est signalé plutôt que masqué.
+export function calculerAssiduite({ heuresPrevues, heuresAbsence, statut }) {
+  const total = Math.round((Number(heuresAbsence) || 0) * 100) / 100;
+  const socle = {
+    heures_absence: total, heures_prevues: null, heures_suivies: null,
+    taux: null, fiable: false, raison: null, depassement: false,
+  };
+  if (statut === "abandon") return { ...socle, raison: "abandon" };
+  const prevues = Number(heuresPrevues);
+  if (!Number.isFinite(prevues) || prevues <= 0) return { ...socle, raison: "duree_inconnue" };
+  const suivies = Math.max(0, Math.round((prevues - total) * 100) / 100);
+  const taux = Math.min(100, Math.max(0, Math.round((suivies / prevues) * 100)));
+  return {
+    heures_absence: total,
+    heures_prevues: prevues,
+    heures_suivies: suivies,
+    taux,
+    fiable: true,
+    raison: null,
+    depassement: total > prevues,
+  };
+}
+
 // ── Formations ───────────────────────────────────────────────
 
 router.get("/formations", requireAuth, wrap(async (_req, res) => {
@@ -291,6 +371,228 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   const { rows } = await query(`UPDATE inscriptions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
   if (!rows.length) return res.status(404).json({ error: "Inscription introuvable." });
   res.json({ inscription: rows[0] });
+}));
+
+// ── Absences d'un stagiaire ──────────────────────────────────
+// Saisie courante : ouverte aux admins ET aux contributeurs, comme l'ajout
+// d'un stagiaire. Aucun autre droit n'est élargi par ces routes.
+// Toute durée est SAISIE : la déduire d'une « demi-journée » inventerait une
+// donnée que personne n'a déclarée.
+
+router.get("/sessions/:id/absences", requireAuth, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+
+  const { rows: [session] } = await query(
+    `SELECT s.id, s.date_debut, s.date_fin, s.duree_heures_reelle, v.duree_heures_defaut
+     FROM sessions s LEFT JOIN formation_versions v ON v.id = s.formation_version_id
+     WHERE s.id = $1`,
+    [sessionId]
+  );
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+
+  // La durée prévue est celle que la session a réellement déclarée ; à
+  // défaut, celle de la version de formation qu'elle a figée. Le schéma
+  // n'a pas de colonne `sessions.duree_heures` : ces deux sources la
+  // remplacent.
+  const prevues = session.duree_heures_reelle ?? session.duree_heures_defaut ?? null;
+
+  const { rows: stagiaires } = await query(
+    `SELECT i.id AS inscription_id, i.statut, s.id AS stagiaire_id, s.civilite, s.nom, s.prenom
+     FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
+     WHERE i.session_id = $1 ORDER BY s.nom, s.prenom`,
+    [sessionId]
+  );
+  const { rows: absences } = await query(
+    `SELECT a.id, a.inscription_id, a.date_absence, a.demi_journee, a.duree_heures, a.justifiee, a.motif
+     FROM absences a JOIN inscriptions i ON i.id = a.inscription_id
+     WHERE i.session_id = $1
+     ORDER BY a.date_absence,
+              CASE a.demi_journee WHEN 'matin' THEN 1 WHEN 'apres_midi' THEN 2 WHEN 'journee' THEN 3 ELSE 0 END,
+              a.id`,
+    [sessionId]
+  );
+
+  const parInscription = new Map();
+  for (const a of absences) {
+    if (!parInscription.has(a.inscription_id)) parInscription.set(a.inscription_id, []);
+    parInscription.get(a.inscription_id).push(a);
+  }
+
+  let total = 0;
+  const fiches = stagiaires.map((st) => {
+    const listes = parInscription.get(st.inscription_id) || [];
+    const heures = listes.reduce((n, a) => n + (Number(a.duree_heures) || 0), 0);
+    total += heures;
+    return {
+      ...st,
+      absences: listes,
+      total_heures_absence: Math.round(heures * 100) / 100,
+      assiduite: calculerAssiduite({ heuresPrevues: prevues, heuresAbsence: heures, statut: st.statut }),
+    };
+  });
+
+  res.json({
+    session: {
+      id: session.id,
+      date_debut: session.date_debut,
+      date_fin: session.date_fin,
+      heures_prevues: prevues === null ? null : Number(prevues),
+      source_heures_prevues: session.duree_heures_reelle !== null && session.duree_heures_reelle !== undefined
+        ? "duree_heures_reelle"
+        : (prevues === null ? null : "duree_heures_defaut"),
+    },
+    stagiaires: fiches,
+    total_heures_absence: Math.round(total * 100) / 100,
+  });
+}));
+
+router.post("/inscriptions/:id/absences", requireRedacteur, wrap(async (req, res) => {
+  const inscriptionId = identifiant(req.params.id);
+  if (!inscriptionId) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const corps = req.body || {};
+
+  if (!corps.date_absence) return manque(res, "date_absence");
+  if (!estDateValide(corps.date_absence)) {
+    return res.status(400).json({ error: "Date d'absence invalide : format attendu AAAA-MM-JJ." });
+  }
+  const demi = lireDemiJournee(corps.demi_journee);
+  if (demi === undefined) return res.status(400).json({ error: "Demi-journée inconnue." });
+  const duree = lireDuree(corps.duree_heures);
+  if (Number.isNaN(duree)) {
+    return res.status(400).json({
+      error: `Durée d'absence invalide : indiquez un nombre d'heures supérieur à 0 et inférieur ou égal à ${DUREE_MAX}.`,
+    });
+  }
+  const motif = lireMotif(corps.motif);
+  if (motif === undefined) return res.status(400).json({ error: `Motif trop long : ${MAX_MOTIF} caractères au maximum.` });
+
+  // C'est l'inscription qui porte la session, donc les dates de référence.
+  const { rows: [cible] } = await query(
+    `SELECT i.id, s.date_debut, s.date_fin
+     FROM inscriptions i JOIN sessions s ON s.id = i.session_id
+     WHERE i.id = $1`,
+    [inscriptionId]
+  );
+  if (!cible) return res.status(404).json({ error: "Inscription introuvable." });
+  if (corps.date_absence < cible.date_debut || corps.date_absence > cible.date_fin) {
+    return res.status(400).json({
+      error: `La date doit tomber dans les dates de la session (du ${cible.date_debut} au ${cible.date_fin}).`,
+    });
+  }
+
+  // Doublon : même inscription, même date, même demi-journée. Le schéma ne
+  // peut pas le garantir — `demi_journee` est nullable, et deux NULL ne sont
+  // jamais égaux dans un index unique. « IS NOT DISTINCT FROM » les compare
+  // ici sans cette ambiguïté. Le contrôle laisse une fenêtre de concurrence
+  // résiduelle : elle est acceptable pour une saisie manuelle à un seul
+  // poste, et la signaler vaut mieux que d'ajouter une migration.
+  const { rowCount } = await query(
+    `SELECT 1 FROM absences
+     WHERE inscription_id = $1 AND date_absence = $2 AND demi_journee IS NOT DISTINCT FROM $3`,
+    [inscriptionId, corps.date_absence, demi]
+  );
+  if (rowCount) {
+    return res.status(409).json({ error: "Une absence est déjà enregistrée pour cette date et cette demi-journée." });
+  }
+
+  const { rows: [absence] } = await query(
+    `INSERT INTO absences (inscription_id, date_absence, demi_journee, duree_heures, justifiee, motif)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [inscriptionId, corps.date_absence, demi, duree, corps.justifiee === true, motif]
+  );
+  res.status(201).json({ absence });
+}));
+
+// Corriger une absence. Comme les autres PATCH du projet : un champ absent du
+// corps reste inchangé, un corps vide est refusé.
+router.patch("/absences/:id", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'absence invalide." });
+  const corps = req.body || {};
+
+  const { rows: [actuelle] } = await query(
+    `SELECT a.id, a.inscription_id, a.date_absence, a.demi_journee, a.duree_heures, a.justifiee, a.motif,
+            s.date_debut, s.date_fin
+     FROM absences a
+     JOIN inscriptions i ON i.id = a.inscription_id
+     JOIN sessions s ON s.id = i.session_id
+     WHERE a.id = $1`,
+    [id]
+  );
+  if (!actuelle) return res.status(404).json({ error: "Absence introuvable." });
+
+  const sets = [];
+  const params = [id];
+  const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
+
+  let date = actuelle.date_absence;
+  if (corps.date_absence !== undefined) {
+    if (!estDateValide(corps.date_absence)) {
+      return res.status(400).json({ error: "Date d'absence invalide : format attendu AAAA-MM-JJ." });
+    }
+    date = corps.date_absence;
+    set("date_absence", date);
+  }
+  if (date < actuelle.date_debut || date > actuelle.date_fin) {
+    return res.status(400).json({
+      error: `La date doit tomber dans les dates de la session (du ${actuelle.date_debut} au ${actuelle.date_fin}).`,
+    });
+  }
+
+  let demi = actuelle.demi_journee;
+  if (corps.demi_journee !== undefined) {
+    const lue = lireDemiJournee(corps.demi_journee);
+    if (lue === undefined) return res.status(400).json({ error: "Demi-journée inconnue." });
+    demi = lue;
+    set("demi_journee", demi);
+  }
+
+  if (corps.duree_heures !== undefined) {
+    const duree = lireDuree(corps.duree_heures);
+    if (Number.isNaN(duree)) {
+      return res.status(400).json({
+        error: `Durée d'absence invalide : indiquez un nombre d'heures supérieur à 0 et inférieur ou égal à ${DUREE_MAX}.`,
+      });
+    }
+    set("duree_heures", duree);
+  }
+
+  if (corps.justifiee !== undefined) set("justifiee", corps.justifiee === true);
+
+  if (corps.motif !== undefined) {
+    const motif = lireMotif(corps.motif);
+    if (motif === undefined) return res.status(400).json({ error: `Motif trop long : ${MAX_MOTIF} caractères au maximum.` });
+    set("motif", motif);
+  }
+
+  if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
+
+  // Le doublon est contrôlé sur ce que l'absence VA DEVENIR : déplacer une
+  // absence d'un jour peut la faire tomber sur une autre.
+  const { rowCount } = await query(
+    `SELECT 1 FROM absences
+     WHERE inscription_id = $1 AND date_absence = $2 AND demi_journee IS NOT DISTINCT FROM $3 AND id <> $4`,
+    [actuelle.inscription_id, date, demi, id]
+  );
+  if (rowCount) {
+    return res.status(409).json({ error: "Une absence est déjà enregistrée pour cette date et cette demi-journée." });
+  }
+
+  const { rows: [absence] } = await query(
+    `UPDATE absences SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+    params
+  );
+  res.json({ absence });
+}));
+
+// Supprimer une absence saisie par erreur.
+router.delete("/absences/:id", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'absence invalide." });
+  const { rowCount } = await query("DELETE FROM absences WHERE id = $1", [id]);
+  if (!rowCount) return res.status(404).json({ error: "Absence introuvable." });
+  res.json({ ok: true });
 }));
 
 // Modifier une personne déjà saisie. Indispensable pour la civilité :

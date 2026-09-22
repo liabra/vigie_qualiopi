@@ -8,6 +8,8 @@ const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: 
 // Valeurs admises en base (migration 008). La chaîne vide vaut « non
 // renseignée » : le marqueur {{civilite}} est alors remplacé par du vide.
 const CIVILITES = ["M.", "Mme"];
+// Valeurs admises par la contrainte SQL sur absences.demi_journee.
+const DEMI_JOURNEES = { matin: "Matin", apres_midi: "Après-midi", journee: "Journée" };
 
 // Petit formulaire repliable : la Phase 2 en compte beaucoup, autant
 // qu'ils se ressemblent tous.
@@ -118,6 +120,113 @@ function Formations({ formations, onChange, erreur }) {
   );
 }
 
+// ── Absences d'un stagiaire ──────────────────────────────────
+// Principe métier : un stagiaire est PRÉSENT par défaut, on ne saisit que ses
+// absences. Le taux d'assiduité est calculé par le serveur, et seulement
+// lorsqu'il est fiable : ici, on ne fait que l'afficher. Aucune durée n'est
+// déduite d'une « demi-journée » — elle est toujours saisie.
+function PanneauAbsences({ fiche, session, peutSaisir, recharger, erreur }) {
+  const [form, setForm] = useState(null);
+
+  async function enregistrer() {
+    if (!form.date_absence) return erreur("Indiquez la date de l'absence.");
+    if (!(Number(form.duree_heures) > 0)) return erreur("Indiquez une durée d'absence en heures, supérieure à 0.");
+    try {
+      const corps = {
+        date_absence: form.date_absence,
+        demi_journee: form.demi_journee || null,
+        duree_heures: Number(form.duree_heures),
+        justifiee: form.justifiee === true,
+        motif: form.motif || null,
+      };
+      if (form.id) await api(`/api/absences/${form.id}`, { method: "PATCH", body: JSON.stringify(corps) });
+      else await api(`/api/inscriptions/${form.inscription_id}/absences`, { method: "POST", body: JSON.stringify(corps) });
+      erreur(null);
+      setForm(null);
+      await recharger();
+    } catch (e) { erreur(e.message); }
+  }
+
+  async function supprimer(a) {
+    if (!window.confirm(`Supprimer l'absence du ${a.date_absence} ?`)) return;
+    try {
+      await api(`/api/absences/${a.id}`, { method: "DELETE" });
+      erreur(null);
+      setForm(null);
+      await recharger();
+    } catch (e) { erreur(e.message); }
+  }
+
+  return (
+    <div className="absences-stagiaire">
+      <ul className="liste-absences">
+        {fiche.absences.map((x) => (
+          <li key={x.id} className={x.justifiee ? "justifiee" : "injustifiee"}>
+            <span>{x.date_absence}</span>
+            <span className="muted small">{DEMI_JOURNEES[x.demi_journee] || "demi-journée non précisée"}</span>
+            <strong>{x.duree_heures} h</strong>
+            <span className={"pill " + (x.justifiee ? "ok" : "off")}>
+              {x.justifiee ? "Justifiée" : "Non justifiée"}
+            </span>
+            {x.motif && <span className="muted small absence-motif">{x.motif}</span>}
+            {peutSaisir && (
+              <span className="preuve-actions">
+                <button className="btn petit" onClick={() => setForm({
+                  id: x.id, inscription_id: fiche.inscription_id, date_absence: x.date_absence,
+                  demi_journee: x.demi_journee || "", duree_heures: x.duree_heures,
+                  justifiee: x.justifiee === true, motif: x.motif || "",
+                })}>Modifier</button>
+                <button className="btn petit danger" onClick={() => supprimer(x)}>Supprimer</button>
+              </span>
+            )}
+          </li>
+        ))}
+        {fiche.absences.length === 0 && (
+          <li className="muted">Aucune absence enregistrée : présence par défaut.</li>
+        )}
+      </ul>
+
+      {peutSaisir && !form && (
+        <button className="btn petit" onClick={() => setForm({
+          id: null, inscription_id: fiche.inscription_id, date_absence: session.date_debut,
+          demi_journee: "", duree_heures: "", justifiee: false, motif: "",
+        })}>
+          Ajouter une absence
+        </button>
+      )}
+
+      {peutSaisir && form && (
+        <div className="formulaire ligne">
+          <Champ label="Date" type="date" value={form.date_absence}
+            min={session.date_debut} max={session.date_fin}
+            onChange={(e) => setForm({ ...form, date_absence: e.target.value })} />
+          <label className="champ">
+            <span className="muted small">Demi-journée</span>
+            <select value={form.demi_journee} onChange={(e) => setForm({ ...form, demi_journee: e.target.value })}>
+              <option value="">Non précisée</option>
+              {Object.entries(DEMI_JOURNEES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </label>
+          <Champ label="Durée (heures)" type="number" min="0" max="24" step="0.25" value={form.duree_heures}
+            onChange={(e) => setForm({ ...form, duree_heures: e.target.value })} />
+          <label className="champ case">
+            <input type="checkbox" checked={form.justifiee}
+              onChange={(e) => setForm({ ...form, justifiee: e.target.checked })} />
+            <span className="muted small">Justifiée</span>
+          </label>
+          <Champ label="Motif" value={form.motif} onChange={(e) => setForm({ ...form, motif: e.target.value })} />
+          <div className="preuve-actions">
+            <button className="btn primary" onClick={enregistrer}>
+              {form.id ? "Enregistrer l'absence" : "Ajouter l'absence"}
+            </button>
+            <button className="btn" onClick={() => setForm(null)}>Annuler</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Détail d'une session ─────────────────────────────────────
 function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir }) {
   const [d, setD] = useState(null);
@@ -130,9 +239,21 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
   // effacer une correction commencée.
   const [horaireSaisi, setHoraireSaisi] = useState("");
   const [horaireEnCours, setHoraireEnCours] = useState(false);
+  // Absences et assiduité de la session, chargées avec le détail : deux
+  // appels en parallèle plutôt qu'un aller-retour supplémentaire à l'ouverture
+  // de chaque stagiaire.
+  const [abs, setAbs] = useState(null);
+  const [detailAbsence, setDetailAbsence] = useState(null);
 
   const charger = useCallback(async () => {
-    try { setD(await api(`/api/sessions/${sessionId}`)); } catch (e) { erreur(e.message); }
+    try {
+      const [detail, absences] = await Promise.all([
+        api(`/api/sessions/${sessionId}`),
+        api(`/api/sessions/${sessionId}/absences`),
+      ]);
+      setD(detail);
+      setAbs(absences);
+    } catch (e) { erreur(e.message); }
   }, [sessionId, erreur]);
   useEffect(() => { charger(); }, [charger]);
   const idSession = d?.session?.id;
@@ -291,17 +412,58 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
       </Bloc>
 
       <Bloc titre={`Stagiaires (${d.stagiaires.filter((x) => x.statut !== "abandon").length} actifs sur ${d.stagiaires.length})`} ouvertParDefaut>
+        {abs && (
+          <p className="muted small">
+            Un stagiaire est <strong>présent par défaut</strong> : seules les absences sont saisies.
+            {abs.session.heures_prevues !== null ? (
+              <> Durée prévue de la session : <strong>{abs.session.heures_prevues} h</strong>
+                {abs.session.source_heures_prevues === "duree_heures_defaut"
+                  && " (durée par défaut de la formation : aucune durée réelle n'est déclarée)"}
+                {" "}· total des absences : <strong>{abs.total_heures_absence} h</strong>.</>
+            ) : (
+              <> <span className="text-erreur">Durée prévue inconnue</span> : seules les heures d'absence
+                sont affichées — <strong>{abs.total_heures_absence} h</strong>.</>
+            )}
+          </p>
+        )}
         <ul className="liste-simple">
-          {d.stagiaires.map((st) => (
-            <li key={st.inscription_id} className={st.statut === "abandon" ? "abandonne" : ""}>
+          {d.stagiaires.map((st) => {
+            const fiche = abs?.stagiaires.find((x) => x.inscription_id === st.inscription_id) || null;
+            const deplie = detailAbsence === st.inscription_id;
+            return (
+            <li key={st.inscription_id}
+              className={[st.statut === "abandon" ? "abandonne" : "", deplie ? "avec-detail" : ""].join(" ").trim()}>
               <div>
                 <strong>{st.nom} {st.prenom}</strong>
                 <div className="muted small">
                   {d.groupes.find((g) => g.id === st.groupe_id)?.nom || "sans groupe"}
                   {st.prescripteur && <> · {PRESCRIPTEURS[st.prescripteur]}</>}
                   {" · dossier "}{st.dossier_complet ? "complet" : "incomplet"}
+                  {fiche && <> · {fiche.absences.length} absence(s)
+                    {fiche.absences.length > 0 && <> · {fiche.total_heures_absence} h</>}</>}
                   {st.statut === "abandon" && <span className="text-erreur"> · abandon le {st.date_abandon}</span>}
                 </div>
+                {/* L'assiduité n'est affichée que lorsque le serveur la juge
+                    fiable : jamais de taux inventé pour un abandon, ni sans
+                    durée prévue. */}
+                {fiche && (fiche.assiduite.fiable || fiche.assiduite.raison || fiche.assiduite.depassement) && (
+                  <div className="tags">
+                    {fiche.assiduite.fiable && (
+                      <span className={"pill " + (fiche.assiduite.taux >= 80 ? "ok" : "warn")}>
+                        Assiduité {fiche.assiduite.taux} % · {fiche.assiduite.heures_suivies} h suivies sur {fiche.assiduite.heures_prevues} h
+                      </span>
+                    )}
+                    {fiche.assiduite.raison === "abandon" && (
+                      <span className="pill off">Abandon — taux non calculé</span>
+                    )}
+                    {fiche.assiduite.raison === "duree_inconnue" && (
+                      <span className="pill">Durée prévue inconnue — total d'absences seul</span>
+                    )}
+                    {fiche.assiduite.depassement && (
+                      <span className="pill off">Absences supérieures à la durée prévue</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="actions-stagiaire">
                 {/* Corriger une fiche passe par PATCH /stagiaires/:id, qui
@@ -316,12 +478,23 @@ function DetailSession({ sessionId, modeles, onChange, erreur, admin, peutSaisir
                     {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 )}
+                {fiche && (
+                  <button className="btn petit"
+                    onClick={() => setDetailAbsence(deplie ? null : st.inscription_id)}>
+                    {deplie ? "Fermer les absences" : `Absences (${fiche.absences.length})`}
+                  </button>
+                )}
                 {peutSaisir && st.statut !== "abandon" && (
                   <button className="btn petit danger" onClick={() => marquerAbandon(st)}>Abandon</button>
                 )}
               </div>
+              {deplie && fiche && (
+                <PanneauAbsences fiche={fiche} session={abs.session} peutSaisir={peutSaisir}
+                  recharger={charger} erreur={erreur} />
+              )}
             </li>
-          ))}
+            );
+          })}
           {d.stagiaires.length === 0 && <li className="muted">Aucun stagiaire inscrit.</li>}
         </ul>
         {peutSaisir && (

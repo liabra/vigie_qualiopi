@@ -7,7 +7,7 @@
 | **État validé au** | 22/09/2026 |
 | **Dernier lot métier validé en production** | preuves — création et rattachement manuels (`1dd4763`) |
 | **Migration de production actuelle** | `010_horaire_session.sql` |
-| **Suite de tests validée** | **91/91 au vert** |
+| **Suite de tests validée** | **135/135 au vert** |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -253,6 +253,8 @@ Ces tables se rattachent à l'inscription, pas directement au stagiaire.
 - Inscriptions.
 - Abandons datés.
 - Civilité.
+- Absences par inscription : date, demi-journée, durée en heures, justifiée ou non, motif.
+- Assiduité par inscription, calculée seulement lorsqu'elle est fiable.
 
 ### Documents
 
@@ -351,6 +353,68 @@ et la reprise indicateur par indicateur des preuves de l'auditrice.
 
 ---
 
+## 7 ter. Lot L2 — absences et assiduité — livré, en attente de déploiement
+
+Principe métier confirmé : **un stagiaire est présent par défaut, seules ses absences sont
+enregistrées**. Aucune feuille de présence quotidienne parallèle n'a été créée, et **EduSign n'est
+pas touché par ce lot**.
+
+### Schéma rencontré — aucune migration nécessaire
+
+La table `absences` existe depuis la migration 001 et couvrait déjà tout le besoin :
+`inscription_id` (FK vers `inscriptions`, `ON DELETE CASCADE`), `date_absence NOT NULL`,
+`demi_journee` (CHECK `matin` / `apres_midi` / `journee`, **nullable**), `duree_heures`
+(`numeric(5,2)`, nullable), `justifiee NOT NULL DEFAULT false`, `motif`, plus le trigger
+`absences_updated_at`.
+
+**Aucune migration 011 n'a été créée.** Deux points à retenir :
+
+- `sessions.duree_heures` **n'existe pas**. La durée prévue d'une session se lit sur
+  `sessions.duree_heures_reelle`, à défaut sur `formation_versions.duree_heures_defaut`
+  (via `sessions.formation_version_id`).
+- Le schéma ne peut pas interdire un doublon « même inscription, même date, même demi-journée » :
+  `demi_journee` étant nullable, un index unique ne comparerait jamais deux `NULL`. Le contrôle
+  est donc fait par la route, qui répond **409**.
+
+### Routes
+
+- `GET /api/sessions/:id/absences` (`requireAuth`) — absences et assiduité, inscription par inscription.
+- `POST /api/inscriptions/:id/absences` (`requireRedacteur`) — ajout.
+- `PATCH /api/absences/:id` (`requireRedacteur`) — correction.
+- `DELETE /api/absences/:id` (`requireRedacteur`) — suppression.
+
+### Calculs retenus
+
+- heures d'absence = somme des `duree_heures` saisies ;
+- heures suivies = durée prévue − heures d'absence, avec un plancher à 0 ;
+- taux d'assiduité = heures suivies / durée prévue × 100, **borné entre 0 % et 100 %** ;
+- **aucun taux** pour un abandon — les heures réellement suivies avant abandon ne sont pas
+  modélisées — ni lorsque la durée prévue est inconnue ou nulle ; dans ce cas, seul le total
+  d'heures d'absence est affiché ;
+- un dépassement (absences supérieures à la durée prévue) est **signalé**, pas masqué ;
+- la durée d'une absence est **toujours saisie** : elle n'est jamais déduite d'une « demi-journée ».
+
+### Droits
+
+ADMIN et CONTRIBUTEUR : lecture, création, modification et suppression des absences.
+Aucun autre droit n'est élargi : formations, sessions, groupes, preuves, modèles, référentiel,
+audits et Drive restent hors de portée du contributeur (vérifié en direct : 403).
+
+### Tests
+
+- `server/test/absences.test.js` : 44 tests hermétiques (application Express réelle + base simulée).
+- `npm test` : **135/135**
+- test navigateur réel sur PostgreSQL jetable, avec un compte admin **et** un compte contributeur.
+- trois mutations rejouées pour vérifier que les tests mordent.
+
+### Limite connue
+
+Le contrôle de doublon se fait par une lecture suivie d'une écriture, sans transaction ni index
+unique : deux saisies simultanées de la même absence pourraient toutes deux passer. Acceptable
+pour une saisie manuelle à un seul poste ; à revoir si la saisie devient concurrente.
+
+---
+
 ## 8. Droits
 
 Historique de principe :
@@ -366,11 +430,8 @@ Le contributeur peut historiquement :
 - ajouter un stagiaire sur une session ;
 - gérer inscription, groupe, prescripteur et dossier ;
 - gérer l'abandon ;
-- générer des documents.
-
-Décision historique à vérifier pendant l'audit :
-
-- le contributeur doit pouvoir saisir les absences.
+- générer des documents ;
+- **gérer les absences d'un stagiaire** : ajout, modification, suppression (tranché et livré, lot L2 §7 ter).
 
 Le contributeur ne doit pas obtenir par accident de droits admin sur :
 
@@ -491,16 +552,22 @@ de rattachement.
 
 ### 11.2 Présence / assiduité / absences
 
-Infrastructure historique : table `absences`.
+**Livré (lot L2, §7 ter)** — voir cette section pour le détail des routes, des calculs et des
+droits. En résumé :
 
-Principe métier :
+- tous présents par défaut, seules les absences sont saisies ;
+- saisissable par contributeur (et par admin) ;
+- assiduité calculée par inscription, uniquement lorsqu'elle est fiable ;
+- table `absences` réutilisée **sans migration**.
 
-- tous présents par défaut ;
-- saisir uniquement les absences ;
-- contribuer au suivi d'assiduité, abandon et éventuellement heures réellement suivies ;
-- saisissable par contributeur.
+Reste ouvert, hors de ce lot :
 
-À terminer après audit réel des routes/écrans existants.
+- les **heures réellement suivies avant un abandon** (aujourd'hui aucun taux n'est produit pour un
+  abandon, volontairement) ;
+- la **durée prévue de la session** n'est pas saisie comme un champ propre : elle est déduite de
+  `duree_heures_reelle` ou de `duree_heures_defaut` ;
+- la structuration de l'horaire en journées et demi-journées (voir §7, volontairement non modélisé) ;
+- aucun état de synthèse « assiduité globale » toutes sessions confondues.
 
 ### 11.3 Résultats QCM / notes
 
@@ -671,7 +738,7 @@ Ne pas sur-concevoir maintenant.
 
 Référence connue au **22/09/2026** :
 
-- `npm test` : **91/91**
+- `npm test` : **135/135**
 - `npm run build` : OK
 - production Railway : OK
 - migration de production : **010**
@@ -707,7 +774,8 @@ Avant nouvelle implémentation, réaliser un audit exhaustif qui fusionne :
 État de la feuille de route au **22/09/2026** :
 
 - **L1 — preuves : ajout et rattachement manuel** : exécuté, déployé, validé en production (§7 bis).
-- **L2 — absences / assiduité** : lot suivant, en cours de développement.
+- **L2 — absences / assiduité** : développé, testé et vérifié sur base jetable ; **pas encore
+  déployé** (§7 ter).
 
 Classer ensuite :
 

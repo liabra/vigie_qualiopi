@@ -604,3 +604,129 @@ Lot **L2** (présence / absences) — non commencé. Aucun push effectué.
 ### Prochaine étape
 
 Lot **L2** — absences / assiduité des stagiaires.
+
+---
+
+## 2026-09-22 (suite 2) — L2 : absences et assiduité des stagiaires
+
+### Étape 1 — documentation du lot preuves
+
+- `PROJECT_HANDOFF.md` : repères rendus non auto-périmés (plus aucun hash de `HEAD` ni
+  d'`origin/main` dans l'en-tête ; « état validé au 22/09/2026 », « dernier lot métier validé en
+  production », « suite de tests validée », « migration de production actuelle »). Nouvelle section
+  §7 bis consacrée au lot L1. §11.1 (EduSign) et §11.9 (preuves Noé) ne sont plus présentés comme
+  bloqués par l'absence de création de preuve. §14 mis à jour (91/91).
+- L'en-tête du handoff a été converti de citation en tableau : la convention de « saut de ligne
+  dur » du fichier utilise deux espaces en fin de ligne, ce que `git diff --check` signale.
+- commit documentaire : `e720a45` — `Documentation : valider le lot preuves`. **Non poussé.**
+
+### Schéma `absences` rencontré
+
+Table présente depuis la migration 001, suffisante telle quelle : **aucune migration 011 créée**.
+
+- `inscription_id` NOT NULL → `inscriptions(id) ON DELETE CASCADE` ;
+- `date_absence` date NOT NULL ;
+- `demi_journee` text CHECK IN ('matin','apres_midi','journee'), **nullable** ;
+- `duree_heures` numeric(5,2) CHECK >= 0, **nullable** ;
+- `justifiee` boolean NOT NULL DEFAULT false ;
+- `motif` text ; `created_at` / `updated_at` + trigger `absences_updated_at` ;
+- index `absences_inscription`.
+
+Deux constats qui ont orienté le lot :
+
+1. **`sessions.duree_heures` n'existe pas.** La durée prévue se lit sur
+   `sessions.duree_heures_reelle`, à défaut sur `formation_versions.duree_heures_defaut`
+   (via `sessions.formation_version_id`). Le libellé « durée prévue » de la demande correspond donc
+   à ces deux colonnes.
+2. Le schéma **ne peut pas** garantir l'unicité « même inscription / même date / même demi-journée » :
+   `demi_journee` étant nullable, un index unique ne comparerait jamais deux `NULL`. Le contrôle est
+   fait dans la route (409). Limite assumée : deux saisies simultanées pourraient passer.
+
+En production, la table `absences` était **vide** (3 inscriptions, 1 session) : aucun risque de
+reprise de données.
+
+### Routes créées
+
+- `GET /api/sessions/:id/absences` — `requireAuth` ; absences et assiduité, inscription par inscription ;
+- `POST /api/inscriptions/:id/absences` — `requireRedacteur` ;
+- `PATCH /api/absences/:id` — `requireRedacteur` ;
+- `DELETE /api/absences/:id` — `requireRedacteur`.
+
+Utilitaires exportés et testés directement : `estDateValide`, `calculerAssiduite`.
+
+### Calculs retenus
+
+- heures d'absence = somme des `duree_heures` saisies (arrondi au centième, comme la colonne) ;
+- heures suivies = durée prévue − heures d'absence, **plancher à 0** ;
+- taux = heures suivies / durée prévue × 100, **borné à [0 ; 100]** ;
+- **aucun taux** pour un abandon (les heures suivies avant abandon ne sont pas modélisées), ni
+  lorsque la durée prévue est absente ou nulle : seul le total d'heures d'absence est alors affiché ;
+- un **dépassement** (absences > durée prévue) est signalé, pas masqué ;
+- la durée d'une absence est **toujours saisie** : jamais déduite d'une « demi-journée ».
+
+### Interface
+
+Dans le détail d'une session, le bloc **Stagiaires** porte désormais l'assiduité :
+
+- résumé en tête : durée prévue (en précisant quand elle vient de la formation), total d'absences ;
+- par stagiaire : nombre d'absences, heures cumulées, pastille d'assiduité (ou mention explicite
+  « Abandon — taux non calculé » / « Durée prévue inconnue ») ;
+- bouton **Absences (n)** → panneau déplié sous la ligne du stagiaire : historique chronologique,
+  distinction justifiée / non justifiée par le bord **et** la pastille, formulaire d'ajout et
+  d'édition, suppression avec confirmation.
+
+### Droits
+
+ADMIN et CONTRIBUTEUR : lecture, création, modification, suppression des absences.
+Aucun autre droit élargi — vérifié en direct sur le serveur jetable : `POST /api/sessions`,
+`PATCH /api/sessions/:id`, `POST /api/sessions/:id/groupes`, `PUT /api/formations/:id`,
+`DELETE /api/modeles/:id` et `POST /api/preuves` répondent **403** au contributeur.
+
+### Codes d'erreur
+
+400 (identifiant invalide, date invalide ou hors session, durée hors [0 ; 24], demi-journée hors
+valeurs du CHECK, motif > 500 caractères, corps vide), 401 (non authentifié), 403 (rôle non
+autorisé), 404 (inscription ou absence introuvable), 409 (doublon). **Aucun 500** sur une erreur
+d'utilisateur.
+
+### Vérifications effectuées
+
+- `npm test` : **135/135**, 0 échec, 0 ignoré (91 avant ce lot → 44 nouveaux tests).
+- `npm run build` : OK.
+- `git diff --check` : propre.
+- **Preuve que les tests mordent** (trois mutations, code restauré à l'identique après chacune) :
+  1. `requireRedacteur` → `requireAdmin` sur `POST /inscriptions/:id/absences` → 134/135,
+     échec de « un contributeur ajoute une absence » ;
+  2. suppression du plancher `Math.max(0, …)` sur les heures suivies → 134/135, échec de
+     « l'assiduité est bornée entre 0 % et 100 % » ;
+  3. `statut === "abandon"` neutralisé → 133/135, échec de « un abandon affiche ses absences mais
+     aucun taux » **et** du test de bornage.
+- **Navigateur réel**, sur PostgreSQL jetable (`/tmp/vq-pgtest`, jamais la production) :
+  - admin : session à 28 h, 3 stagiaires dont un en abandon ; Blandine 3,5 h → **88 %**,
+    Noé 0 absence → **100 %**, Amy en abandon → **aucun taux** affiché ;
+  - ajout d'une absence (durée vide → message d'erreur ; doublon → **409** affiché ; puis
+    7 h le 2026-01-07) → total session **10,5 h**, assiduité recalculée à **63 %** ;
+  - modification (formulaire pré-rempli, 7 h → 3,5 h et passage en justifiée) → total **7 h**,
+    assiduité **75 %**, l'autre absence intacte ;
+  - suppression (confirmation nominative) → total revenu à **3,5 h**, assiduité **88 %** ;
+  - durée de repli : sur la session sans durée réelle, l'écran affiche « 21 h (durée par défaut de
+    la formation : aucune durée réelle n'est déclarée) » ;
+  - **contributeur** : peut lire, ajouter (vérifié : absence créée, total 7 h, Noé 88 %) et
+    supprimer ; ne voit **aucun** contrôle admin — ni le champ Horaire, ni le sélecteur de civilité,
+    ni le formulaire de création de groupe, ni le bloc Formations, ni l'onglet Modèles.
+- **Contrôle direct de la base jetable** : les lignes écrites sont bien présentes avec leurs
+  valeurs ; migration courante toujours **010** ; 28 tables publiques.
+
+### Limites restantes
+
+1. Contrôle de doublon non transactionnel (lecture puis écriture) : fenêtre de concurrence résiduelle.
+2. Les heures réellement suivies **avant un abandon** ne sont pas modélisées : aucun taux n'est
+   produit dans ce cas, volontairement.
+3. Pas d'état de synthèse d'assiduité toutes sessions confondues, ni d'export.
+4. La durée prévue reste déduite (`duree_heures_reelle` → `duree_heures_defaut`) : il n'existe
+   toujours pas de champ de durée prévue propre à la session. Le chantier de validation générique
+   des identifiants (D1) reste entier : seules les routes du lot L2 renvoient 400 au lieu de 500.
+
+### Prochaine étape
+
+Déploiement du lot L2 après validation, puis lot suivant. **Aucun push effectué.**

@@ -5,7 +5,7 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 22/09/2026 |
-| **Dernier lot métier validé en production** | preuves — création et rattachement manuels (`1dd4763`) |
+| **Dernier lot métier validé en production** | absences et assiduité — lot L2 (`2f4fd84`) |
 | **Migration de production actuelle** | `010_horaire_session.sql` |
 | **Suite de tests validée** | **135/135 au vert** |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
@@ -353,7 +353,7 @@ et la reprise indicateur par indicateur des preuves de l'auditrice.
 
 ---
 
-## 7 ter. Lot L2 — absences et assiduité — livré, en attente de déploiement
+## 7 ter. Lot L2 — absences et assiduité — TERMINÉ
 
 Principe métier confirmé : **un stagiaire est présent par défaut, seules ses absences sont
 enregistrées**. Aucune feuille de présence quotidienne parallèle n'a été créée, et **EduSign n'est
@@ -406,6 +406,18 @@ audits et Drive restent hors de portée du contributeur (vérifié en direct : 4
 - `npm test` : **135/135**
 - test navigateur réel sur PostgreSQL jetable, avec un compte admin **et** un compte contributeur.
 - trois mutations rejouées pour vérifier que les tests mordent.
+
+### Production
+
+- commit métier : `2f4fd84` — `Assiduité : gérer les absences des stagiaires`
+- commit de clarification : `f7273ee` — `Sessions : clarifier le libellé de durée` (« durée prévue »
+  à la place de « durée réelle », colonne SQL et priorité inchangées)
+- déployé en production, Railway **SUCCESS**
+- `/api/health` : HTTP 200
+- migration inchangée : **010**
+- smoke test manuel en production par l'utilisatrice : **5/5 OK**
+  (bloc visible, ajout + recalcul, modification + recalcul, suppression + retour au calcul
+  précédent, stagiaire sans absence à 100 % et abandon sans taux trompeur)
 
 ### Limite connue
 
@@ -540,8 +552,8 @@ Décision historique :
 
 - modèle d'émargement si nécessaire ;
 - export EduSign ;
-- rattachement de l'export comme preuve ;
-- classement Drive ;
+- Terminé et validé en production (lot L2, §7 ter)** — voir cette section pour le détail des routes,
+des calculs et des - classement Drive ;
 - lien avec assiduité.
 
 **Mise à jour 22/09/2026** : le rattachement manuel d'un fichier Drive comme preuve **n'est plus
@@ -762,8 +774,8 @@ Objectif :
 > rendre Vigie réellement exploitable de bout en bout pour une nouvelle session de formation, puis fermer les principaux écarts Qualiopi.
 
 Avant nouvelle implémentation, réaliser un audit exhaustif qui fusionne :
-
-1. backlog historique de ce document ;
+exécuté, déployé, validé en production (§7 ter).
+- **L3 — stagiaires et dossiers (import CSV, fiches, inscriptions)** : lot suivante de ce document ;
 2. état réel du dépôt ;
 3. `VIGIE_AGENT_LOG.md` ;
 4. spec fonctionnelle ;

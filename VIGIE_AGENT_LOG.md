@@ -748,3 +748,38 @@ Périmètre volontairement étroit :
 - seuls les libellés visibles et la documentation ont été réalignés :
   formulaire de création de session, texte d'aide du repli de durée (L2), commentaire de la
   convention de marqueurs, ligne `{{duree}}` du README, et cette note.
+
+---
+
+## 2026-09-22 (suite 4) — Validation du lot L2 en production
+
+### Push
+
+- commits poussés (fast-forward, sans `--force`) : `e720a45` (documentation preuves),
+  `2f4fd84` (assiduité), `f7273ee` (clarification du libellé de durée)
+- `git fetch` préalable : `origin/main` inchangé (`40e9d54`), 0 commit distant, avance simple
+
+### Déploiement Railway
+
+- déploiement `a97c9407-b08a-4624-ad03-e2f1d7c71c41`, commit `f7273eea`
+- statut : **SUCCESS**
+- `/api/health` : **HTTP 200** → `{"ok":true}`
+- **aucune ligne « Migration appliquée »** : migration toujours **010** (10 migrations)
+- erreurs : aucune ; seuls les avertissements bénins connus
+
+### Smoke test production (par l'utilisatrice) — 5/5 OK
+
+1. bloc « Absences / assiduité » visible ;
+2. ajout d'une absence + recalcul correct ;
+3. modification + recalcul correct ;
+4. suppression + retour au calcul précédent ;
+5. stagiaire sans absence = 100 % lorsque la durée prévue est connue, abandon sans taux trompeur.
+
+### État
+
+- `npm test` : **135/135**
+- **Lot L2 ASSIDUITÉ : TERMINÉ.**
+
+### Prochaine étape
+
+Lot **L3** — stagiaires et dossiers : import CSV en masse, fiches stagiaires, inscriptions.

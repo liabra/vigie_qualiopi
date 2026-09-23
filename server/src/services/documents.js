@@ -15,6 +15,7 @@ import { config } from "../config.js";
 import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
 import { marqueursInconnus, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
+import { calculerAssiduite } from "./assiduite.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -190,8 +191,13 @@ async function cibles(modele, { session, groupe }) {
     // documents, sans erreur : c'est exactement ainsi que {{civilite}}
     // est passé inaperçu. Ajouter un marqueur lié au stagiaire impose
     // d'ajouter sa colonne à ce SELECT.
-    `SELECT s.id, s.civilite, s.nom, s.prenom
-     FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
+    `SELECT s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
+            i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.statut,
+            COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
+     FROM inscriptions i
+     JOIN stagiaires s ON s.id = i.stagiaire_id
+     LEFT JOIN prescripteurs pr ON pr.code = i.prescripteur
+     LEFT JOIN groupes g ON g.id = i.groupe_id
      WHERE i.statut <> 'abandon'
        AND ($2::int IS NULL AND i.session_id = $1 OR i.groupe_id = $2)
      ORDER BY s.nom, s.prenom`,
@@ -216,7 +222,10 @@ export async function contexteGeneration(sessionId, groupeId) {
     groupe = rows[0] || null;
     if (!groupe) throw new Error("Groupe introuvable dans cette session.");
   }
-  return { session, groupe, formation: { intitule: session.intitule }, version: { duree_heures_defaut: session.duree_heures_defaut } };
+  return { session, groupe, formation: { intitule: session.intitule }, version: { duree_heures_defaut: session.duree_heures_defaut },
+           // Durée prévue réellement déclarée, à défaut celle de la version
+           // figée : la source unique du calcul d'assiduité (lot L2).
+           heuresPrevues: session.duree_heures_reelle ?? session.duree_heures_defaut ?? null };
 }
 
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
@@ -261,7 +270,11 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   const cacheMarqueurs = new Map();
 
   for (const { stagiaire } of aProduire) {
-    const valeurs = valeursMarqueurs({ ...ctx, stagiaire, organisme: config.organismeNom });
+    // Assiduité par stagiaire : le MÊME calcul que le lot L2, pas une copie.
+    const assiduite = stagiaire
+      ? calculerAssiduite({ heuresPrevues: ctx.heuresPrevues, heuresAbsence: stagiaire.heures_absence, statut: stagiaire.statut })
+      : null;
+    const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom });
     const nom = stagiaire
       ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`
       : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}`;

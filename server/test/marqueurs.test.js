@@ -12,6 +12,8 @@ test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
     "civilite", "nom_stagiaire", "prenom_stagiaire", "date_debut", "date_fin", "date_attestation",
     "horaire", "duree", "intitule_formation", "lieu", "formateur", "nom_organisme",
+    "session_reference", "session_statut", "email", "telephone", "entreprise", "financeur",
+    "prescripteur", "groupe", "heures_absence", "heures_suivies", "taux_assiduite",
   ]);
 });
 
@@ -101,6 +103,47 @@ test("le remplacement ne touche que les marqueurs connus", () => {
   // un marqueur inconnu reste tel quel plutôt que de disparaître en silence
   assert.equal(remplacer("{{inconnu}}", v), "{{inconnu}}");
   assert.deepEqual(marqueursInconnus("{{nom_stagiaire}} et {{signature}} et {{tampon}}"), ["signature", "tampon"]);
+});
+
+test("les marqueurs d'assiduité viennent du calcul L2, pas d'un second calcul", () => {
+  const v = valeursMarqueurs({
+    ...contexte,
+    stagiaire: {
+      ...contexte.stagiaire, email: "jean.dupont@exemple.fr", telephone: "0694…",
+      entreprise: "ACME", financeur: "OPCO", prescripteur_nom: "Pôle Emploi", groupe_nom: "Soula",
+    },
+    assiduite: { fiable: true, heures_absence: 3.5, heures_suivies: 24.5, taux: 88 },
+  });
+  assert.equal(v.email, "jean.dupont@exemple.fr");
+  assert.equal(v.telephone, "0694…");
+  assert.equal(v.entreprise, "ACME");
+  assert.equal(v.financeur, "OPCO");
+  assert.equal(v.prescripteur, "Pôle Emploi");
+  assert.equal(v.groupe, "Soula");
+  assert.equal(v.heures_absence, "3.5 h");
+  assert.equal(v.heures_suivies, "24.5 h");
+  assert.equal(v.taux_assiduite, "88 %");
+});
+
+test("assiduité non fiable : heures suivies et taux VIDES, jamais un faux chiffre", () => {
+  const v = valeursMarqueurs({
+    ...contexte,
+    assiduite: { fiable: false, heures_absence: 10, heures_suivies: null, taux: null },
+  });
+  assert.equal(v.heures_absence, "10 h", "le total d'absences reste un fait");
+  assert.equal(v.heures_suivies, "");
+  assert.equal(v.taux_assiduite, "");
+});
+
+test("session_reference et session_statut ne s'inventent pas", () => {
+  assert.equal(valeursMarqueurs(contexte).session_reference, "", "sans référence : vide");
+  assert.equal(valeursMarqueurs(contexte).session_statut, "", "sans statut : vide");
+  const v = valeursMarqueurs({
+    ...contexte,
+    session: { ...contexte.session, reference: "SESS-1", statut: "terminee" },
+  });
+  assert.equal(v.session_reference, "SESS-1");
+  assert.equal(v.session_statut, "Terminée");
 });
 
 test("les requêtes Google couvrent tous les marqueurs, avec la bonne forme", () => {

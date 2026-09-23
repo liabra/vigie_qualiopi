@@ -66,7 +66,14 @@ export async function saveDriveTokens({ email, tokens, userId }) {
 }
 
 // Client Drive prêt à l'emploi, jeton rafraîchi et réécrit en base. null si non connecté.
+let fabriqueDrive = null;
+// Point d'injection (tests uniquement) : fabrique de client Drive de
+// remplacement, comme setPoolFactory pour la base. null rétablit le réel.
+export function setDriveFactory(fn) {
+  fabriqueDrive = fn || null;
+}
 export async function getDrive() {
+  if (fabriqueDrive) return fabriqueDrive();
   if (!googleConfigured()) return null;
   const { rows } = await query("SELECT * FROM drive_connexions WHERE email = $1", [config.driveAccountEmail]);
   const row = rows[0];

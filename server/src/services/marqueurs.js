@@ -46,6 +46,19 @@ export const MARQUEURS = [
   "lieu",
   "formateur",
   "nom_organisme",
+  // Ajouts lot L5 (assiduité / EduSign) : uniquement des marqueurs
+  // nouveaux, jamais de doublon d'un ancien sous un autre nom.
+  "session_reference",
+  "session_statut",
+  "email",
+  "telephone",
+  "entreprise",
+  "financeur",
+  "prescripteur",
+  "groupe",
+  "heures_absence",
+  "heures_suivies",
+  "taux_assiduite",
 ];
 
 export const baliser = (nom) => `{{${nom}}}`;
@@ -67,10 +80,15 @@ export function formaterDuree(heures) {
   return `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} h`;
 }
 
+// Libellé français du statut d'une session pour les documents. Inconnu ⇒
+// chaîne vide : jamais de valeur inventée.
+const LIBELLE_STATUT = { planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée" };
+
 // Valeurs de chaque marqueur pour un document donné. Un marqueur sans
 // valeur devient une chaîne vide : mieux vaut un blanc qu'un
 // « {{prenom_stagiaire}} » imprimé sur une convocation.
-export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme } = {}) {
+// `assiduite` vient de calculerAssiduite (lot L2) : on ne RECALCULE rien ici.
+export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme, assiduite } = {}) {
   const duree = session?.duree_heures_reelle ?? version?.duree_heures_defaut ?? null;
   return {
     civilite: stagiaire?.civilite ?? "",
@@ -85,6 +103,21 @@ export function valeursMarqueurs({ formation, version, session, groupe, stagiair
     lieu: groupe?.lieu || session?.lieu || "",
     formateur: groupe?.formateur || session?.formateur || "",
     nom_organisme: organisme ?? "",
+    session_reference: session?.reference ?? "",
+    session_statut: session?.statut ? (LIBELLE_STATUT[session.statut] ?? "") : "",
+    email: stagiaire?.email ?? "",
+    telephone: stagiaire?.telephone ?? "",
+    entreprise: stagiaire?.entreprise ?? "",
+    financeur: stagiaire?.financeur ?? "",
+    prescripteur: stagiaire?.prescripteur_nom || stagiaire?.prescripteur || "",
+    // Pour un document par stagiaire, le groupe est CELUI du stagiaire ;
+    // sinon, celui visé par la génération.
+    groupe: stagiaire?.groupe_nom || groupe?.nom || "",
+    // L'assiduité n'est fiable que calculée par le lot L2 : en dehors,
+    // les marqueurs restent VIDES plutôt que d'imprimer un faux chiffre.
+    heures_absence: assiduite ? formaterDuree(assiduite.heures_absence) : "",
+    heures_suivies: assiduite?.fiable ? formaterDuree(assiduite.heures_suivies) : "",
+    taux_assiduite: assiduite?.fiable ? `${assiduite.taux} %` : "",
   };
 }
 

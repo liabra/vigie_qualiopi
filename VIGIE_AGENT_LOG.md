@@ -1153,3 +1153,76 @@ Validation, puis push + déploiement du correctif.
 ### Prochaine étape
 
 Lot **L5** — documents d'assiduité / EduSign.
+
+---
+
+## 2026-09-23 (suite 12) — L5 : assiduité et pièces EduSign
+
+### Audit (avant toute modification)
+
+Existait déjà : génération documentaire (modèles Drive, `generations`, `documents_generes`),
+preuves/pièces Drive (`preuves` + `preuve_fichiers`, source manuel/import_drive/generation),
+calcul d'assiduité L2 (`calculerAssiduite`), 12 marqueurs (aucun d'assiduité ni d'email/tel/
+prescripteur/groupe). Le rattachement manuel d'un fichier Drive existait déjà via `POST /api/preuves`.
+
+### Architecture retenue — aucune migration
+
+- assiduité dans les documents : **marqueurs** + **données chargées** (`cibles` étendue,
+  `calculerAssiduite` réutilisé, déplacé dans `services/assiduite.js` et ré-exporté) ;
+- rattachement EduSign : `preuves`/`preuve_fichiers` (source « manuel » = externe), `POST /api/preuves`
+  accepte `session_id`/`groupe_id`, `GET /api/preuves?session` filtre, nouveau `GET /api/indicateurs` ;
+- aucun PDF stocké, aucun fichier copié.
+
+### Marqueurs ajoutés (additifs)
+
+`session_reference`, `session_statut`, `email`, `telephone`, `entreprise`, `financeur`,
+`prescripteur`, `groupe`, `heures_absence`, `heures_suivies`, `taux_assiduite` (23 au total).
+Assiduité non fiable ⇒ `heures_suivies`/`taux_assiduite` vides, jamais un faux chiffre.
+
+### UI
+
+Bloc « Documents / Assiduité » dans le détail de session, en deux parties : « Documents générés
+par Vigie » (pilule dédiée) et « Documents externes / EduSign » (pilule dédiée + formulaire admin
+« Rattacher » : type suggéré, libellé, indicateur, id de fichier Drive).
+
+### Droits
+
+ADMIN : générer + rattacher. CONTRIBUTEUR : consulter + générer (droit existant), pas de
+rattachement (`POST /api/preuves` reste `requireAdmin`). Aucun droit admin nouveau accidentel.
+
+### Tests
+
+- `marqueurs.test.js` : liste des 23 marqueurs, valeurs d'assiduité, fiabilité ;
+- `assiduiteDocuments.test.js` (nouveau) : GET /indicateurs (200/401), GET /preuves?session,
+  calculerAssiduite réutilisé ;
+- `preuves.test.js` : rattachement EduSign à une session, source « manuel », aucune copie ;
+- `npm test` : **230/230** (221 → +9) ; build OK ; `git diff --check` propre.
+
+### Vérification navigateur (PostgreSQL jetable)
+
+- requête `cibles` vérifiée sur la base réelle : prescripteur libellé, groupe, `heures_absence` ;
+- admin : bloc en deux sections, rattachement « Feuille d'émargement EduSign » sur indicateur 11
+  avec id Drive ⇒ affiché dans « Documents externes / EduSign » ;
+- contributeur : consulte les deux listes, génère, mais sans formulaire « Rattacher » ;
+- génération réelle non rejouée (Drive non connecté dans le harnais) — la capacité est couverte par
+  les tests de marqueurs/données et la requête `cibles`.
+
+### Correctifs avant push (relecture produit)
+
+1. **Rattachement Drive** : le formulaire demandait un ID Drive en saisie libre (fictif accepté).
+   Correction : réutilisation du sélecteur **`RechercheDrive`** (recherche par nom, nom du fichier
+   affiché), et vérification serveur `drive.files.get` avant écriture : fichier inexistant ⇒ **400**,
+   Drive non connecté/indisponible ⇒ **503** (jamais accepté à l'aveugle), nom/URL/MIME réels récupérés.
+2. **Intégrité session/groupe** : `POST /api/preuves` refuse session inexistante, groupe inexistant,
+   et un groupe qui n'appartient pas à la session fournie.
+3. **Preuve de génération** : nouveau test `generationAssiduite.test.js` — `genererDocuments` avec
+   client Google injecté, le payload exact des requêtes de remplacement contient `heures_absence`,
+   `heures_suivies`, `taux_assiduite` corrects (avec et sans absence).
+
+### État
+
+- L5 amendé localement (correctifs inclus). **Aucun push effectué.**
+
+### Prochaine étape
+
+Validation, puis push + déploiement du lot L5.

@@ -630,6 +630,100 @@ silencieuse, aucun moteur de version documentaire.
 
 ---
 
+## 7 sexies. Lot L5 — assiduité et pièces EduSign — TERMINÉ
+
+Objectif : permettre de produire les documents administratifs d'assiduité (feuille de présence,
+attestation individuelle, récapitulatif d'absences) à partir des modèles Drive existants, et de
+rattacher les exports EduSign sans jamais copier ni stocker de PDF, et sans double saisie.
+
+### Ce qui existait déjà (audit)
+
+- génération documentaire complète (L1/L2) : `modeles_documents` (portée formation/session/groupe/
+  stagiaire), `generations`, `documents_generes`, dépôt dans `<racine>/<formation>/<dates>/<groupe>`,
+  remplacement des marqueurs dans la COPIE (jamais le modèle), regénération avec remplacement ;
+- preuves et pièces Drive (L1) : `preuves` (une par indicateur) + `preuve_fichiers` (plusieurs
+  fichiers, `source` ∈ manuel/import_drive/generation) — le rattachement manuel d'un export EduSign
+  existait donc déjà via `POST /api/preuves` et `POST /api/preuves/:id/fichiers` ;
+- calcul d'assiduité (L2) : `calculerAssiduite` (taux borné 0 %, dépassement signalé, fiable ou non) ;
+- marqueurs existants : civilite, nom/prenom, dates, horaire, duree, intitule, lieu, formateur,
+  nom_organisme — mais **rien** pour l'assiduité ni pour l'email/téléphone/prescripteur/groupe.
+
+### Architecture retenue — aucune migration
+
+- la génération d'assiduité passe par les **modèles Drive existants** : aucun nouveau type de
+  document codé en dur ; seuls les **marqueurs** et les **données chargées** manquaient ;
+- le rattachement EduSign réutilise `preuves`/`preuve_fichiers` (`source = 'manuel'` = externe),
+  avec un simple ajout : `POST /api/preuves` accepte désormais `session_id`/`groupe_id`, et
+  `GET /api/preuves?session=…` filtre sur la session ;
+- **aucun PDF stocké** (seul l'identifiant Drive est en base), **aucun fichier copié** par le
+  rattachement.
+
+### Documents couverts
+
+1. **Feuille/liste de présence de session** — modèle de portée `session`, via les marqueurs de
+   session + groupe ;
+2. **Attestation individuelle de présence/assiduité** — modèle de portée `stagiaire`, via les
+   marqueurs d'assiduité (`heures_absence`, `heures_suivies`, `taux_assiduite`) ;
+3. **Récapitulatif des absences d'un stagiaire** — modèle de portée `stagiaire`, mêmes marqueurs.
+
+Quand l'assiduité n'est pas fiable (abandon, durée inconnue), `heures_suivies` et `taux_assiduite`
+restent **vides** dans le document : jamais un faux chiffre. `heures_absence` reste un fait.
+
+### Marqueurs ajoutés (additifs, aucun ancien modifié)
+
+`session_reference`, `session_statut`, `email`, `telephone`, `entreprise`, `financeur`,
+`prescripteur`, `groupe`, `heures_absence`, `heures_suivies`, `taux_assiduite`.
+
+### Rattachement EduSign (simple)
+
+Dans le détail de session, bloc **« Documents / Assiduité »** en deux parties :
+
+- **Documents générés par Vigie** (pilule « Généré par Vigie ») ;
+- **Documents externes / EduSign** (pilule « EduSign / externe ») : liste des preuves de source
+  manuelle rattachées à la session, et formulaire admin « Rattacher » (type suggéré, libellé,
+  indicateur, **sélecteur Drive réutilisé `RechercheDrive`**). Aucun PDF copié ni stocké.
+
+Côté serveur, `POST /api/preuves` vérifie :
+
+- le **fichier Drive existe et est accessible** AVANT d'écrire : Drive non connecté/indisponible
+  ⇒ **503** « Google Drive est indisponible ou non connecté… » ; fichier inconnu/inaccessible ⇒
+  **400** ; jamais de pièce cassée ; nom/URL/MIME réels récupérés ;
+- la **session** existe, le **groupe** existe, et le **groupe appartient bien à la session**
+  fournie — 400 clair sinon.
+
+### Droits
+
+- ADMIN : générer (déjà), **rattacher** un document EduSign (nouveau formulaire) ;
+- CONTRIBUTEUR : consulter les deux listes et générer (droit existant), **pas** de rattachement ;
+- aucune nouvelle route administrative n'est ouverte au contributeur (`POST /api/preuves` reste
+  `requireAdmin`).
+
+### Tests
+
+- `server/test/marqueurs.test.js` : liste des 23 marqueurs figée, valeurs d'assiduité,
+  assiduité non fiable ⇒ vides, session_reference/statut sans invention ;
+- `server/test/assiduiteDocuments.test.js` (nouveau) : `GET /api/indicateurs` (200/401),
+  `GET /api/preuves?session` (filtre réel), `calculerAssiduite` réutilisé (contrat L2) ;
+- `server/test/preuves.test.js` : rattachement EduSign à une session (session_id/groupe_id,
+  source « manuel », aucune copie), **fichier Drive inexistant refusé / réel vérifié**,
+  **session ou groupe invalides refusés, groupe d'une autre session refusé** ;
+- `server/test/generationAssiduite.test.js` (nouveau) : `genererDocuments` avec client Google
+  injecté — prouve que les valeurs d'assiduité arrivent dans le **payload exact** des requêtes de
+  remplacement Google Docs (avec/sans absence) ;
+- `npm test` : **234/234** (230 avant → +4).
+
+### Limites restantes
+
+1. La génération d'assiduité exige un **modèle Drive** existant + Drive connecté en écriture :
+   le lot livre la capacité (marqueurs + données), pas les modèles eux-mêmes. Le test automatisé
+   prouve le chemin jusqu'au **payload** de génération (pas une écriture Drive réelle, impossible
+   hors production sans compte Google de test).
+2. Le « type documentaire » EduSign est un libellé libre (titre de preuve), pas une colonne dédiée.
+3. Le classement Drive des exports EduSign rattachés n'est pas automatisé (le fichier reste à son
+   emplacement d'origine).
+
+---
+
 
 Historique de principe :
 
@@ -766,6 +860,12 @@ bloqué** par l'absence de création de preuve — c'est précisément ce qu'a l
 Un export EduSign peut donc désormais être déposé comme preuve sans passer par un import de classeur.
 Ce qui reste à décider est le **modèle d'émargement** et le **classement Drive**, pas la mécanique
 de rattachement.
+
+**Mise à jour 23/09/2026 (lot L5, §7 sexies)** : le rattachement d'un export EduSign à une session
+est désormais **direct** (bloc « Documents / Assiduité » du détail de session), et les marqueurs
+d'assiduité permettent de générer les documents de présence/attestation depuis les modèles Drive.
+Le **modèle d'émargement** et le **classement Drive** restent les seuls points non tranchés ; la
+signature et l'horodatage restent **entièrement délégués à EduSign**.
 
 ### 11.2 Présence / assiduité / absences
 

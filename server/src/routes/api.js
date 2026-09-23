@@ -85,6 +85,17 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
   });
 }));
 
+// Liste légère des indicateurs du référentiel ACTIF, pour le rattachement
+// d'un document externe (EduSign / Drive) depuis le détail d'une session.
+router.get("/indicateurs", requireAuth, wrap(async (_req, res) => {
+  const { rows } = await query(
+    `SELECT i.id, i.numero, i.libelle FROM indicateurs i
+     JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+     ORDER BY i.numero`
+  );
+  res.json({ indicateurs: rows, total: rows.length });
+}));
+
 // Marque ou réactive un indicateur, indépendamment de ses preuves.
 // Réversible : la ligne existe ou non dans indicateurs_non_applicables.
 router.patch("/indicateurs/:id/non-applicable", requireAdmin, wrap(async (req, res) => {
@@ -123,6 +134,7 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
     params.push(req.query.alerte); filtres.push(`p.alerte_statut = $${params.length}`);
   }
   if (req.query.q) { params.push(`%${req.query.q}%`); filtres.push(`p.titre ILIKE $${params.length}`); }
+  if (req.query.session) { params.push(Number(req.query.session)); filtres.push(`p.session_id = $${params.length}`); }
   const { rows } = await query(
     `SELECT p.id, p.titre, p.description, p.indicateur_id, p.statut, p.statut_effectif, p.a_confirmer,
             p.motif_confirmation, p.candidats,
@@ -231,7 +243,7 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   const {
     indicateur_id, indicateur_ids, titre, description, statut, mode_fichiers,
     drive_file_id, drive_url, drive_nom, drive_mime,
-    type_alerte, periodicite_mois, date_echeance,
+    type_alerte, periodicite_mois, date_echeance, session_id, groupe_id,
   } = req.body || {};
 
   if (!titre?.trim()) return res.status(400).json({ error: "Titre obligatoire." });
@@ -257,6 +269,47 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   const ids = [...new Set(demandes)];
   if (!ids.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
 
+  // Rattachement à une session / un groupe : existence vérifiée, et un
+  // groupe fourni doit appartenir à la session fournie — sinon on créerait
+  // une pièce silencieusement rattachée à un mauvais groupe.
+  const sid = session_id !== undefined && session_id !== null ? Number(session_id) : null;
+  const gid = groupe_id !== undefined && groupe_id !== null ? Number(groupe_id) : null;
+  if (sid !== null) {
+    const { rowCount } = await query("SELECT 1 FROM sessions WHERE id = $1", [sid]);
+    if (!rowCount) return res.status(400).json({ error: "Session introuvable." });
+  }
+  if (gid !== null) {
+    const { rows: [groupe] } = await query("SELECT session_id FROM groupes WHERE id = $1", [gid]);
+    if (!groupe) return res.status(400).json({ error: "Groupe introuvable." });
+    if (sid !== null && groupe.session_id !== sid) {
+      return res.status(400).json({ error: "Ce groupe n'appartient pas à la session indiquée." });
+    }
+  }
+
+  // Si un fichier Drive est fourni, il DOIT pouvoir être vérifié : pas de
+  // rattachement à l'aveugle. Drive indisponible ⇒ 503, fichier inconnu ⇒
+  // 400, jamais de pièce cassée. On récupère au passage le nom/URL/MIME réels.
+  let infosFichier = null;
+  if (drive_file_id) {
+    const d = await getDrive();
+    if (!d) {
+      return res.status(503).json({ error: "Google Drive est indisponible ou non connecté. Impossible de vérifier le fichier." });
+    }
+    try {
+      const { data } = await d.drive.files.get({
+        fileId: String(drive_file_id).trim(),
+        fields: "id,name,mimeType,webViewLink",
+        supportsAllDrives: true,
+      });
+      infosFichier = data;
+    } catch (e) {
+      if (e?.response?.status === 404 || e?.code === 404) {
+        return res.status(400).json({ error: "Fichier Drive introuvable ou inaccessible." });
+      }
+      return res.status(400).json({ error: "Impossible de vérifier ce fichier Drive : " + (e.message || "erreur inconnue") });
+    }
+  }
+
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -280,12 +333,13 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
     for (const ind of trouves) {
       const { rows: [preuve] } = await client.query(
         `INSERT INTO preuves (indicateur_id, titre, description, statut, mode_fichiers,
-           type_alerte, periodicite_mois, date_echeance, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+           type_alerte, periodicite_mois, date_echeance, session_id, groupe_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
         [ind.id, titre.trim(), description?.trim() || null, statut || "a_risque",
          mode_fichiers || "unique", type_alerte || null,
          type_alerte === "revision_periodique" ? periodicite_mois : null,
-         type_alerte === "echeance_fixe" ? date_echeance : null, req.user.id]
+         type_alerte === "echeance_fixe" ? date_echeance : null,
+         sid, gid, req.user.id]
       );
       // Le même fichier est rattaché à chacune des preuves créées : la
       // contrainte d'unicité porte sur (preuve_id, drive_file_id), donc
@@ -296,8 +350,10 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
           `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
            VALUES ($1, $2, $3, $4, $5, 'manuel', $6)
            ON CONFLICT (preuve_id, drive_file_id) DO NOTHING`,
-          [preuve.id, drive_file_id, drive_url || lienDrive(drive_file_id),
-           drive_nom || null, drive_mime || null, req.user.id]
+          [preuve.id, String(drive_file_id).trim(),
+           drive_url || infosFichier?.webViewLink || lienDrive(drive_file_id),
+           drive_nom || infosFichier?.name || null,
+           drive_mime || infosFichier?.mimeType || null, req.user.id]
         );
       }
       creees.push({ id: preuve.id, indicateur: ind.numero });

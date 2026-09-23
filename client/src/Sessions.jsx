@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { messageDepassementDuree } from "./messages.js";
+import { RechercheDrive } from "./RechercheDrive.jsx";
 
 const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
 // Valeurs admises en base (migration 008). La chaîne vide vaut « non
@@ -22,6 +23,10 @@ const STATUTS_SESSION = {
 };
 const classeStatut = (statut) =>
   statut === "terminee" ? "ok" : statut === "en_cours" ? "warn" : statut === "annulee" ? "off" : "";
+
+// Types suggérés pour un document externe (EduSign / Drive). Le libellé
+// final reste libre : on ne fait que proposer.
+const TYPES_EDUSIGN = ["Feuille d'émargement EduSign", "Feuille de présence", "Justificatif EduSign"];
 
 // Petit formulaire repliable : la Phase 2 en compte beaucoup, autant
 // qu'ils se ressemblent tous.
@@ -473,15 +478,25 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
   const [abs, setAbs] = useState(null);
   const [detailAbsence, setDetailAbsence] = useState(null);
   const [detailDossier, setDetailDossier] = useState(null);
+  // Documents externes (EduSign / Drive) rattachés à la session, et la
+  // liste légère d'indicateurs pour les rattacher. Les documents générés
+  // par Vigie sont déjà dans d.documents.
+  const [externes, setExternes] = useState([]);
+  const [indicateurs, setIndicateurs] = useState([]);
+  const [rattachement, setRattachement] = useState({ type: "", titre: "", indicateur_id: "", fichier: null });
 
   const charger = useCallback(async () => {
     try {
-      const [detail, absences] = await Promise.all([
+      const [detail, absences, preuves, indics] = await Promise.all([
         api(`/api/sessions/${sessionId}`),
         api(`/api/sessions/${sessionId}/absences`),
+        api(`/api/preuves?session=${sessionId}`),
+        api("/api/indicateurs"),
       ]);
       setD(detail);
       setAbs(absences);
+      setExternes((preuves.preuves || []).filter((p) => p.source !== "generation"));
+      setIndicateurs(indics.indicateurs || []);
     } catch (e) { erreur(e.message); }
   }, [sessionId, erreur]);
   useEffect(() => { charger(); }, [charger]);
@@ -613,6 +628,32 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
       }
       erreur(e.message);
     } finally { setOccupe(false); }
+  }
+
+  // Rattacher un document externe (EduSign / Drive) à la session : on ne
+  // stocke que l'identifiant du fichier, jamais le PDF, et on ne copie
+  // rien. Source « manuel » ⇒ affiché comme externe, jamais « généré ».
+  async function rattacherExterne() {
+    if (!rattachement.titre.trim()) return erreur("Indiquez un libellé (type de document).");
+    if (!rattachement.indicateur_id) return erreur("Choisissez un indicateur.");
+    if (!rattachement.fichier) return erreur("Sélectionnez un fichier sur le Drive.");
+    try {
+      await api("/api/preuves", {
+        method: "POST",
+        body: JSON.stringify({
+          titre: rattachement.titre.trim(),
+          indicateur_id: Number(rattachement.indicateur_id),
+          drive_file_id: rattachement.fichier.id,
+          drive_url: rattachement.fichier.url,
+          drive_nom: rattachement.fichier.nom,
+          drive_mime: rattachement.fichier.mime,
+          session_id: sessionId,
+          mode_fichiers: "multiple",
+        }),
+      });
+      setRattachement({ type: "", titre: "", indicateur_id: "", fichier: null });
+      await charger();
+    } catch (e) { erreur(e.message); }
   }
 
   const s = d.session;
@@ -845,7 +886,8 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
         </Bloc>
       )}
 
-      <Bloc titre={`Documents générés (${d.documents.length})`} ouvertParDefaut>
+      <Bloc titre="Documents / Assiduité" ouvertParDefaut>
+        <p className="muted small"><strong>Documents générés par Vigie</strong></p>
         {peutSaisir && (
         <div className="formulaire ligne">
           <label className="champ">
@@ -874,12 +916,68 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
             <li key={doc.id}>
               <div>
                 <a href={doc.drive_url} target="_blank" rel="noreferrer">{doc.nom}</a>
-                <div className="muted small">{doc.modele} · portée {doc.portee} · {new Date(doc.genere_le).toLocaleString("fr-FR")}</div>
+                <div className="muted small">{doc.modele} · portée {doc.portee} · {new Date(doc.genere_le).toLocaleString("fr-FR")} · <span className="pill spec">Généré par Vigie</span></div>
               </div>
             </li>
           ))}
           {d.documents.length === 0 && <li className="muted">Aucun document généré pour cette session.</li>}
         </ul>
+
+        <p className="muted small"><strong>Documents externes / EduSign</strong></p>
+        <ul className="liste-simple">
+          {externes.map((p) => (
+            <li key={p.id}>
+              <div>
+                <strong>{p.titre}</strong>
+                <div className="muted small">Indicateur {p.indicateur} · <span className="pill off">EduSign / externe</span></div>
+                {p.fichiers.length === 0 && <div className="muted small">Aucun fichier rattaché.</div>}
+                {p.fichiers.map((f) => (
+                  <div key={f.id} className="muted small">
+                    <a href={f.url} target="_blank" rel="noreferrer">{f.nom || f.drive_file_id}</a>
+                  </div>
+                ))}
+              </div>
+            </li>
+          ))}
+          {externes.length === 0 && <li className="muted">Aucun document externe rattaché.</li>}
+        </ul>
+
+        {admin && (
+        <div className="formulaire ligne">
+          <label className="champ">
+            <span className="muted small">Type (facultatif)</span>
+            <select value={rattachement.type} onChange={(e) => {
+              const type = e.target.value;
+              setRattachement({ ...rattachement, type, titre: type || rattachement.titre });
+            }}>
+              <option value="">Libellé libre…</option>
+              {TYPES_EDUSIGN.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <Champ label="Libellé" value={rattachement.titre} placeholder="Ex. Feuille d'émargement EduSign"
+            onChange={(e) => setRattachement({ ...rattachement, titre: e.target.value })} />
+          <label className="champ">
+            <span className="muted small">Indicateur</span>
+            <select value={rattachement.indicateur_id} onChange={(e) => setRattachement({ ...rattachement, indicateur_id: e.target.value })}>
+              <option value="">Choisir…</option>
+              {indicateurs.map((i) => <option key={i.id} value={i.id}>{i.numero} — {i.libelle}</option>)}
+            </select>
+          </label>
+          <div className="champ">
+            <span className="muted small">Fichier Drive</span>
+            {rattachement.fichier
+              ? <div className="muted small">Sélectionné : <strong>{rattachement.fichier.nom}</strong>
+                  <button className="link" onClick={() => setRattachement({ ...rattachement, fichier: null })}>retirer</button>
+                </div>
+              : <RechercheDrive
+                  surChoix={(f) => setRattachement({ ...rattachement, fichier: f })}
+                  onErreur={erreur}
+                  placeholder="Chercher le fichier à rattacher (export EduSign…)" />
+            }
+          </div>
+          <button className="btn primary" onClick={rattacherExterne} disabled={occupe}>Rattacher</button>
+        </div>
+        )}
       </Bloc>
     </div>
   );

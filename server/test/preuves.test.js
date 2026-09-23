@@ -17,6 +17,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
 import { setPoolFactory } from "../src/db.js";
+import { setDriveFactory } from "../src/services/google.js";
 import { encode } from "../src/session.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
@@ -28,7 +29,8 @@ const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 // Petit magasin en mémoire : les preuves, leurs pièces jointes et les
 // indicateurs du référentiel actif. Elle journalise chaque requête reçue,
 // ce qui permet d'asserter ce qui a été ÉCRIT, pas seulement la réponse.
-function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fichiers = [], collision = false } = {}) {
+function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fichiers = [], collision = false,
+                       sessions = { 7: true }, groupes = { 2: 7 } } = {}) {
   const appels = [];
   const etat = {
     preuves: new Map(preuves.map((p) => [p.id, { description: null, type_alerte: null, ...p }])),
@@ -71,6 +73,13 @@ function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fic
     if (sql === SQL_UTILISATEUR) {
       const u = [ADMIN, CONTRIBUTEUR].find((x) => x.id === params[0]);
       return { rows: u ? [u] : [] };
+    }
+
+    if (sql === "SELECT 1 FROM sessions WHERE id = $1") {
+      return { rows: sessions[params[0]] ? [{ "?column?": 1 }] : [], rowCount: sessions[params[0]] ? 1 : 0 };
+    }
+    if (sql === "SELECT session_id FROM groupes WHERE id = $1") {
+      return groupes[params[0]] !== undefined ? { rows: [{ session_id: groupes[params[0]] }] } : { rows: [] };
     }
 
     if (sql.startsWith("SELECT i.id, i.numero FROM indicateurs")) {
@@ -163,14 +172,24 @@ const PREUVE_CONFIRMEE = {
 };
 const FICHIER_EXISTANT = { id: 3, preuve_id: 7, drive_file_id: "ANCIEN", source: "manuel" };
 
+// Drive simulé « connecté et fonctionnel » par défaut : les tests de
+// création avec fichier passent ainsi la vérification sans configurer
+// Google. Les cas « fichier absent » ou « Drive non connecté » le
+// remplacent ponctuellement.
+const driveValide = () => ({
+  drive: { files: { get: async ({ fileId }) => ({ data: { id: fileId, name: "Fiche.pdf", mimeType: "application/pdf", webViewLink: "https://drive.google.com/file/d/" + fileId + "/view" } }) } },
+});
+
 let serveur, origine;
 before(async () => {
+  setDriveFactory(driveValide);
   serveur = createApp().listen(0);
   await new Promise((r) => serveur.once("listening", r));
   origine = "http://127.0.0.1:" + serveur.address().port;
 });
 after(async () => {
   setPoolFactory(null);   // rétablit la vraie couche base
+  setDriveFactory(null);  // rétablit le vrai client Drive
   if (serveur) await new Promise((r) => serveur.close(r));
 });
 
@@ -204,6 +223,95 @@ test("un admin crée une preuve rattachée à un fichier du Drive", async () => 
   assert.equal(p.created_by, ADMIN.id);
   assert.deepEqual(b.etat.fichiers.map((f) => f.drive_file_id), ["EDUSIGN-1"]);
   assert.equal(b.etat.fichiers[0].source, "manuel");
+});
+
+test("un document externe (EduSign) se rattache à une session sans copier le fichier", async () => {
+  const b = baseSimulee(); b.installer();
+  const r = await creer({
+    indicateur_id: 11, titre: "Feuille d'émargement EduSign", session_id: 7, groupe_id: 2,
+    mode_fichiers: "multiple", ...fichierDrive,
+  });
+  assert.equal(r.statut, 201);
+  const [p] = [...b.etat.preuves.values()];
+  assert.equal(p.session_id, 7, "la preuve est rattachée à la session");
+  assert.equal(p.groupe_id, 2);
+  assert.equal(p.mode_fichiers, "multiple", "plusieurs pièces EduSign possibles");
+  // Seul l'identifiant Drive est stocké : aucun contenu, aucun appel Google.
+  assert.deepEqual(b.etat.fichiers.map((f) => f.drive_file_id), ["EDUSIGN-1"]);
+  assert.equal(b.etat.fichiers[0].source, "manuel", "source externe, jamais « generation »");
+  for (const a of b.appels) {
+    assert.ok(
+      ["BEGIN", "COMMIT", "ROLLBACK"].includes(a.sql) ||
+      a.sql === SQL_UTILISATEUR ||
+      a.sql === "SELECT 1 FROM sessions WHERE id = $1" ||
+      a.sql === "SELECT session_id FROM groupes WHERE id = $1" ||
+      a.sql.startsWith("SELECT i.id, i.numero FROM indicateurs") ||
+      a.sql.startsWith("INSERT INTO preuves") ||
+      a.sql.startsWith("INSERT INTO preuve_fichiers"),
+      "la route n'écrit que des métadonnées (aucun contenu, aucune copie) : " + a.sql
+    );
+  }
+});
+
+test("une preuve rattachée à une session reste facultative sur la session", async () => {
+  const b = baseSimulee(); b.installer();
+  const r = await creer({ indicateur_id: 11, titre: "Rapport EduSign" });
+  assert.equal(r.statut, 201);
+  const [p] = [...b.etat.preuves.values()];
+  assert.equal(p.session_id, null, "sans session fournie, rien n'est rattaché");
+});
+
+test("un fichier Drive inexistant ou inaccessible est refusé avant toute écriture", async () => {
+  setDriveFactory(() => ({
+    drive: { files: { get: async () => { const e = new Error("not found"); e.response = { status: 404 }; throw e; } } },
+  }));
+  try {
+    const b = baseSimulee(); b.installer();
+    const r = await creer({ indicateur_id: 11, titre: "Export EduSign", drive_file_id: "ABSENT" });
+    assert.equal(r.statut, 400);
+    assert.match(r.corps.error, /introuvable|inaccessible/i);
+    assert.equal(b.etat.preuves.size, 0, "aucune preuve créée");
+    assert.equal(b.etat.fichiers.length, 0, "aucune pièce cassée");
+  } finally {
+    setDriveFactory(driveValide);
+  }
+});
+
+test("un fichier Drive réel est vérifié, et son nom/URL récupérés", async () => {
+  const b = baseSimulee(); b.installer();
+  const r = await creer({ indicateur_id: 11, titre: "Export EduSign", drive_file_id: "REEL-1" });
+  assert.equal(r.statut, 201);
+  assert.equal(b.etat.fichiers[0].drive_nom, "Fiche.pdf", "nom réel récupéré du Drive");
+});
+
+test("Drive non connecté : un rattachement avec drive_file_id est refusé (503)", async () => {
+  setDriveFactory(null);
+  try {
+    const b = baseSimulee(); b.installer();
+    const r = await creer({ indicateur_id: 11, titre: "Export EduSign", drive_file_id: "QUELCONQUE" });
+    assert.equal(r.statut, 503);
+    assert.match(r.corps.error, /indisponible|non connecté/i);
+    assert.equal(b.etat.preuves.size, 0, "aucune preuve créée");
+    assert.equal(b.etat.fichiers.length, 0, "aucune pièce cassée");
+  } finally {
+    setDriveFactory(driveValide);
+  }
+});
+
+test("session ou groupe inexistants, ou groupe d'une autre session : 400", async () => {
+  // session 7 existe, groupe 2 appartient à 7 ; groupe 99 inconnu, groupe 3 appartient à la session 8.
+  const cas = [
+    [{ indicateur_id: 11, titre: "x", session_id: 999 }, /Session introuvable/],
+    [{ indicateur_id: 11, titre: "x", groupe_id: 99 }, /Groupe introuvable/],
+    [{ indicateur_id: 11, titre: "x", session_id: 7, groupe_id: 3 }, /n'appartient pas/],
+  ];
+  for (const [corps, motif] of cas) {
+    const b = baseSimulee({ groupes: { 2: 7, 3: 8 } }); b.installer();
+    const r = await creer(corps);
+    assert.equal(r.statut, 400, JSON.stringify(corps));
+    assert.match(r.corps.error, motif);
+    assert.equal(b.etat.preuves.size, 0, "aucune preuve créée");
+  }
 });
 
 test("le fichier est facultatif : une preuve sans fichier reste valide", async () => {

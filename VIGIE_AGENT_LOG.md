@@ -1883,3 +1883,30 @@ lecture seule.
 
 **L11 TERMINÉ (local).** Aucune migration — 358/358 × 3 — build OK — smoke navigateur OK —
 production conforme. **Push et déploiement Railway en attente de validation humaine.**
+
+## 2026-09-24 (suite 27) — L11 : validation production (clôture)
+
+### Push et déploiement
+
+- pré-push : 358/358, build OK, `git diff --check` propre ; `origin/main` = `597bc15`
+  (ancêtre de HEAD) ; seuls `c23b650` + `1d7d51c` + `590a2d3` à pousser ;
+- embedded-postgres : devDependencies uniquement, importé uniquement par
+  `server/test/transversal.test.js`, aucun `server/src/**` — runtime prod indépendant ;
+- push **sans `--force`** : `597bc15..590a2d3 main -> main` ;
+- déploiement Railway (commitHash `590a2d39…`) BUILDING → DEPLOYING → **SUCCESS** (~53 s) ;
+- **aucune migration nouvelle** : courante **013_evaluations_qcm.sql**.
+
+### Contrôles production lecture seule (aucune écriture)
+
+- `/api/health` 200 ; migrations : **exactement 13 (001→013)**, aucune `014`, aucune rejouée ;
+- volumes inchangés (utilisateurs 1, formations 1, sessions 1, groupes 3, inscriptions 8,
+  absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1, modèles 2,
+  générations 4, documents 6) ;
+- routes GET admin 200 (`/api/sessions`, `/api/referentiel`, `/api/veille`, `/api/modeles`,
+  détail session, évaluations, satisfactions) ; route métier anonyme 401, `/api/health` 200 ;
+- logs : aucun `ECONNREFUSED`, aucun `localhost:5432`, aucun module embedded-postgres,
+  aucune erreur de migration, aucune erreur Google ; seul `npm warn ... --omit=dev` (bénin).
+
+### État
+
+**L11 VALIDÉ EN PRODUCTION — lot TERMINÉ.**

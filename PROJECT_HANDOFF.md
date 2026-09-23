@@ -1330,7 +1330,7 @@ auth, pas d'ACL par session, pas de nouvelle fonction). Aucune migration.
 
 ---
 
-## 7 duodecies. Lot L11 — contrôle transversal / tests de bout en bout — TERMINÉ (local)
+## 7 duodecies. Lot L11 — contrôle transversal / tests de bout en bout — TERMINÉ (déployé)
 
 Objectif : vérifier que L1→L10 forment un système cohérent, SANS nouvelle fonction et
 SANS migration présumée. Livrable : tests d'intégration de bout en bout sur un vrai
@@ -1391,9 +1391,17 @@ PostgreSQL jetable, smoke test navigateur, contrôles de production lecture seul
 ### État
 
 - **aucune migration** ;
-- commit : `1d7d51c` — « Tests : valider les workflows transversaux »
-  (NON poussé, avec le présent document) ;
-- **lot L11 TERMINÉ (local), push/déploiement en attente de validation humaine.**
+- commits poussés : `1d7d51c` — « Tests : valider les workflows transversaux »,
+  `590a2d3` — « Documentation : valider le lot L11 » ;
+- déploiement Railway **SUCCESS** (commitHash `590a2d39…`), `/api/health` **200** ;
+- migrations production : **13 appliquées (001→013)**, courante **013_evaluations_qcm.sql**,
+  aucune `014`, aucune rejouée ;
+- volumes production inchangés (aucune écriture métier) ; routes GET principales 200
+  (admin), route métier anonyme 401, `/api/health` 200 anonyme ;
+- logs : aucun `ECONNREFUSED`, aucun `localhost:5432`, aucun module embedded-postgres
+  chargé, aucune erreur de migration ni erreur Google ; seul `npm warn ... --omit=dev`
+  (bénin, confirme l'exclusion des devDependencies en prod) ;
+- **lot L11 TERMINÉ et VALIDÉ EN PRODUCTION.**
 
 ---
 

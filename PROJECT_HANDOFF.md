@@ -1115,15 +1115,20 @@ Toutes les AUTRES erreurs SQL sont retirées du mapping global et tombent en **5
    encore validées en format : une saisie illisible y produisait déjà un 500 avant ce lot
    (code PostgreSQL 22007, non concerné par ce durcissement) — reste à traiter plus tard.
 
-### Production — NON DÉPLOYÉ
+### Production — TERMINÉ
 
 - **aucune migration** (durcissement sans schéma) ;
-- commit local : « API : fiabiliser les identifiants et erreurs HTTP » ;
+- commit : `32eca1b` — « API : fiabiliser les identifiants et erreurs HTTP » (poussé avec
+  `d18397c` « Documentation : valider le lot evaluations ») ;
 - tests : **328/328** ; build client OK ; `git diff --check` OK ;
-- vérification sur instance jetable (embedded-postgres + app réelle) : tous les cas 400/404/
-  401/403 conformes, `formation_id`/`duree`/`date` invalides ⇒ 400, JSON mal formé anonyme ⇒
-  400, **aucun 500 sur erreur utilisateur**, app fonctionnelle après ;
-- **lot L8 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
+- déploiement Railway **SUCCESS** (commitHash `32eca1bbd…`), `/api/health` **200** ;
+- migration courante inchangée : **013_evaluations_qcm.sql** (13 migrations 001→013, aucune
+  nouvelle) ;
+- contrôles production lecture seule : IDs invalides ⇒ 400, ID valide absent ⇒ 404, anonyme
+  ⇒ 401, JSON mal formé ⇒ 400 sans fuite, admin 200 sur sessions/référentiel/évaluations/
+  satisfactions ; 403 contributeur non testable en prod (aucun compte contributeur) ;
+- données métier inchangées (aucune écriture) ;
+- **lot L8 TERMINÉ.**
 
 ---
 

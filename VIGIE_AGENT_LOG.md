@@ -1626,3 +1626,35 @@ ni requête exposés (détail journalisé serveur uniquement).
 
 **L8 TERMINÉ (local).** Aucune migration — 328/328 — build OK — `git diff --check` OK.
 **Push et déploiement Railway en attente de validation humaine.**
+
+## 2026-09-23 (suite 21) — L8 : validation production (clôture)
+
+### Push et déploiement
+
+- pré-push : 328/328, build OK, `git diff --check` propre ; `origin/main` = `cc438e1`
+  (ancêtre de HEAD) ; aucun commit distant inattendu ; seuls `d18397c` + `32eca1b` à pousser ;
+- push **sans `--force`** : `cc438e1..32eca1b main -> main` ;
+- déploiement Railway `22d72d3e` (commitHash `32eca1bbd…`) → **SUCCESS**, `/api/health` **200** ;
+- **aucune migration nouvelle** : `schema_migrations` 001→013, migration courante
+  **013_evaluations_qcm.sql**.
+
+### Contrôles production lecture seule (aucune écriture)
+
+- IDs invalides ⇒ **400** (`/api/sessions/abc`, `/0`, `/-1`, `/api/veille/1.5`,
+  `/api/referentiel/versions/abc`) ; ID valide absent ⇒ **404** (`/api/sessions/999999999`) ;
+- anonyme ⇒ **401** ; 403 contributeur non testable en prod (aucun compte contributeur —
+  couvert par tests automatisés) ;
+- admin : sessions / référentiel / évaluations / satisfactions ⇒ **200** ;
+- JSON mal formé ⇒ **400** `{"error":"Requête invalide : corps ou JSON mal formé."}` — aucune
+  fuite SQL/stack/détail ;
+- logs runtime : aucune erreur (seul un avertissement npm bénin) ; `/api/health` 200 après
+  les tests.
+
+### Données (lecture seule, inchangées)
+
+utilisateurs admin=1 · sessions 1 · inscriptions 8 · absences 1 · resultats_qcm 2 ·
+satisfactions 2 · referentiel_versions 1 · veille 1.
+
+### État
+
+**L8 VALIDÉ EN PRODUCTION — lot TERMINÉ.**

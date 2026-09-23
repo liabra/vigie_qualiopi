@@ -561,8 +561,8 @@ l'horaire (héritage du lot « horaire »). Aucune migration n'a donc été néc
   0 %), mais si `total_heures_absence > nouvelle durée`, la réponse porte `absencesDepassentDuree:
   true` et `total_heures_absence`, et le client avertit explicitement ;
 - référence : **facultative**, unique lorsqu'elle est renseignée (`reference text UNIQUE`, nullable) ;
-  non vide sinon, ou `null` pour l'effacer ; collision `23505` → **409** « Cette référence est déjà
-  utilisée par une autre session » ;
+  vide ou espaces ⇒ **NULL** (même normalisation qu'à la création), sinon rognée ; collision
+  `23505` → **409** « Cette référence est déjà utilisée par une autre session » ;
 - statut : strictement dans `planifiee|en_cours|terminee|annulee`, sinon **400** ;
 - horaire : normalisé par `normaliserHoraire` (rogné, `NULL` si vide) — partagé avec la création ;
 - corps vide ou sans champ reconnu → **400** « Rien à modifier » ;
@@ -588,19 +588,23 @@ silencieuse, aucun moteur de version documentaire.
 - liste des sessions : pilule de statut (Planifiée / En cours / Terminée / Annulée) + horaire + lieu ;
 - détail : pilule de statut, avertissement d'incohérence **sans correction automatique** (session
   « planifiée » dont la fin est passée ; « terminée » dont le début est futur) ;
-- bloc « Modifier la session » repliable, admin uniquement ; la liste se rafraîchit après l'enregistrement.
+- bloc « Modifier la session » repliable, admin uniquement ; la liste se rafraîchit après l'enregistrement ;
+- alertes : l'erreur globale de l'écran Sessions est **épinglée en haut de l'écran** (`.flash.sticky`,
+  `position: sticky; top: 8px`) : elle reste visible quand on corrige une session plus bas dans la page.
 
 ### Tests
 
-- `server/test/sessions.test.js` (24 tests HTTP, application Express réelle + base simulée) :
-  champs modifiables, multi-champs, 400 (vide, dates, durée, statut, référence, identifiant),
-  404, 409, 401/403, `documentsObsoletes`, aucune écriture dans `generations`/`documents_generes`,
-  **blocage des dates qui excluraient une absence** et signal `absencesDepassentDuree` ;
+- `server/test/sessions.test.js` (27 tests HTTP, application Express réelle + base simulée) :
+  champs modifiables, multi-champs, 400 (vide, dates, durée, statut, identifiant), 404, 409,
+  401/403, `documentsObsoletes`, aucune écriture dans `generations`/`documents_generes`,
+  **blocage des dates qui excluraient une absence**, signal `absencesDepassentDuree`,
+  **référence vide/espaces ⇒ NULL, rognée sinon, session sans référence corrigeable, et
+  non-régression de la création** ;
 - `server/test/avertissements.test.js` (2 tests) : message client de dépassement de durée
   (`messageDepassementDuree` dans `client/src/messages.js`) ;
 - `server/test/horaire.test.js` recentré sur la règle de normalisation (le contrat HTTP vit dans
   `sessions.test.js`) ;
-- `npm test` : **218/218** (208 avant → +10).
+- `npm test` : **221/221** (218 avant → +3).
 
 ### Limites restantes
 

@@ -1016,7 +1016,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
   return (
     <section className="sessions">
       <h1>Sessions</h1>
-      {err && <p className="flash erreur">{err}</p>}
+      {err && <p className="flash erreur sticky">{err}</p>}
 
       {admin && <Formations formations={formations} onChange={charger} erreur={setErr} />}
 

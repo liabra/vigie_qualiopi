@@ -199,14 +199,30 @@ test("un statut hors liste est refusé avant toute écriture", async () => {
   assert.equal(b.ecritures().length, 0);
 });
 
-test("une référence vide est refusée, mais null l'efface", async () => {
-  const vide = await patcher(7, { reference: "   " });
-  assert.equal(vide.statut, 400);
-  assert.match(vide.corps.error, /référence ne peut pas être vide/i);
+test("une référence vide ou faite d'espaces devient NULL, comme à la création", async () => {
+  for (const valeur of ["", "   ", "\t "]) {
+    const b = baseSimulee().installer();
+    const r = await patcher(7, { reference: valeur });
+    assert.equal(r.statut, 200, JSON.stringify(valeur));
+    assert.equal(r.corps.session.reference, null, JSON.stringify(valeur));
+    assert.equal(b.etat().reference, null, JSON.stringify(valeur));
+  }
+});
 
-  const efface = await patcher(7, { reference: null });
-  assert.equal(efface.statut, 200);
-  assert.equal(efface.corps.session.reference, null);
+test("une référence renseignée est rognée", async () => {
+  const b = baseSimulee().installer();
+  const r = await patcher(7, { reference: "  SESS-9  " });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.session.reference, "SESS-9");
+  assert.equal(b.etat().reference, "SESS-9");
+});
+
+test("modifier une session sans référence ne l'exige pas", async () => {
+  const b = baseSimulee({ session: { reference: null } }).installer();
+  const r = await patcher(7, { reference: "", lieu: "Kourou" });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.session.reference, null);
+  assert.equal(r.corps.session.lieu, "Kourou");
 });
 
 test("une référence déjà prise par une autre session répond 409", async () => {
@@ -214,6 +230,32 @@ test("une référence déjà prise par une autre session répond 409", async () 
   const r = await patcher(7, { reference: "DEJA-PRISE" });
   assert.equal(r.statut, 409);
   assert.match(r.corps.error, /référence est déjà utilisée/i);
+});
+
+// ── Non-régression création ─────────────────────────────────
+
+test("la création normalise toujours la référence (vide ⇒ NULL)", async () => {
+  const inserts = [];
+  setQueryExecutor(async (text, params) => {
+    const sql = sqlNormalise(text);
+    if (sql === SQL_UTILISATEUR) return { rows: [ADMIN] };
+    if (sql.startsWith("SELECT id FROM formation_versions")) return { rows: [{ id: 1 }] };
+    if (sql.startsWith("INSERT INTO sessions")) {
+      inserts.push(params);
+      // params : [formation_id, version.id, reference, date_debut, date_fin, ...]
+      return { rows: [{ id: 99, reference: params[2], date_debut: params[3], date_fin: params[4] }] };
+    }
+    throw new Error("Requête inattendue (création) : " + sql);
+  });
+  const r = await fetch(`${origine}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: "vq_session=" + encode({ uid: ADMIN.id, exp: Date.now() + 60_000 }) },
+    body: JSON.stringify({ formation_id: 1, date_debut: "2026-01-05", date_fin: "2026-03-05", reference: "   " }),
+  });
+  assert.equal(r.status, 201);
+  const corps = await r.json();
+  assert.equal(corps.session.reference, null, "réponse avec référence NULL");
+  assert.equal(inserts[0][2], null, "INSERT reçoit NULL pour une référence vide");
 });
 
 // ── Identifiants et accès ─────────────────────────────────────

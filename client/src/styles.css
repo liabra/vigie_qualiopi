@@ -64,6 +64,10 @@ p { margin: 0; }
 .flash.erreur { background: var(--err-bg); color: var(--err); }
 .flash.ok { background: var(--ok-bg); color: var(--ok); }
 .flash.info { background: var(--warn-bg); color: var(--warn); }
+/* Alerte épinglée : reste visible quand on corrige une session plus bas dans
+   la page. Bornée par sa section, elle ne masque pas durablement l'interface.
+   Le fond est déjà opaque (--err-bg), le contenu ne transparaît pas dessous. */
+.flash.sticky { position: sticky; top: 8px; z-index: 60; box-shadow: 0 1px 4px rgba(0, 0, 0, .12); }
 .pill { font-size: .75rem; padding: .1rem .5rem; border-radius: 99px; background: var(--accent-bg); }
 .pill.ok { background: var(--ok-bg); color: var(--ok); }
 .pill.off { background: var(--err-bg); color: var(--err); }

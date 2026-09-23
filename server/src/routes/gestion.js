@@ -313,12 +313,11 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
 
   if (corps.reference !== undefined) {
-    if (corps.reference === null) { nouvelles.reference = null; set("reference", null); }
-    else {
-      const r = String(corps.reference).trim();
-      if (!r) return res.status(400).json({ error: "La référence ne peut pas être vide." });
-      nouvelles.reference = r; set("reference", r);
-    }
+    // Même normalisation qu'à la création : vide ou espaces ⇒ NULL. La
+    // référence est FACULTATIVE et unique uniquement lorsqu'elle est
+    // renseignée — corriger une session sans référence ne doit pas l'exiger.
+    const r = corps.reference === null ? null : (String(corps.reference).trim() || null);
+    nouvelles.reference = r; set("reference", r);
   }
 
   let debut = actuelle.date_debut;

@@ -1073,3 +1073,51 @@ documenté seulement.
 ### Prochaine étape
 
 Push + déploiement après validation finale.
+
+---
+
+## 2026-09-23 (suite 10) — L4 : référence facultative et alertes épinglées (correctif post-déploiement)
+
+### Bug référence (corrigé)
+
+**Cause exacte** : `PATCH /api/sessions/:id` refusait `reference: ""` / `"   "` avec
+« La référence ne peut pas être vide. », alors que la création (`POST /sessions`) normalise
+déjà `reference?.trim() || null` et que la production contient une session `reference = NULL`.
+Le client envoie toujours `reference` (chaîne vide pour une session sans référence), donc toute
+édition d'un autre champ était refusée pour ces sessions.
+
+**Correction** : le PATCH applique désormais **la même normalisation que la création** —
+vide ou espaces ⇒ `NULL`, sinon trim + contrôle d'unicité (`23505` → 409). Aucune migration.
+
+### Alertes épinglées (sticky)
+
+Le message d'erreur de l'écran Sessions s'affichait en haut de page, invisible quand le formulaire
+« Modifier la session » est plus bas. Correctif minimal sans refonte :
+
+- nouvelle classe `.flash.sticky` (`position: sticky; top: 8px; z-index: 60`) ;
+- appliquée **uniquement** à l'erreur globale de l'écran Sessions (les notes d'information
+  permanentes, comme la note V10 du référentiel, restent non épinglées) ;
+- bornée par sa section : elle s'efface d'elle-même sans masquer durablement l'interface.
+
+### Tests
+
+- `sessions.test.js` : référence vide/espaces ⇒ NULL, référence rognée, session sans référence
+  corrigeable, collision 409, non-régression création (vide ⇒ NULL côté INSERT) ;
+- `npm test` : **221/221** (218 avant → +3) ; `npm run build` OK ; `git diff --check` propre.
+
+### Vérification navigateur (PostgreSQL jetable)
+
+- session `reference = NULL` : modification du lieu seul ⇒ **200**, persistée après rechargement,
+  référence toujours vide acceptée ;
+- référence réelle « TEST-REF » ⇒ sauvegardée et affichée ;
+- référence « SESS-SANS » (déjà prise) ⇒ **409** « Cette référence est déjà utilisée… » ;
+- erreur provoquée formulaire bas de page : le flash `position: sticky` reste en haut de l'écran
+  (top 8 px dans le viewport) — immédiatement visible sans remonter.
+
+### État
+
+- Correctif committé localement. **Aucun push effectué.**
+
+### Prochaine étape
+
+Validation, puis push + déploiement du correctif.

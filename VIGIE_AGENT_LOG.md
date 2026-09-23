@@ -1121,3 +1121,35 @@ Le message d'erreur de l'écran Sessions s'affichait en haut de page, invisible 
 ### Prochaine étape
 
 Validation, puis push + déploiement du correctif.
+
+---
+
+## 2026-09-23 (suite 11) — L4 : validation en production (clôture)
+
+### Push et déploiement du correctif
+
+- pré-push : 221/221 tests, build OK, `git diff --check` propre ; `origin/main` inchangé
+  (`1b8054e`), ancêtre de HEAD, seul `fee0376` au-dessus ;
+- push **sans `--force`** : `1b8054e..fee0376 main -> main` ;
+- déploiement Railway `e5dbcf59` → **SUCCESS**, `/api/health` **200** ;
+- logs : aucune migration supplémentaire, aucune erreur runtime (avertissements bénins connus).
+
+### Contrôles production (lecture seule)
+
+- migration courante : **011_prescripteurs_configurables.sql** (11 au total) ;
+- données intactes : 1 session, 8 inscriptions, 1 absence ;
+- la session qui était sans référence porte désormais `reference = "001"` (posée lors du smoke
+  test utilisateur « vraie référence ») — le correctif n'a touché à aucune session.
+
+### Smoke tests production finaux (utilisateur)
+
+- session sans référence modifiable : OK ;
+- flash sticky visible sans remonter : OK.
+
+### État
+
+**L4 TERMINÉ.** Commits : `1b8054e` (principal) + `fee0376` (correctif).
+
+### Prochaine étape
+
+Lot **L5** — documents d'assiduité / EduSign.

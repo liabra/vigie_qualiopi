@@ -617,6 +617,17 @@ silencieuse, aucun moteur de version documentaire.
    l'enregistrement : il n'est pas rejoué si l'utilisateur reconsulte la session plus tard
    (le détail, lui, continue d'afficher le dépassement via le calcul d'assiduité).
 
+### Production — TERMINÉ
+
+- commit principal : `1b8054e` — « Sessions : permettre la correction et le suivi du statut » ;
+- correctif final : `fee0376` — « Sessions : corriger la référence facultative et les alertes » ;
+- tests au moment du déploiement : **221/221** ;
+- déploiement Railway **SUCCESS**, `/api/health` **200** ;
+- migration courante : **011_prescripteurs_configurables.sql** (aucune nouvelle migration) ;
+- smoke tests production complets : **OK** (6/6 fonctionnalités, puis session sans référence
+  modifiable et flash sticky visible) ;
+- **lot L4 TERMINÉ.**
+
 ---
 
 

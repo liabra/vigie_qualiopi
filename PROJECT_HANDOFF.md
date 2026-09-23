@@ -982,16 +982,17 @@ Aucun moteur de questionnaire.
 
 ### Production — TERMINÉ
 
-- commit : `a0ee566` — « Evaluations : suivre les QCM et la satisfaction » ;
-- **correctif** : commit local « Evaluations : contrôler les dates de session » (non poussé) —
-  règle de période des évaluations, protection du PATCH session, revalidation import ;
 - migration : **013_evaluations_qcm.sql** (appliquée une seule fois, migration courante 013) ;
-- tests au moment du déploiement : **303/303** (avant correctif) ;
-- déploiement Railway **SUCCESS**, `/api/health` **200** ;
-- production lecture seule : `resultats_qcm` 0 ligne, `satisfactions` 0 ligne, sessions/
-  inscriptions/absences intactes ;
-- audit avant correctif : 2 évaluations créées au smoke test étaient **hors période**
-  (`date_passage` 2026-09-24 < `date_debut` 2026-09-28) — non corrigées en base, signalées ;
+- commit principal : `a0ee566` — « Evaluations : suivre les QCM et la satisfaction » ;
+- correctif dates : `cc438e1` — « Evaluations : contrôler les dates de session » (période des
+  évaluations, protection du PATCH session, revalidation import) ;
+- tests finaux : **318/318** ;
+- déploiements Railway **SUCCESS** (a0ee566 puis cc438e1), `/api/health` **200** ;
+- production lecture seule : les 2 évaluations du smoke test étaient hors période
+  (`date_passage` 2026-09-24 < `date_debut` 2026-09-28), non corrigées en base, puis corrigées
+  depuis l'interface après déploiement du correctif ;
+- smoke test final utilisateur : correction des QCM vers une date valide OK, tentative de date
+  hors session refusée, satisfaction à froid après session OK ;
 - **lot L7 TERMINÉ.**
 
 ---

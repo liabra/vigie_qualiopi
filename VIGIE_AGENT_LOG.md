@@ -1524,3 +1524,32 @@ correction du QCM puis modification de session acceptée ; satisfaction `a_froid
 ### État
 
 Correctif local en attente — **aucun push**. Prochaine étape : validation utilisateur puis push.
+
+---
+
+## 2026-09-23 (suite 19) — L7 : validation production (clôture)
+
+### Push et déploiement du correctif dates
+
+- pré-push : 318/318 tests, build OK, `git diff --check` propre ; `origin/main` inchangé
+  (`a0ee566`), ancêtre de HEAD ; seul commit fonctionnel : `cc438e1` ;
+- push **sans `--force`** : `a0ee566..cc438e1 main -> main` ;
+- déploiement Railway `2234d2be` → **SUCCESS**, `/api/health` **200** ;
+- **aucune migration nouvelle** (logs sans « Migration appliquée », `schema_migrations` 001→013,
+  aucune 014) ; migration courante **013_evaluations_qcm.sql** ;
+- production lecture seule : 2 évaluations toujours datées 2026-09-24 (session 2026-09-28 →
+  2026-10-05), toujours hors période, **non modifiées en base** ; satisfactions (2), sessions
+  (1), inscriptions (8), absences (1) intactes.
+
+### Smoke test final utilisateur
+
+Correction des QCM vers une date valide OK ; tentative de remettre une date hors session refusée
+correctement ; satisfaction à froid après la session OK.
+
+### État
+
+**L7 TERMINÉ.** Migration 013 — commits `a0ee566` + `cc438e1` — 318/318 — Railway SUCCESS.
+
+### Prochaine étape
+
+Lot **L8** — robustesse HTTP / identifiants / erreurs.

@@ -1330,6 +1330,73 @@ auth, pas d'ACL par session, pas de nouvelle fonction). Aucune migration.
 
 ---
 
+## 7 duodecies. Lot L11 — contrôle transversal / tests de bout en bout — TERMINÉ (local)
+
+Objectif : vérifier que L1→L10 forment un système cohérent, SANS nouvelle fonction et
+SANS migration présumée. Livrable : tests d'intégration de bout en bout sur un vrai
+PostgreSQL jetable, smoke test navigateur, contrôles de production lecture seule.
+
+### Ajout
+
+- `server/test/transversal.test.js` (7 tests) : PostgreSQL jetable via `embedded-postgres`
+  (devDependency uniquement), migrations réelles via `migrate()`, référentiel semé, app
+  montée sur port aléatoire, API HTTP réelle exercée (sans supertest) ;
+- `server/package.json` : `embedded-postgres@18.4.0-beta.17` en devDependencies.
+
+### Bugs découverts et corrigés (harnais de test uniquement)
+
+1. l'assistant `api()` envoyait le corps même en `GET` (garde sur `corps`) ;
+2. `setPoolFactory` renvoie `undefined` (pas la fabrique précédente) : la restauration
+   `setPoolFactory(fab)` annulait la fabrique et `getPool()` retombait sur un pool
+   localhost:5432 par défaut → 500 `ECONNREFUSED` (corrigé par `setPoolFactory(() => pool)`).
+
+### Couverture des 7 tests
+
+1. migrations 001→013 depuis zéro, dans l'ordre ;
+2. idempotence (rejouer ne rejoue rien) ;
+3. montée incrémentale (base arrêtée à 010, données historiques conservées après 011→013) ;
+4. parcours A2C complet : formation → session → groupe → stagiaire → absence → assiduité →
+   évaluation → satisfaction → preuve → modèle → génération (fake Drive) → PATCH
+   `documentsObsoletes` → régénération « remplacer » ;
+5. contributeur : saisies pédagogiques OK, administration refusée (403) ;
+6. croisements incohérents refusés sans écriture partielle (évaluation/satisfaction hors
+   session, absence hors période, génération sur groupe étranger) ;
+7. import d'évaluations invalide ⇒ rollback intégral.
+
+### Résultats
+
+- suite complète **358/358** (351 + 7) ; **3 exécutions consécutives** toutes 358/358
+  (aucune flakiness, aucun process postgres résiduel, aucun fichier temporaire) ;
+- build client OK ; `git diff --check` OK ;
+- **smoke navigateur** (harness `/tmp/vq-pgtest`, admin + contributeur) : tableau de bord,
+  Versions, Sessions, détail de session, Preuves, Audits, Veille, Modèles — aucun écran
+  blanc, 0 erreur console ; boutons admin absents côté contributeur (Modèles, Versions,
+  « Marquer non applicable », « Modifier la session », « Ajouter le groupe », création
+  formation/prescripteur) ;
+- **production lecture seule** : `/api/health` 200 ; migration courante **013_evaluations_qcm.sql**
+  (13 appliquées) ; volumes conformes (utilisateurs 1, formations 1, sessions 1, groupes 3,
+  inscriptions 8, absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1,
+  modèles 2, générations 4, documents 6) ;
+- **performance** : aucune anomalie — lectures chaudes en requêtes uniques avec agrégation
+  en mémoire ; seules écritures en boucle bornée (`POST /preuves` multi-indicateurs et
+  import CSV, une insertion par ligne), toutes deux transactionnelles, acceptables à
+  l'échelle de l'outil ; pas d'optimisation prématurée.
+
+### Limites restantes
+
+1. le harnais embedded-postgres démarre un PG par exécution (quelques secondes) : la suite
+   complète reste < 15 s, acceptable ;
+2. pas de test navigateur automatisé dans la suite (le smoke est manuel) — assumé.
+
+### État
+
+- **aucune migration** ;
+- commit : `1d7d51c` — « Tests : valider les workflows transversaux »
+  (NON poussé, avec le présent document) ;
+- **lot L11 TERMINÉ (local), push/déploiement en attente de validation humaine.**
+
+---
+
 
 Historique de principe :
 

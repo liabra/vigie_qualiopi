@@ -1820,3 +1820,66 @@ sans donnée sensible.
 ### État
 
 **L10 VALIDÉ EN PRODUCTION — lot TERMINÉ.**
+
+## 2026-09-23 (suite 26) — L11 : contrôle transversal / tests de bout en bout
+
+### Cadre
+
+Aucune nouvelle fonction, **aucune migration présumée** : vérifier que L1→L10 forment un
+système cohérent, par des tests d'intégration de bout en bout sur un vrai PostgreSQL
+jetable (embedded-postgres), un smoke test navigateur, et des contrôles de production
+lecture seule.
+
+### Ajout
+
+- `server/test/transversal.test.js` (7 tests) : boote un PostgreSQL jetable par
+  `embedded-postgres` (dépendance de dev uniquement, port 55445, données sous `/tmp/vq-l11-*`),
+  applique les migrations via `migrate()`, sème le référentiel, monte l'app sur un port
+  aléatoire, et exerce l'API HTTP réelle (sans supertest) ;
+- `server/package.json` : `embedded-postgres@18.4.0-beta.17` en devDependencies.
+
+### Bugs découverts et corrigés (dans le harnais de test uniquement)
+
+1. l'assistant `api()` envoyait le corps même en `GET` (garde `corps === undefined || null`) ;
+2. `setPoolFactory` renvoie `undefined` (pas la fabrique précédente) : restaurer avec
+   `const fab = setPoolFactory(...)` puis `setPoolFactory(fab)` annulait la fabrique —
+   remplacé par `setPoolFactory(() => pool)` direct (le `getPool()` retombait sur un pool
+   localhost:5432 par défaut, d'où des 500 `ECONNREFUSED`).
+
+### Couverture des 7 tests
+
+1. migrations 001→013 appliquées depuis zéro, dans l'ordre ;
+2. idempotence (rejouer ne rejoue rien) ;
+3. montée incrémentale (base arrêtée à 010, données historiques conservées après 011→013) ;
+4. parcours A2C complet : formation → session → groupe → stagiaire → absence → assiduité →
+   évaluation → satisfaction → preuve → modèle → génération (fake Drive) → PATCH
+   `documentsObsoletes` → régénération « remplacer » ;
+5. contributeur : saisies pédagogiques OK, administration refusée (403) ;
+6. croisements incohérents refusés sans écriture partielle (évaluation/satisfaction hors
+   session, absence hors période, génération sur groupe étranger) ;
+7. import d'évaluations invalide ⇒ rollback intégral (aucune écriture).
+
+### Résultats
+
+- suite complète **358/358** (351 + 7), 0 échec ;
+- **3 exécutions consécutives** : 358/358, 358/358, 358/358 (pas de flakiness,
+  aucun process postgres résiduel, aucun fichier temporaire) ;
+- build client OK, `git diff --check` OK ;
+- **smoke test navigateur** (harness `/tmp/vq-pgtest`, admin + contributeur) : tableau de
+  bord, Versions, Sessions, détail de session (groupes/stagiaires/absences/documents),
+  Preuves, Audits, Veille, Modèles — aucun écran blanc, **0 erreur console**, boutons
+  admin absents côté contributeur (Modèles, Versions, « Marquer non applicable »,
+  « Modifier la session », « Ajouter le groupe », création formation/prescripteur) ;
+- **production lecture seule** : `/api/health` 200, migration courante **013_evaluations_qcm.sql**
+  (13 appliquées), volumes inchangés (utilisateurs 1, formations 1, sessions 1, groupes 3,
+  inscriptions 8, absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1,
+  modèles 2, générations 4, documents 6) ;
+- **performance** : pas d'anomalie. Les lectures chaudes (tableau de bord, sessions, absences)
+  sont en requêtes uniques avec agrégation en mémoire ; seules écritures en boucle bornée :
+  `POST /preuves` multi-indicateurs et l'import CSV (une insertion par ligne), toutes deux
+  dans une transaction — acceptable à l'échelle de l'outil, pas d'optimisation prématurée.
+
+### État
+
+**L11 TERMINÉ (local).** Aucune migration — 358/358 × 3 — build OK — smoke navigateur OK —
+production conforme. **Push et déploiement Railway en attente de validation humaine.**

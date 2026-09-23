@@ -1411,3 +1411,68 @@ Veille est volontairement brute : refonte visuelle dans un chantier UX/UI ultér
 ### Prochaine étape
 
 Lot **L7** — évaluations / QCM / satisfaction.
+
+---
+
+## 2026-09-23 (suite 17) — L7 : évaluations / QCM / satisfaction
+
+### Audit (avant modification)
+
+- `resultats_qcm` et `satisfactions` créées en 001, jamais utilisées (aucune route, aucun écran) ;
+- production : **0 ligne** dans les deux tables, aucun `drive_file_id` ;
+- contraintes 001 : `type` 3 valeurs, `score`/`score_max` NOT NULL, pas de `resultat` ni
+  `commentaire` ; `satisfactions.inscription_id` nullable (anonymat natif).
+
+### Décision
+
+- migration **013** nécessaire pour `resultats_qcm` (types, résultat, commentaire, score
+  nullable) ; `satisfactions` **sans migration** ;
+- pas de moteur de questionnaire, pas d'intégration Google Forms (un CSV suffit).
+
+### Migration 013
+
+Types historiques conservés + `qcm`, `validation_etape`, `autre` ; `score`/`score_max`
+nullables en paire ; `resultat NOT NULL DEFAULT 'non_determine'` (jamais déduit) ;
+`commentaire`. Lignes historiques : conservées, `resultat` = non_determine, commentaire NULL.
+
+### Backend / UI
+
+- routes `GET/POST /sessions/:id/evaluations`, `PATCH /evaluations/:id`, import CSV
+  aperçu/confirmation, `GET/POST /sessions/:id/satisfactions`, `PATCH /satisfactions/:id` ;
+- `GET /drive/recherche` **reste `requireAdmin`** (recherche GLOBALE, aucun périmètre fiable) ;
+  le rattachement Drive d'une évaluation/satisfaction est **réservé à l'admin** (403 pour un
+  contributeur, `drive_file_id` refusé côté serveur, sélecteur masqué dans l'UI) ;
+- bloc « Évaluations & satisfaction » dans le détail de session.
+
+### Cohérence
+
+- seuil de réussite : `>= 0`, `<= score_max` si renseigné, interdit sans `score_max` ;
+  `resultat` jamais déduit du seuil ;
+- satisfaction : `note_globale >= 0`, `note_max > 0`, `note_globale <= note_max` (règle API,
+  le SQL n'impose que `note_globale >= 0` et `note_max > 0`).
+
+### Tests
+
+- `evaluations.test.js` + `importResultats.test.js` (fakes) ; test migration 013 sur base
+  historique (embedded-postgres) ;
+- ajouts : seuil négatif / > max / sans max / valide, recherche Drive admin-only, contributeur
+  sans Drive (status/disconnect/attach 403) ;
+- suite complète : **303/303** (267 avant → +36).
+
+### Vérification navigateur / API (PostgreSQL jetable)
+
+- QCM avec score (12/20, valide) ; validation sans score (qualitative) ; modification (résultat +
+  commentaire) ; import CSV (2 importés, 1 inconnu ignoré) ; synthèse (4 résultats, 2 validés,
+  2 non validés) ; satisfaction nominative + anonyme ; moyenne 3.5/5 homogène ;
+- contributeur : consultation + création + modification OK ; **aucun contrôle admin gagné**
+  (drive/status 403, drive/disconnect 403, referentiel/versions 403, recherche Drive 403) ;
+- bloc UI présent dans le détail de session.
+
+### État
+
+**L7 TERMINÉ en local** — commit en attente, **aucun push** sans autorisation explicite.
+
+### Prochaine étape
+
+- commit local `Evaluations : suivre les QCM et la satisfaction` ;
+- puis, après validation utilisateur : push + déploiement Railway + vérification production.

@@ -746,6 +746,11 @@ router.get("/import/dernier", requireAdmin, wrap(async (_req, res) => {
 }));
 
 // Recherche Drive pour rattacher une preuve à la main.
+// GLOBALE sur le compte Drive connecté : réservée à l'ADMIN. Aucun dossier
+// racine fiable ne permet de limiter la recherche à un périmètre Vigie, donc
+// on ne l'ouvre PAS aux contributeurs (ils découvriraient des fichiers sans
+// rapport avec leurs sessions). Connexion/statut/déconnexion restent aussi
+// requireAdmin.
 router.get("/drive/recherche", requireAdmin, wrap(async (req, res) => {
   const q = String(req.query.q || "").trim();
   if (q.length < 3) return res.status(400).json({ error: "Recherche trop courte." });

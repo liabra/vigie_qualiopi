@@ -862,6 +862,123 @@ Aucune colonne retirée, aucune ligne réécrite, aucune contrainte existante le
 
 ---
 
+## 7 octies. Lot L7 — évaluations / QCM / satisfaction — TERMINÉ (local)
+
+Objectif : centraliser qu'une évaluation a eu lieu (qui, quand, quel type, quel résultat) et la
+satisfaction, SANS construire de moteur de questionnaire. A2C utilise Google Forms / papier /
+autres outils ; Vigie enregistre les résultats et les preuves.
+
+### Audit initial
+
+- tables `resultats_qcm` et `satisfactions` créées en migration 001, **jamais utilisées** par
+  aucune route ni écran (tables dormantes) ;
+- `resultats_qcm` : `inscription_id` NOT NULL (⇒ l'appartenance à la session est structurelle),
+  `type` limité à 3 valeurs, `score`/`score_max` NOT NULL, pas de colonne résultat ni
+  commentaire ;
+- `satisfactions` : `session_id` NOT NULL, `inscription_id` **nullable ⇒ anonymat natif**,
+  `note_globale` nullable, `note_max` DEFAULT 5, `reponses` jsonb ;
+- aucun marqueur documentaire QCM/satisfaction, aucun import CSV de résultats.
+
+### Migration 013 — `013_evaluations_qcm.sql` (assouplissement, sans perte)
+
+- `type` : historiques conservés (`positionnement`, `intermediaire`, `evaluation_finale`) +
+  `qcm`, `validation_etape`, `autre` ;
+- `score` et `score_max` **nullables**, en PAIRES (les deux renseignés ou les deux NULL) ;
+  règles conservées quand présents : score >= 0, score_max > 0, score <= score_max ;
+- `resultat text NOT NULL DEFAULT 'non_determine'` CHECK (`valide`, `non_valide`,
+  `non_determine`, `non_applicable`) — **jamais déduit** de score/seuil ;
+- `commentaire text` ;
+- lignes historiques : type et score conservés, `resultat` = `non_determine`, `commentaire`
+  NULL — aucun recalcul ;
+- `satisfactions` : aucune modification.
+
+### Backend (`server/src/routes/gestion.js` + `services/evaluations.js`)
+
+- `GET /sessions/:id/evaluations` (requireAuth) : liste + agrégation (total, validés, non
+  validés, non déterminés, non applicables) ;
+- `POST /sessions/:id/evaluations` (requireRedacteur) : création, inscription vérifiée dans la
+  session, Drive vérifié (503/400), score en paire ;
+- `PATCH /evaluations/:id` (requireRedacteur) : modification ;
+- `POST /sessions/:id/evaluations/import-apercu` (requireRedacteur) : aperçu sans écriture ;
+- `POST /sessions/:id/evaluations/import` (requireRedacteur) : confirmation transactionnelle ;
+- `GET /sessions/:id/satisfactions` (requireAuth) : liste + agrégation (réponses, anonymes,
+  moyenne uniquement si note_max homogène) ;
+- `POST /sessions/:id/satisfactions` (requireRedacteur) : nominative (inscription) ou anonyme
+  (inscription NULL) ;
+- `PATCH /satisfactions/:id` (requireRedacteur) ;
+- `GET /drive/recherche` reste **`requireAdmin`** : la recherche est GLOBALE sur le compte
+  Drive connecté (aucun dossier racine fiable ne permet un périmètre Vigie) — le contributeur
+  n'y a PAS accès ;
+- le rattachement Drive d'une évaluation/satisfaction est réservé à l'**admin** (403 pour un
+  contributeur, `drive_file_id` refusé côté serveur).
+
+### Cohérence des données (serveur)
+
+- seuil de réussite : `>= 0` si renseigné, `<= score_max` si `score_max` renseigné, et
+  **interdit** sans `score_max` (jamais de seuil orphelin) ;
+- `resultat` jamais déduit du seuil ;
+- satisfaction : `note_globale >= 0`, `note_max > 0`, `note_globale <= note_max` — la dernière
+  règle est appliquée par l'API (le SQL n'impose que `note_globale >= 0` et `note_max > 0`).
+
+### Import CSV
+
+Réutilise le parseur L3 (`parserCsv`, `normaliserEmail`, `validerEmail`, `normaliser`) + un
+mapping tolérant dédié (`construireMappingResultats`). Rapprochement **par email uniquement**
+(normalisé, unique) : inconnu ⇒ invalide, partagé ⇒ à vérifier, jamais de fusion sur nom/prénom.
+Doublon exact (inscription + type + intitulé + date) signalé, jamais fusionné. Pourcentage seul
+normalisé en `score/100`, affiché dans l'aperçu avant confirmation.
+
+### UI
+
+Bloc **« Évaluations & satisfaction »** dans le détail de session (`client/src/Evaluations.jsx`) :
+liste compacte, agrégations, ajout/modification, import CSV (aperçu → confirmation), rattachement
+d'un fichier Drive via `RechercheDrive` **réservé à l'admin** (masqué pour le contributeur).
+Aucun moteur de questionnaire.
+
+### Droits
+
+- ADMIN et CONTRIBUTEUR : consulter, ajouter/modifier, importer ;
+- **rattacher un fichier Drive : ADMIN uniquement** (la recherche Drive étant globale et
+  admin-only, le contributeur n'a pas de sélecteur) ;
+- le contributeur n'obtient **aucun** droit admin (connexion/statut/déconnexion Drive,
+  référentiel, modèles restent `requireAdmin`) ;
+- anonyme : 401.
+
+### Tests
+
+- `server/test/evaluations.test.js` (nouveau) : création avec/sans score, types historiques et
+  nouveaux, résultat valide/invalide, score négatif, max invalide, score > max, paire
+  incohérente, **seuil négatif / > max / sans max / valide**, plusieurs évaluations par
+  stagiaire, stagiaire d'une autre session refusé, satisfaction nominative/anonyme, note
+  invalide, agrégations homogène/hétérogène, Drive valide/inconnu/indisponible, **recherche
+  Drive réservée à l'admin, contributeur sans Drive (status/disconnect/attach 403)**, droits ;
+- `server/test/importResultats.test.js` (nouveau) : aperçu sans écriture, email exact/inconnu/
+  ambigu, doublon fichier, pourcentage → score/100 affiché, confirmation transactionnelle,
+  rollback ;
+- test migration 013 sur base avec ligne historique (harnais embarqué) : ligne conservée,
+  `resultat` = non_determine, `commentaire` NULL, nouveaux types acceptés, règles de score,
+  satisfactions intactes ;
+- non-régression L1–L6 : suite complète **303/303**.
+
+### Limites restantes
+
+1. `resultats_qcm.drive_file_id` reste un identifiant unique (pas le système `preuve_fichiers`
+   multi-fichiers) : le rattachement à une preuve Qualiopi globale est volontairement laissé
+   pour plus tard ;
+2. la recherche Drive est GLOBALE et admin-only : aucun dossier racine fiable n'existe encore
+   pour la limiter à un périmètre Vigie, donc le contributeur n'a pas de sélecteur Drive ;
+3. pas de moyenne globale inter-évaluations (seules les évaluations homogènes se moyennent) ;
+4. pas de marqueurs documentaires QCM/satisfaction (ambigu quand un stagiaire a plusieurs
+   évaluations) ;
+5. l'UX du formulaire est brute : refonte visuelle dans un chantier UX/UI ultérieur.
+
+### Production
+
+- **non déployé** : commit local seulement, push et déploiement Railway en attente de validation
+  explicite de l'utilisateur (aucun push sans autorisation).
+
+---
+
 
 Historique de principe :
 

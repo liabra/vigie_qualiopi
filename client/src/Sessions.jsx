@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { messageDepassementDuree } from "./messages.js";
 import { RechercheDrive } from "./RechercheDrive.jsx";
+import Evaluations from "./Evaluations.jsx";
 
 const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
 // Valeurs admises en base (migration 008). La chaîne vide vaut « non
@@ -885,6 +886,10 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
           <ImportStagiaires sessionId={sessionId} recharger={charger} erreur={erreur} />
         </Bloc>
       )}
+
+      <Bloc titre="Évaluations & satisfaction">
+        <Evaluations sessionId={sessionId} stagiaires={d.stagiaires} peutSaisir={peutSaisir} admin={admin} erreur={erreur} />
+      </Bloc>
 
       <Bloc titre="Documents / Assiduité" ouvertParDefaut>
         <p className="muted small"><strong>Documents générés par Vigie</strong></p>

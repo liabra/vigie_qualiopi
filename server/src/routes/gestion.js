@@ -8,6 +8,13 @@ import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
+import { getDrive } from "../services/google.js";
+// Évaluations / QCM + satisfaction (lot L7) : validation et parsing purs.
+import {
+  champsEvaluation, champsSatisfaction,
+  construireMappingResultats, dateDeCsv, lireNombreCsv,
+  typeEvaluationCsv, resultatCsv,
+} from "../services/evaluations.js";
 // Assiduité : un seul calcul, partagé avec la génération documentaire (L5).
 // Ré-exporté pour ne pas casser les imports existants (tests L2).
 import { calculerAssiduite } from "../services/assiduite.js";
@@ -1117,6 +1124,403 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     const code = e.dejaGeneres ? 409 : 400;
     res.status(code).json({ error: e.message, dejaGeneres: e.dejaGeneres, diagnostic: e.diagnostic || null });
   }
+}));
+
+// ── Évaluations / QCM + satisfaction (lot L7) ────────────────
+// Vigie ne construit PAS de questionnaire : on centralise qu'une évaluation
+// a eu lieu, pour qui, quand, avec quel résultat, et la satisfaction.
+// Les fichiers Drive sont VÉRIFIÉS (jamais d'ID saisi à la main), aucun
+// binaire en base.
+
+// Fichier Drive facultatif : existence vérifiée AVANT toute écriture.
+// Drive indisponible ⇒ 503, fichier inconnu ⇒ 400.
+async function verifierFichierDrive(drive_file_id) {
+  const d = await getDrive();
+  if (!d) return { erreur: 503, message: "Google Drive est indisponible ou non connecté. Impossible de vérifier le fichier." };
+  try {
+    const { data } = await d.drive.files.get({
+      fileId: String(drive_file_id).trim(), fields: "id,name,mimeType,webViewLink", supportsAllDrives: true,
+    });
+    return { data };
+  } catch (e) {
+    if (e?.response?.status === 404 || e?.code === 404) return { erreur: 400, message: "Fichier Drive introuvable ou inaccessible." };
+    return { erreur: 400, message: "Impossible de vérifier ce fichier Drive : " + (e.message || "erreur inconnue") };
+  }
+}
+
+// Une inscription doit exister ET appartenir à la session indiquée.
+async function inscriptionDeSession(req, inscriptionId, sessionId) {
+  if (inscriptionId === null || inscriptionId === undefined) return { ok: true };
+  const { rows: [ins] } = await req("SELECT id, session_id FROM inscriptions WHERE id = $1", [inscriptionId]);
+  if (!ins) return { erreur: 404, message: "Inscription introuvable." };
+  if (ins.session_id !== sessionId) return { erreur: 400, message: "Cette inscription n'appartient pas à la session indiquée." };
+  return { ok: true };
+}
+
+// ── Évaluations ─────────────────────────────────────────────
+
+const COLONNES_EVALUATION = `e.id, e.inscription_id, e.type, e.intitule, e.date_passage,
+  e.score, e.score_max, e.seuil_reussite, e.resultat, e.commentaire, e.drive_file_id,
+  s.id AS stagiaire_id, s.nom, s.prenom, s.email`;
+
+function agregerEvaluations(rows) {
+  const agg = { total: rows.length, valide: 0, non_valide: 0, non_determine: 0, non_applicable: 0 };
+  for (const r of rows) if (agg[r.resultat] !== undefined) agg[r.resultat]++;
+  return agg;
+}
+
+router.get("/sessions/:id/evaluations", requireAuth, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const { rows } = await query(
+    `SELECT ${COLONNES_EVALUATION}
+     FROM resultats_qcm e
+     JOIN inscriptions i ON i.id = e.inscription_id AND i.session_id = $1
+     JOIN stagiaires s ON s.id = i.stagiaire_id
+     ORDER BY e.date_passage DESC, e.id DESC`,
+    [sessionId]
+  );
+  res.json({ evaluations: rows, total: rows.length, agregation: agregerEvaluations(rows) });
+}));
+
+router.post("/sessions/:id/evaluations", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const corps = req.body || {};
+  const inscriptionId = identifiant(corps.inscription_id);
+  if (!inscriptionId) return res.status(400).json({ error: "Inscription obligatoire." });
+  if (!corps.type) return res.status(400).json({ error: "Type d'évaluation obligatoire." });
+  if (!corps.date_passage) return res.status(400).json({ error: "Date de passage obligatoire." });
+
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const ins = await inscriptionDeSession(query, inscriptionId, sessionId);
+  if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
+
+  const { champs, erreur } = champsEvaluation(corps);
+  if (erreur) return res.status(400).json({ error: erreur });
+
+  // Rattachement Drive réservé à l'admin : la recherche Drive étant globale
+  // et admin-only, un contributeur ne doit pas pouvoir y rattacher un fichier.
+  if (corps.drive_file_id && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Le rattachement d'un fichier Drive est réservé aux administrateurs." });
+  }
+
+  if (corps.drive_file_id) {
+    const v = await verifierFichierDrive(corps.drive_file_id);
+    if (v.erreur) return res.status(v.erreur).json({ error: v.message });
+  }
+
+  const colonnes = ["inscription_id", ...Object.keys(champs)];
+  const valeurs = [inscriptionId, ...Object.values(champs)];
+  const { rows: [e] } = await query(
+    `INSERT INTO resultats_qcm (${colonnes.join(", ")})
+     VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
+    valeurs
+  );
+  res.status(201).json({ evaluation: e });
+}));
+
+router.patch("/evaluations/:id", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'évaluation invalide." });
+  const { rows: [avant] } = await query(
+    "SELECT e.*, i.session_id FROM resultats_qcm e JOIN inscriptions i ON i.id = e.inscription_id WHERE e.id = $1",
+    [id]
+  );
+  if (!avant) return res.status(404).json({ error: "Évaluation introuvable." });
+
+  const corps = req.body || {};
+  if (corps.inscription_id !== undefined) {
+    const inscriptionId = identifiant(corps.inscription_id);
+    if (!inscriptionId) return res.status(400).json({ error: "Inscription invalide." });
+    const ins = await inscriptionDeSession(query, inscriptionId, avant.session_id);
+    if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
+  }
+
+  const { champs, erreur } = champsEvaluation(corps, avant);
+  if (erreur) return res.status(400).json({ error: erreur });
+  if (!Object.keys(champs).length) return res.status(400).json({ error: "Rien à modifier." });
+
+  if (corps.drive_file_id && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Le rattachement d'un fichier Drive est réservé aux administrateurs." });
+  }
+
+  if (corps.drive_file_id) {
+    const v = await verifierFichierDrive(corps.drive_file_id);
+    if (v.erreur) return res.status(v.erreur).json({ error: v.message });
+  }
+
+  const params = [id];
+  const sets = Object.keys(champs).map((c) => { params.push(champs[c]); return `${c} = $${params.length}`; });
+  const { rows: [e] } = await query(
+    `UPDATE resultats_qcm SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params
+  );
+  res.json({ evaluation: e });
+}));
+
+// ── Import CSV de résultats d'évaluation ────────────────────
+
+async function classerResultats({ req, sessionId, texte }) {
+  const analyse = parserCsv(texte);
+  if (analyse.erreur) return { erreur: analyse.erreur };
+  const { colonnes, inconnus, ambigus } = construireMappingResultats(analyse.enTetes);
+  if (ambigus.length) {
+    return { erreur: "Colonnes ambiguës : " + ambigus.map((a) => `${a.cle} (${a.noms.join(", ")})`).join(" ; ") + "." };
+  }
+  if (!Object.values(colonnes).includes("email")) return { erreur: "Colonne obligatoire absente : « email »." };
+
+  const { rows: inscriptions } = await req(
+    `SELECT i.id AS inscription_id, s.id AS stagiaire_id, s.email, s.nom, s.prenom
+     FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
+     WHERE i.session_id = $1`,
+    [sessionId]
+  );
+  const parEmail = new Map();
+  for (const ins of inscriptions) {
+    const em = normaliserEmail(ins.email);
+    if (!em) continue;
+    if (!parEmail.has(em)) parEmail.set(em, []);
+    parEmail.get(em).push(ins);
+  }
+
+  const resultats = [];
+  const resume = { importables: 0, invalides: 0, aVerifier: 0, doublons: 0 };
+  const vusExacts = new Set();
+
+  for (let i = 0; i < analyse.lignes.length; i++) {
+    const cellules = analyse.lignes[i];
+    if (cellules.every((c) => !c)) continue;
+    const v = extraireValeurs(cellules, colonnes);
+    const email = normaliserEmail(v.email);
+    const ligne = { index: i, statut: "pret", motif: null };
+
+    if (!email || !validerEmail(email)) {
+      ligne.statut = "invalide"; ligne.motif = "email absent ou invalide";
+    } else {
+      const candidats = parEmail.get(email) || [];
+      if (candidats.length === 0) { ligne.statut = "invalide"; ligne.motif = "email inconnu dans cette session"; }
+      else if (candidats.length > 1) { ligne.statut = "a_verifier"; ligne.motif = "plusieurs stagiaires partagent cet email"; }
+      else {
+        ligne.inscriptionId = candidats[0].inscription_id;
+        ligne.stagiaire = { nom: candidats[0].nom, prenom: candidats[0].prenom };
+      }
+    }
+
+    if (ligne.statut === "pret") {
+      const type = typeEvaluationCsv(v.type);
+      const date = dateDeCsv(v.date);
+      const resultat = resultatCsv(v.resultat);
+      const scoreR = lireNombreCsv(v.score);
+      const maxR = lireNombreCsv(v.score_max);
+      const pctR = lireNombreCsv(v.pourcentage);
+      const seuilR = lireNombreCsv(v.seuil);
+
+      if (!type) { ligne.statut = "invalide"; ligne.motif = "type d'évaluation inconnu ou absent"; }
+      else if (!date) { ligne.statut = "invalide"; ligne.motif = "date absente ou illisible"; }
+      else if (resultat === null) { ligne.statut = "invalide"; ligne.motif = `résultat illisible : ${v.resultat}`; }
+      else if (scoreR.erreur || maxR.erreur || pctR.erreur || seuilR.erreur) {
+        ligne.statut = "invalide"; ligne.motif = scoreR.erreur || maxR.erreur || pctR.erreur || seuilR.erreur;
+      } else {
+        let score = scoreR.valeur, scoreMax = maxR.valeur, normalisePourcentage = false;
+        if (pctR.valeur !== null && score === null) { score = pctR.valeur; scoreMax = 100; normalisePourcentage = true; }
+        if ((score === null) !== (scoreMax === null)) {
+          ligne.statut = "invalide"; ligne.motif = "score et score maximum doivent aller ensemble";
+        } else if (score !== null && (score < 0 || scoreMax <= 0 || score > scoreMax)) {
+          ligne.statut = "invalide"; ligne.motif = "score incohérent (négatif, maximum invalide ou score > maximum)";
+        } else {
+          ligne.type = type; ligne.date = date; ligne.resultat = resultat;
+          ligne.score = score; ligne.score_max = scoreMax; ligne.seuil = seuilR.valeur;
+          ligne.intitule = v.intitule || null; ligne.commentaire = v.commentaire || null;
+          ligne.normalisePourcentage = normalisePourcentage;
+          const cle = `${ligne.inscriptionId}|${type}|${ligne.intitule || ""}|${date}`;
+          if (vusExacts.has(cle)) { ligne.statut = "doublon"; ligne.motif = "doublon exact dans le fichier (même inscription, type, intitulé, date)"; }
+          else vusExacts.add(cle);
+        }
+      }
+    }
+
+    if (ligne.statut === "pret") resume.importables++;
+    else if (ligne.statut === "invalide") resume.invalides++;
+    else if (ligne.statut === "a_verifier") resume.aVerifier++;
+    else if (ligne.statut === "doublon") resume.doublons++;
+    resultats.push(ligne);
+  }
+
+  return { sep: analyse.sep, enTetes: analyse.enTetes, inconnus, resultats, resume };
+}
+
+function vueApercuResultats(r) {
+  return {
+    sep: r.sep, enTetes: r.enTetes, colonnesInconnues: r.inconnus, resume: r.resume,
+    lignes: r.resultats.map((l) => ({
+      index: l.index, statut: l.statut, motif: l.motif,
+      stagiaire: l.stagiaire ?? null,
+      type: l.type ?? null, intitule: l.intitule ?? null, date: l.date ?? null,
+      score: l.score ?? null, score_max: l.score_max ?? null, seuil: l.seuil ?? null,
+      resultat: l.resultat ?? null, commentaire: l.commentaire ?? null,
+      normalisePourcentage: l.normalisePourcentage === true,
+    })),
+  };
+}
+
+router.post("/sessions/:id/evaluations/import-apercu", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const texte = req.body?.texte;
+  if (!texte || !String(texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const r = await classerResultats({ req: query, sessionId, texte });
+  if (r.erreur) return res.status(400).json({ error: r.erreur });
+  res.json(vueApercuResultats(r));
+}));
+
+router.post("/sessions/:id/evaluations/import", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const texte = req.body?.texte;
+  if (!texte || !String(texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+    if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+    const r = await classerResultats({ req: (sql, params) => cx.query(sql, params), sessionId, texte });
+    if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
+
+    const bilan = { importes: 0, ignores: [] };
+    for (const l of r.resultats) {
+      if (l.statut !== "pret") { bilan.ignores.push({ index: l.index, statut: l.statut, motif: l.motif }); continue; }
+      await cx.query(
+        `INSERT INTO resultats_qcm (inscription_id, type, intitule, date_passage, score, score_max, seuil_reussite, resultat, commentaire)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [l.inscriptionId, l.type, l.intitule, l.date, l.score, l.score_max, l.seuil, l.resultat, l.commentaire]
+      );
+      bilan.importes++;
+    }
+    await cx.query("COMMIT");
+    res.json({ bilan });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// ── Satisfaction ────────────────────────────────────────────
+
+function agregerSatisfactions(rows) {
+  const reponses = rows.length;
+  const anonymes = rows.filter((r) => !r.inscription_id).length;
+  const notes = rows.filter((r) => r.note_globale !== null);
+  const echelles = [...new Set(notes.map((r) => Number(r.note_max)))];
+  let moyenne = null, echelleHomogene = null;
+  if (echelles.length === 1 && notes.length) {
+    echelleHomogene = echelles[0];
+    const somme = notes.reduce((a, r) => a + Number(r.note_globale), 0);
+    moyenne = Math.round((somme / notes.length) * 100) / 100;
+  }
+  return { reponses, anonymes, nominatives: reponses - anonymes, moyenne, echelleHomogene, echelles };
+}
+
+router.get("/sessions/:id/satisfactions", requireAuth, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const { rows } = await query(
+    `SELECT f.id, f.session_id, f.inscription_id, f.type, f.date_recueil,
+            f.note_globale, f.note_max, f.commentaires, f.reponses, f.drive_file_id,
+            s.nom, s.prenom
+     FROM satisfactions f
+     LEFT JOIN inscriptions i ON i.id = f.inscription_id
+     LEFT JOIN stagiaires s ON s.id = i.stagiaire_id
+     WHERE f.session_id = $1
+     ORDER BY f.date_recueil DESC, f.id DESC`,
+    [sessionId]
+  );
+  res.json({ satisfactions: rows, total: rows.length, agregation: agregerSatisfactions(rows) });
+}));
+
+router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const corps = req.body || {};
+  if (!corps.type) return res.status(400).json({ error: "Type de satisfaction obligatoire." });
+  if (!corps.date_recueil) return res.status(400).json({ error: "Date de recueil obligatoire." });
+
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const inscriptionId = corps.inscription_id === null || corps.inscription_id === undefined
+    ? null : identifiant(corps.inscription_id);
+  if (corps.inscription_id !== undefined && corps.inscription_id !== null && !inscriptionId) {
+    return res.status(400).json({ error: "Inscription invalide." });
+  }
+  if (inscriptionId !== null) {
+    const ins = await inscriptionDeSession(query, inscriptionId, sessionId);
+    if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
+  }
+
+  const { champs, erreur } = champsSatisfaction(corps);
+  if (erreur) return res.status(400).json({ error: erreur });
+
+  if (corps.drive_file_id && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Le rattachement d'un fichier Drive est réservé aux administrateurs." });
+  }
+
+  if (corps.drive_file_id) {
+    const v = await verifierFichierDrive(corps.drive_file_id);
+    if (v.erreur) return res.status(v.erreur).json({ error: v.message });
+  }
+
+  const colonnes = ["session_id", "inscription_id", ...Object.keys(champs)];
+  const valeurs = [sessionId, inscriptionId, ...Object.values(champs)];
+  const { rows: [f] } = await query(
+    `INSERT INTO satisfactions (${colonnes.join(", ")})
+     VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
+    valeurs
+  );
+  res.status(201).json({ satisfaction: f });
+}));
+
+router.patch("/satisfactions/:id", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de satisfaction invalide." });
+  const { rows: [avant] } = await query("SELECT * FROM satisfactions WHERE id = $1", [id]);
+  if (!avant) return res.status(404).json({ error: "Satisfaction introuvable." });
+
+  const corps = req.body || {};
+  if (corps.inscription_id !== undefined) {
+    const inscriptionId = corps.inscription_id === null ? null : identifiant(corps.inscription_id);
+    if (corps.inscription_id !== null && !inscriptionId) return res.status(400).json({ error: "Inscription invalide." });
+    if (inscriptionId !== null) {
+      const ins = await inscriptionDeSession(query, inscriptionId, avant.session_id);
+      if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
+    }
+  }
+
+  const { champs, erreur } = champsSatisfaction(corps, avant);
+  if (erreur) return res.status(400).json({ error: erreur });
+  if (!Object.keys(champs).length) return res.status(400).json({ error: "Rien à modifier." });
+
+  if (corps.drive_file_id && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Le rattachement d'un fichier Drive est réservé aux administrateurs." });
+  }
+
+  if (corps.drive_file_id) {
+    const v = await verifierFichierDrive(corps.drive_file_id);
+    if (v.erreur) return res.status(v.erreur).json({ error: v.message });
+  }
+
+  const params = [id];
+  const sets = Object.keys(champs).map((c) => { params.push(champs[c]); return `${c} = $${params.length}`; });
+  const { rows: [f] } = await query(
+    `UPDATE satisfactions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params
+  );
+  res.json({ satisfaction: f });
 }));
 
 export default router;

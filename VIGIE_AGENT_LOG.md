@@ -1260,3 +1260,116 @@ payload Google Docs est couvert par `generationAssiduite.test.js`.
 ### Prochaine étape
 
 Lot **L6** — référentiel Qualiopi et veille.
+
+---
+
+## 2026-09-23 (suite 14) — L6 : référentiel versionné + veille Qualiopi
+
+### Audit (avant toute modification)
+
+- `veille` : 0 ligne en production, statut distribution vide, `integree` 0 ;
+- `referentiel_versions` : unique version V9 active, 7 critères / 32 indicateurs intacts ;
+- aucune migration L6 en production (courante : 011).
+
+### Décision produit
+
+- migration 012 **additive** uniquement : cycle d'action séparé, `veille.statut` intouché ;
+- pas de contenu V10 inventé : la préparation de version ne crée qu'une coquille ;
+- activation de version **explicite** (jamais déduite de la date), transactionnelle.
+
+### Backend
+
+- routes versions : `GET /referentiel/versions`, `GET /referentiel/versions/:id`,
+  `POST /referentiel/versions` (coquille, 409 doublon), `POST /referentiel/versions/:id/activer`
+  (une seule active, avertissement si date future) ;
+- routes veille : `GET /veille` (filtres), `GET /veille/:id` (détail + preuves), `POST /veille`,
+  `PATCH /veille/:id` (indicateurs remplacés transactionnellement), cohérence du cycle d'action
+  (réalisée ⇒ action non vide ; date de réalisation ⇒ réalisée ; retour en arrière retire la date ;
+  dates strictes) ;
+- `POST /api/preuves` accepte `veille_id` (existence vérifiée), réutilise la vérification Drive.
+
+### UI
+
+- onglet **Veille** (admin + contributeur lecture seule) ;
+- écran **Versions** dans le référentiel (admin) : liste classée, activation, coquille.
+
+### Tests
+
+- `referentielVersions.test.js` + `veille.test.js` (fakes `setPoolFactory`/`setDriveFactory`) ;
+- suite complète : **263/263** (235 avant → +28).
+
+### Vérification navigateur (PostgreSQL jetable)
+
+- admin : création veille (type, indicateurs 23/24), détail, modification (a_analyser→analysee,
+  action a_realiser), retour au détail à jour — OK ;
+- versions : V9 active ; création V10 coquille (future) ; activation V10 → V9 historique avec
+  relations intactes (7 critères / 32 indicateurs), avertissement « date future » affiché ;
+  réactivation V9 → V10 future, V9 active — OK ;
+- contributeur : onglet Veille visible, liste + détail en lecture seule (aucun bouton d'écriture) ;
+- preuve attachée à la veille via `veille_id` (API réelle) — OK ; la variante Drive simulée est
+  couverte par `veille.test.js` (Drive réel non connecté dans le bac à sable jetable).
+
+### État
+
+**L6 TERMINÉ en local** — commit en attente, **aucun push** sans autorisation explicite.
+
+### Prochaine étape
+
+- commit local `Referentiel : versionner et exploiter la veille Qualiopi` ;
+- puis, après validation utilisateur : push + déploiement Railway + vérification production.
+
+---
+
+## 2026-09-23 (suite 15) — L6 : garde « version vide non activable » + revalidation
+
+### Demande produit
+
+Sécuriser avant push : une coquille de référentiel sans critères/indicateurs ne doit JAMAIS
+devenir la version active (elle masquerait le référentiel et viderait la liste des indicateurs
+utilisée par le tableau de bord, les preuves et la veille).
+
+### Audit confirmé
+
+- `POST /referentiel/versions` ne crée que la coquille (0 critère, 0 indicateur) ;
+- avant correction, `POST /referentiel/versions/:id/activer` activait sans vérifier le contenu :
+  une version active vide rendait le tableau de bord vide (0 critère / 0 indicateur), et
+  `GET /api/indicateurs` / `POST /api/preuves` (filtre `est_active`) ne trouvaient plus aucun
+  indicateur — risque **confirmé**.
+
+### Correction
+
+- garde ajoutée dans `POST /referentiel/versions/:id/activer`, **avant** toute écriture :
+  comptage des critères et indicateurs de la version cible ; 0 critère OU 0 indicateur ⇒ **409**
+  « Impossible d'activer cette version : aucun critère ou indicateur n'a encore été importé. » ;
+- un refus ne désactive pas la version active (aucune écriture n'a eu lieu) ;
+- pas de sur-validation (aucun nombre minimal, aucun contenu attendu, aucun texte vérifié exigé).
+
+### Tests
+
+- `referentielVersions.test.js` : coquille vide refusée (409) sans désactiver l'active, une seule
+  active après refus ; critères seuls refusés ; indicateurs seuls refusés ; version avec
+  critères + indicateurs activable ; activation toujours transactionnelle ; droits contributeur
+  (lecture versions/détail 200, POST 403, activation 403) et anonyme (401) ;
+- `veille.test.js` : contributeur lit le détail d'une veille (200) ;
+- suite complète : **267/267** (263 avant → +4).
+
+### Vérification navigateur / API (PostgreSQL jetable)
+
+1. V9 active (32 indicateurs) ;
+2. création V10 coquille (future) ;
+3. tentative activation V10 ⇒ **409 visible** dans l'écran Versions, V10 reste « future » ;
+4. V9 toujours active après refus ;
+5. injection HARNIS UNIQUEMENT d'un critère + indicateur techniques fictifs dans V10 ;
+6. activation V10 ⇒ succès (avertissement date future), V9 devient historique ;
+7. V9 historique avec relations intactes (7 critères / 32 indicateurs) ;
+8. réactivation V9 ⇒ V10 future, V9 active.
+
+### Droits backend vérifiés (HTTP réel)
+
+- CONTRIBUTEUR : GET versions 200, GET détail version 200, POST version 403, activation 403,
+  GET veille 200, GET détail veille 200, POST/PATCH veille 403 ;
+- ANONYME : 401.
+
+### État
+
+Garde intégrée, tests 267/267, build OK, `git diff --check` propre. **Aucun push**.

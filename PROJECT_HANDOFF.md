@@ -737,6 +737,121 @@ Côté serveur, `POST /api/preuves` vérifie :
 
 ---
 
+## 7 septies. Lot L6 — référentiel versionné + veille Qualiopi — TERMINÉ (local)
+
+Objectif : permettre de faire coexister plusieurs versions du référentiel Qualiopi (active /
+future / historique) et d'exploiter la veille réglementaire — sans jamais toucher au cycle de
+la veille existant ni inventer de contenu V10.
+
+### Ce qui existait déjà (audit)
+
+- table `referentiel_versions` déjà multi-versions : `code` UNIQUE, `est_active`, `date_publication`,
+  `date_application`, `note` ; `criteres`/`indicateurs` liés par `version_id` ; le référentiel
+  affiché (`GET /api/referentiel`) lit la version `est_active` ;
+- table `veille` déjà créée en migration 001 (type, titre, source, url, dates, résumé,
+  analyse_impact, rupture_reglementaire, statut `a_analyser|analysee|integree|sans_impact`) +
+  table `veille_indicateurs` (liens N-N) + colonne `preuves.veille_id` (ON DELETE SET NULL) —
+  mais **aucun écran ni route ne l'exploitaient** ;
+- `seed.js` gère déjà l'activation transactionnelle et ne doit PAS devenir une API.
+
+### Décisions produit
+
+- **ne pas créer de contenu V10** : seul le libellé de la note existe (décret 2026-728) ; la
+  préparation de version ne crée qu'une **coquille** (métadonnées), le contenu officiel viendra
+  d'un import ultérieur ;
+- **cycle de la veille et cycle de l'action sont SÉPARÉS** : on n'a jamais touché à
+  `veille.statut` ; l'action vit dans ses propres colonnes ;
+- **une version de référentiel vide ne peut pas devenir active** : garde métier bloquante
+  (aucun critère OU aucun indicateur ⇒ activation refusée), voir Backend.
+
+### Migration 012 — `012_veille_actions.sql` (additive, sans perte)
+
+`ALTER TABLE veille` ajoute uniquement :
+
+- `date_consultation date` ;
+- `action text` ;
+- `statut_action text NOT NULL DEFAULT 'aucune' CHECK (statut_action IN ('aucune','a_realiser','realisee'))` ;
+- `action_realisee_le date`.
+
+Aucune colonne retirée, aucune ligne réécrite, aucune contrainte existante levée.
+
+### Backend (routes nouvelles, `server/src/routes/api.js`)
+
+**Versions** (lecture `requireAuth`, écriture `requireAdmin`) :
+
+- `GET /api/referentiel/versions` — liste classée `active` / `future` (date_application future) /
+  `historique`, tri par date d'application décroissante ;
+- `GET /api/referentiel/versions/:id` — détail (critères + indicateurs), lecture seule ;
+- `POST /api/referentiel/versions` — coquille {code, libelle, dates, source, note}, 400 code vide,
+  409 code dupliqué (23505) ;
+- `POST /api/referentiel/versions/:id/activer` — activation **explicite et transactionnelle**
+  (une seule active), 404 si inconnue, `avertissement` si la date d'application est future (non
+  bloquant) ;
+- **garde métier** : une version **sans aucun critère OU sans aucun indicateur** ne peut pas être
+  activée — **409** « Impossible d'activer cette version : aucun critère ou indicateur n'a encore
+  été importé. ». Vérifiée AVANT toute écriture : un refus ne désactive pas la version active.
+  Aucune sur-validation (pas de nombre minimal de critères/indicateurs).
+
+**Veille** (lecture `requireAuth`, écriture `requireAdmin`) :
+
+- `GET /api/veille` — filtres `?type=&statut=&statut_action=&q=` (ILIKE titre), indicateurs liés
+  agrégés en JSON ;
+- `GET /api/veille/:id` — détail + indicateurs liés + preuves rattachées (avec fichiers) ;
+- `POST /api/veille` — création (type par défaut `autre`, titre obligatoire), rattachement
+  d'indicateurs validés (existence) ;
+- `PATCH /api/veille/:id` — modification de tous les champs + remplacement des `indicateur_ids`
+  (transactionnel) ;
+- **cohérence du cycle d'action** : `statut_action='realisee'` ⇒ `action` non vide (400) ;
+  `action_realisee_le` fourni (date non vide) ⇒ `statut_action='realisee'` (400 sinon) ; repasser
+  de `realisee` à un autre statut retire d'office `action_realisee_le` ; **jamais** de date du
+  jour auto-remplie ; dates strictement `AAAA-MM-JJ` ;
+- `POST /api/preuves` accepte désormais `veille_id` (existence vérifiée ⇒ 400 sinon), en
+  réutilisant **toute la vérification Drive existante** (Drive indisponible ⇒ 503, fichier
+  inconnu ⇒ 400).
+
+### UI
+
+- nouvel onglet **« Veille »** (admin + contributeur) : `client/src/Veille.jsx` — liste filtrée,
+  détail en lecture SOURCE → RÉSUMÉ → ANALYSE/IMPACT → ACTION → PREUVE, formulaire admin
+  (création/édition), rattachement d'une preuve via `RechercheDrive` ;
+- `client/src/Referentiel.jsx` : écran admin **« Versions »** (liste classée, bouton Activer,
+  formulaire « Préparer une nouvelle version » en coquille) ;
+- contributeur : **lecture seule** (aucun bouton d'écriture, backend `requireAdmin`).
+
+### Droits
+
+- ADMIN : créer/modifier la veille, rattacher une preuve, préparer/activer une version ;
+- CONTRIBUTEUR : consulter veille et versions, **rien d'autre** ;
+- aucune route d'écriture ouverte au contributeur ; `POST /api/preuves` reste `requireAdmin`.
+
+### Tests
+
+- `server/test/referentielVersions.test.js` (nouveau) : classification active/future/historique,
+  coquille (code rogné, jamais active d'office), code vide 400, code dupliqué 409, activation
+  transactionnelle (une seule active), activation future non bloquée mais signalée, **refus d'une
+  coquille vide (0 critère OU 0 indicateur ⇒ 409) sans désactiver l'active**, version avec
+  contenu activable, 404, droits admin/contributeur/anonyme ;
+- `server/test/veille.test.js` (nouveau) : CRUD, filtres, détail + preuves, rattachement
+  d'indicateurs (existence + remplacement), cohérence du cycle d'action (4 règles), date invalide,
+  preuve Drive rattachée via `veille_id` (réutilise `setDriveFactory`), preuve sur veille inconnue
+  400, droits ;
+- non-régression L1–L5 : suite complète **267/267**.
+
+### Limites restantes
+
+1. Le contenu V10 (critères/indicateurs) n'existe pas encore : la coquille est prête, l'import
+   officiel reste à faire (hors lot).
+2. Le rattachement d'une preuve à une veille exige toujours un `indicateur_id` (contrainte
+   existante de `preuves`) : une preuve de veille porte donc sur un indicateur précis.
+3. Aucune « clôture » de veille dédiée : on passe par `statut`/`statut_action` (pas de suppression).
+
+### Production
+
+- **non déployé** : commit local seulement, push et déploiement Railway en attente de validation
+  explicite de l'utilisateur (aucun push sans autorisation).
+
+---
+
 
 Historique de principe :
 

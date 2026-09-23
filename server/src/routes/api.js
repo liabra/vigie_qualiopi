@@ -85,6 +85,94 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
   });
 }));
 
+// ── Versions du référentiel ──────────────────────────────────
+// Plusieurs versions coexistent : une active, des futures, des historiques.
+// L'activation est EXPLICITE (on n'infère jamais le passage en vigueur).
+function classerVersion(v) {
+  if (v.est_active) return "active";
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  if (v.date_application && v.date_application > aujourdhui) return "future";
+  return "historique";
+}
+
+router.get("/referentiel/versions", requireAuth, wrap(async (_req, res) => {
+  const { rows } = await query(
+    `SELECT id, code, libelle, date_publication, date_application, source, note, est_active
+     FROM referentiel_versions ORDER BY date_application DESC NULLS LAST, id DESC`
+  );
+  res.json({ versions: rows.map((v) => ({ ...v, type: classerVersion(v) })), total: rows.length });
+}));
+
+router.get("/referentiel/versions/:id", requireAuth, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: [version] } = await query("SELECT * FROM referentiel_versions WHERE id = $1", [id]);
+  if (!version) return res.status(404).json({ error: "Version introuvable." });
+  const [{ rows: criteres }, { rows: indicateurs }] = await Promise.all([
+    query("SELECT id, numero, libelle FROM criteres WHERE version_id = $1 ORDER BY numero", [id]),
+    query("SELECT id, critere_id, numero, libelle, type, categories, texte_source_verifie FROM indicateurs WHERE version_id = $1 ORDER BY numero", [id]),
+  ]);
+  res.json({
+    version,
+    criteres: criteres.map((c) => ({ ...c, indicateurs: indicateurs.filter((i) => i.critere_id === c.id) })),
+  });
+}));
+
+// Préparer une nouvelle version : on ne crée que la COQUILLE (métadonnées).
+// Le contenu officiel des critères/indicateurs viendra d'un import ultérieur.
+router.post("/referentiel/versions", requireAdmin, wrap(async (req, res) => {
+  const { code, libelle, date_publication, date_application, source, note } = req.body || {};
+  const c = code?.trim();
+  if (!c) return res.status(400).json({ error: "Code de version obligatoire." });
+  if (!libelle?.trim()) return res.status(400).json({ error: "Libellé de version obligatoire." });
+  try {
+    const { rows: [version] } = await query(
+      `INSERT INTO referentiel_versions (code, libelle, date_publication, date_application, source, note)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [c, libelle.trim(), date_publication || null, date_application || null, source?.trim() || null, note?.trim() || null]
+    );
+    res.status(201).json({ version });
+  } catch (e) {
+    if (e.code === "23505") return res.status(409).json({ error: "Ce code de version existe déjà." });
+    throw e;
+  }
+}));
+
+// Activer une version : une seule active à la fois, transactionnel.
+router.post("/referentiel/versions/:id/activer", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: [version] } = await query("SELECT * FROM referentiel_versions WHERE id = $1", [id]);
+  if (!version) return res.status(404).json({ error: "Version introuvable." });
+
+  // Garde métier : une coquille sans contenu importé ne doit JAMAIS devenir
+  // la version active — elle masquerait le référentiel et viderait la liste
+  // des indicateurs utilisée partout (tableau de bord, preuves, veille).
+  // Vérifiée AVANT toute écriture : un refus ne désactive pas l'active.
+  const { rows: [compte] } = await query(
+    `SELECT (SELECT count(*)::int FROM criteres WHERE version_id = $1) AS nb_criteres,
+            (SELECT count(*)::int FROM indicateurs WHERE version_id = $1) AS nb_indicateurs`,
+    [id]
+  );
+  if (compte.nb_criteres === 0 || compte.nb_indicateurs === 0) {
+    return res.status(409).json({
+      error: "Impossible d'activer cette version : aucun critère ou indicateur n'a encore été importé.",
+    });
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE referentiel_versions SET est_active = false WHERE est_active AND id <> $1", [id]);
+    await client.query("UPDATE referentiel_versions SET est_active = true WHERE id = $1", [id]);
+    await client.query("COMMIT");
+    const avertissement = version.date_application && version.date_application > new Date().toISOString().slice(0, 10)
+      ? "Cette version a une date d'application future." : null;
+    res.json({ ok: true, version: { ...version, est_active: true }, avertissement });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally { client.release(); }
+}));
+
 // Liste légère des indicateurs du référentiel ACTIF, pour le rattachement
 // d'un document externe (EduSign / Drive) depuis le détail d'une session.
 router.get("/indicateurs", requireAuth, wrap(async (_req, res) => {
@@ -226,6 +314,91 @@ const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, 
                            type_alerte, periodicite_mois, date_echeance, date_derniere_revision, alerte_statut
                     FROM preuves_enrichies WHERE id = $1`;
 
+// ── Veille Qualiopi ──────────────────────────────────────────
+const TYPES_VEILLE = ["legale_reglementaire", "metiers_competences", "innovations_pedagogiques", "handicap", "autre"];
+const STATUTS_VEILLE = ["a_analyser", "analysee", "integree", "sans_impact"];
+const STATUTS_ACTION = ["aucune", "a_realiser", "realisee"];
+
+// Normalise et valide les champs d'une entrée de veille. Retourne
+// { champs, erreur } — `champs` ne contient QUE les colonnes à écrire.
+// `avant` = valeurs actuelles, pour valider la cohérence des valeurs
+// FINALES (champ fourni ou, à défaut, valeur déjà en base).
+function champsVeille(corps, avant = {}) {
+  const champs = {};
+  const texte = (v) => (v === null ? null : String(v).trim() || null);
+
+  if (corps.type !== undefined) {
+    if (!TYPES_VEILLE.includes(corps.type)) return { erreur: "Type de veille inconnu." };
+    champs.type = corps.type;
+  }
+  if (corps.titre !== undefined) {
+    const t = texte(corps.titre);
+    if (!t) return { erreur: "Titre obligatoire." };
+    champs.titre = t;
+  }
+  for (const f of ["source", "url", "resume", "analyse_impact", "action"]) {
+    if (corps[f] !== undefined) champs[f] = texte(corps[f]);
+  }
+  for (const f of ["date_publication", "date_effet", "date_consultation", "action_realisee_le"]) {
+    if (corps[f] === undefined) continue;
+    if (corps[f] === null || corps[f] === "") { champs[f] = null; continue; }
+    const t = String(corps[f]).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return { erreur: `Date invalide (${f}) : format attendu AAAA-MM-JJ.` };
+    const d = new Date(`${t}T00:00:00Z`);
+    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== t) return { erreur: `Date invalide (${f}).` };
+    champs[f] = t;
+  }
+  if (corps.rupture_reglementaire !== undefined) champs.rupture_reglementaire = corps.rupture_reglementaire === true;
+  if (corps.statut !== undefined) {
+    if (!STATUTS_VEILLE.includes(corps.statut)) return { erreur: "Statut de veille inconnu." };
+    champs.statut = corps.statut;
+  }
+  if (corps.statut_action !== undefined) {
+    if (!STATUTS_ACTION.includes(corps.statut_action)) return { erreur: "Statut d'action inconnu." };
+    champs.statut_action = corps.statut_action;
+  }
+
+  // Cohérence du cycle d'ACTION sur les valeurs finales.
+  const statutAction = champs.statut_action ?? avant.statut_action ?? "aucune";
+  const action = champs.action ?? avant.action ?? null;
+
+  if (statutAction === "realisee" && !action) {
+    return { erreur: "Une action réalisée doit avoir un libellé d'action." };
+  }
+  // Date de réalisation fournie explicitement ⇒ le statut final doit être
+  // « réalisée ». Une date vide (null / "") reste un effacement légitime.
+  if (champs.action_realisee_le && statutAction !== "realisee") {
+    return { erreur: "La date de réalisation n'est valable que pour une action réalisée." };
+  }
+  // On repasse de « réalisée » à un autre statut sans fournir de date :
+  // la date de réalisation devenue incohérente est retirée d'office.
+  if (statutAction !== "realisee" && champs.action_realisee_le === undefined && avant.action_realisee_le) {
+    champs.action_realisee_le = null;
+  }
+  return { champs };
+}
+
+// Liste des indicateurs visés. null = non fourni (lien inchangé).
+function indicateursVeille(corps) {
+  if (corps.indicateur_ids === undefined) return null;
+  const liste = Array.isArray(corps.indicateur_ids) ? corps.indicateur_ids : [];
+  return [...new Set(liste.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+}
+
+// Valide que les indicateurs visés existent — sinon on créerait des liens
+// cassés. Levée marquée pour être traduite en 400 par l'appelant.
+async function verifierIndicateurs(client, ids) {
+  if (!ids.length) return;
+  const { rows } = await client.query("SELECT id FROM indicateurs WHERE id = ANY($1::int[])", [ids]);
+  const connus = new Set(rows.map((r) => r.id));
+  const manquants = ids.filter((n) => !connus.has(n));
+  if (manquants.length) {
+    const e = new Error(`Indicateur(s) introuvable(s) : ${manquants.join(", ")}.`);
+    e.veilleIndicateurs = true;
+    throw e;
+  }
+}
+
 // Créer une preuve à la main : un document qui vit déjà sur le Drive et
 // qu'on rattache à un ou plusieurs indicateurs (export EduSign, convention,
 // habilitation, justificatif…). Ces preuves n'existaient jusqu'ici que par
@@ -243,7 +416,7 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   const {
     indicateur_id, indicateur_ids, titre, description, statut, mode_fichiers,
     drive_file_id, drive_url, drive_nom, drive_mime,
-    type_alerte, periodicite_mois, date_echeance, session_id, groupe_id,
+    type_alerte, periodicite_mois, date_echeance, session_id, groupe_id, veille_id,
   } = req.body || {};
 
   if (!titre?.trim()) return res.status(400).json({ error: "Titre obligatoire." });
@@ -284,6 +457,13 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
     if (sid !== null && groupe.session_id !== sid) {
       return res.status(400).json({ error: "Ce groupe n'appartient pas à la session indiquée." });
     }
+  }
+
+  // Rattachement à une veille (preuve d'action) : l'entrée doit exister.
+  const vid = veille_id !== undefined && veille_id !== null ? Number(veille_id) : null;
+  if (vid !== null) {
+    const { rowCount } = await query("SELECT 1 FROM veille WHERE id = $1", [vid]);
+    if (!rowCount) return res.status(400).json({ error: "Veille introuvable." });
   }
 
   // Si un fichier Drive est fourni, il DOIT pouvoir être vérifié : pas de
@@ -333,13 +513,13 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
     for (const ind of trouves) {
       const { rows: [preuve] } = await client.query(
         `INSERT INTO preuves (indicateur_id, titre, description, statut, mode_fichiers,
-           type_alerte, periodicite_mois, date_echeance, session_id, groupe_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+           type_alerte, periodicite_mois, date_echeance, session_id, groupe_id, veille_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
         [ind.id, titre.trim(), description?.trim() || null, statut || "a_risque",
          mode_fichiers || "unique", type_alerte || null,
          type_alerte === "revision_periodique" ? periodicite_mois : null,
          type_alerte === "echeance_fixe" ? date_echeance : null,
-         sid, gid, req.user.id]
+         sid, gid, vid, req.user.id]
       );
       // Le même fichier est rattaché à chacune des preuves créées : la
       // contrainte d'unicité porte sur (preuve_id, drive_file_id), donc
@@ -635,6 +815,120 @@ router.patch("/audits/:id", requireAdmin, wrap(async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: "Audit introuvable." });
   res.json({ audit: rows[0] });
+}));
+
+// ── Veille : consultation, analyse, décision d'action ─────────
+router.get("/veille", requireAuth, wrap(async (req, res) => {
+  const clauses = [];
+  const params = [];
+  const ajoute = (valeur, cond) => { params.push(valeur); clauses.push(cond.replace("?", `$${params.length}`)); };
+  if (TYPES_VEILLE.includes(req.query.type)) ajoute(req.query.type, "v.type = ?");
+  if (STATUTS_VEILLE.includes(req.query.statut)) ajoute(req.query.statut, "v.statut = ?");
+  if (STATUTS_ACTION.includes(req.query.statut_action)) ajoute(req.query.statut_action, "v.statut_action = ?");
+  if (req.query.q?.trim()) ajoute(`%${req.query.q.trim()}%`, "v.titre ILIKE ?");
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const { rows } = await query(
+    `SELECT v.*,
+       COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero, 'libelle', i.libelle) ORDER BY i.numero)
+                 FROM veille_indicateurs vi JOIN indicateurs i ON i.id = vi.indicateur_id
+                 WHERE vi.veille_id = v.id), '[]'::json) AS indicateurs
+     FROM veille v ${where}
+     ORDER BY COALESCE(v.date_publication, v.created_at) DESC LIMIT 500`,
+    params
+  );
+  res.json({ veilles: rows, total: rows.length });
+}));
+
+router.get("/veille/:id", requireAuth, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: [v] } = await query(
+    `SELECT v.*,
+       COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero, 'libelle', i.libelle) ORDER BY i.numero)
+                 FROM veille_indicateurs vi JOIN indicateurs i ON i.id = vi.indicateur_id
+                 WHERE vi.veille_id = v.id), '[]'::json) AS indicateurs
+     FROM veille v WHERE v.id = $1`,
+    [id]
+  );
+  if (!v) return res.status(404).json({ error: "Veille introuvable." });
+  const { rows: preuves } = await query(
+    `SELECT p.id, p.titre, p.statut, p.mode_fichiers, p.session_id, p.indicateur_id, p.veille_id,
+       COALESCE((SELECT json_agg(json_build_object('id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url, 'nom', f.drive_nom, 'mime', f.drive_mime) ORDER BY f.id)
+                 FROM preuve_fichiers f WHERE f.preuve_id = p.id), '[]'::json) AS fichiers
+     FROM preuves p WHERE p.veille_id = $1 ORDER BY p.id`,
+    [id]
+  );
+  res.json({ veille: v, preuves });
+}));
+
+router.post("/veille", requireAdmin, wrap(async (req, res) => {
+  const corps = { ...(req.body || {}), type: req.body?.type || "autre" };
+  const { champs, erreur } = champsVeille(corps);
+  if (erreur) return res.status(400).json({ error: erreur });
+  if (!champs.titre) return res.status(400).json({ error: "Titre obligatoire." });
+  const ids = indicateursVeille(req.body || {}) || [];
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await verifierIndicateurs(client, ids);
+    const colonnes = [...Object.keys(champs), "created_by"];
+    const valeurs = [...Object.keys(champs).map((c) => champs[c]), req.user.id];
+    const { rows: [v] } = await client.query(
+      `INSERT INTO veille (${colonnes.join(", ")}) VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
+      valeurs
+    );
+    for (const indId of ids) {
+      await client.query("INSERT INTO veille_indicateurs (veille_id, indicateur_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [v.id, indId]);
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ veille: v });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    if (e.veilleIndicateurs) return res.status(400).json({ error: e.message });
+    throw e;
+  } finally { client.release(); }
+}));
+
+router.patch("/veille/:id", requireAdmin, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const { rows: [avant] } = await query("SELECT * FROM veille WHERE id = $1", [id]);
+  if (!avant) return res.status(404).json({ error: "Veille introuvable." });
+  const { champs, erreur } = champsVeille(req.body || {}, avant);
+  if (erreur) return res.status(400).json({ error: erreur });
+  const ids = indicateursVeille(req.body || {});
+  if (!Object.keys(champs).length && ids === null) return res.status(400).json({ error: "Rien à modifier." });
+
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    if (Object.keys(champs).length) {
+      const params = [id];
+      const sets = Object.keys(champs).map((c) => { params.push(champs[c]); return `${c} = $${params.length}`; });
+      await client.query(`UPDATE veille SET ${sets.join(", ")} WHERE id = $1`, params);
+    }
+    if (ids !== null) {
+      await verifierIndicateurs(client, ids);
+      await client.query("DELETE FROM veille_indicateurs WHERE veille_id = $1", [id]);
+      for (const indId of ids) {
+        await client.query("INSERT INTO veille_indicateurs (veille_id, indicateur_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [id, indId]);
+      }
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    if (e.veilleIndicateurs) return res.status(400).json({ error: e.message });
+    throw e;
+  } finally { client.release(); }
+
+  const { rows: [v] } = await query(
+    `SELECT v.*,
+       COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero, 'libelle', i.libelle) ORDER BY i.numero)
+                 FROM veille_indicateurs vi JOIN indicateurs i ON i.id = vi.indicateur_id
+                 WHERE vi.veille_id = v.id), '[]'::json) AS indicateurs
+     FROM veille v WHERE v.id = $1`,
+    [id]
+  );
+  res.json({ veille: v });
 }));
 
 router.use((_req, res) => res.status(404).json({ error: "Route inconnue." }));

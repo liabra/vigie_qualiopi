@@ -293,3 +293,13 @@ p { margin: 0; }
 .liste-import li.import-pret, .liste-import li.import-existant { border-left-color: var(--ok); }
 .liste-import li.import-invalide { border-left-color: var(--err); }
 .liste-import li.import-doublon_possible, .liste-import li.import-a_verifier { border-left-color: var(--warn); }
+
+/* ── Veille et versions du référentiel ─────────────────────── */
+.ind-num.statut-a_analyser { background: var(--st-risque); }
+.ind-num.statut-analysee { background: var(--st-consolider); }
+.ind-num.statut-integree { background: var(--st-maitrise); }
+.ind-num.statut-sans_impact { background: var(--st-na); }
+.veille-ligne { display: grid; gap: .2rem; }
+.veille-ligne .titre { font-weight: 600; text-align: left; padding: 0; }
+.check { display: flex; align-items: center; gap: .45rem; }
+.actions { display: flex; gap: .5rem; align-items: center; }

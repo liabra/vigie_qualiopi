@@ -1795,3 +1795,28 @@ sans donnée sensible.
 
 **L10 TERMINÉ (local).** Aucune migration — 351/351 — build OK — `git diff --check` OK.
 **Push et déploiement Railway en attente de validation humaine.**
+
+## 2026-09-23 (suite 25) — L10 : validation production (clôture)
+
+### Push et déploiement
+
+- pré-push : 351/351, build OK, `git diff --check` propre ; `origin/main` = `39ac114`
+  (ancêtre de HEAD) ; seuls `80de531` + `597bc15` à pousser ;
+- push **sans `--force`** : `39ac114..597bc15 main -> main` ;
+- déploiement Railway (commitHash `597bc15…`) → **SUCCESS**, `/api/health` **200** ;
+- **aucune migration nouvelle** : migration courante **013_evaluations_qcm.sql**.
+
+### Contrôles production lecture seule (aucune écriture)
+
+- en-têtes : `X-Powered-By` absent, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` ;
+- `/api/me` anonyme `{user:null, googleConfigured:true}` (pas de `driveAccountEmail`) ;
+  admin 200, session normale ;
+- cookie invalide ⇒ 401, cookie expiré ⇒ 401 ; Drive status/recherche anonymes ⇒ 401 ;
+- logs récents : aucun token/secret/PII sensible (12 lignes inspectées) ;
+- volumes inchangés (utilisateurs 1, sessions 1, inscriptions 8, absences 1,
+  resultats_qcm 2, satisfactions 2, preuves 144, veille 1, modèles 2, documents 6).
+
+### État
+
+**L10 VALIDÉ EN PRODUCTION — lot TERMINÉ.**

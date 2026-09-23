@@ -1235,7 +1235,7 @@ contributeur) ; Drive = `requireAdmin`. Le contributeur ne gagne aucun accès Dr
 
 ---
 
-## 7 undecies. Lot L10 — droits / données personnelles / sécurité applicative — TERMINÉ (local, non déployé)
+## 7 undecies. Lot L10 — droits / données personnelles / sécurité applicative — TERMINÉ (déployé)
 
 Objectif : auditer et durcir Vigie SANS changer son modèle fonctionnel (pas de refonte
 auth, pas d'ACL par session, pas de nouvelle fonction). Aucune migration.
@@ -1314,14 +1314,19 @@ auth, pas d'ACL par session, pas de nouvelle fonction). Aucune migration.
 3. `Referrer-Policy: no-referrer` peut légèrement dégrader les statistiques de provenance —
    sans conséquence fonctionnelle.
 
-### Production — NON DÉPLOYÉ
+### Production — TERMINÉ
 
 - **aucune migration** ;
-- commit local : « Securite : durcir les droits et donnees personnelles » ;
+- commit : `597bc15` — « Securite : durcir les droits et donnees personnelles »
+  (poussé avec `80de531` « Documentation : valider le lot generation documentaire ») ;
 - tests : **351/351** ; build client OK ; `git diff --check` OK ;
-- production lecture seule (baseline, aucune écriture) : `utilisateurs` admin=1 ;
-  `x-powered-by` déjà absent des réponses publiques ;
-- **lot L10 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
+- déploiement Railway **SUCCESS** (commitHash `597bc15…`), `/api/health` **200** ;
+- migration courante inchangée : **013_evaluations_qcm.sql** ;
+- en-têtes production : `X-Powered-By` absent, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` ;
+- `/api/me` sans `driveAccountEmail` (anonyme et admin) ; cookies invalides/expirés ⇒ 401 ;
+- aucun secret/token/PII sensible dans les logs récents ; données métier inchangées ;
+- **lot L10 TERMINÉ.**
 
 ---
 

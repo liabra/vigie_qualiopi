@@ -1476,3 +1476,51 @@ nullables en paire ; `resultat NOT NULL DEFAULT 'non_determine'` (jamais déduit
 
 - commit local `Evaluations : suivre les QCM et la satisfaction` ;
 - puis, après validation utilisateur : push + déploiement Railway + vérification production.
+
+---
+
+## 2026-09-23 (suite 18) — L7 : correctif « dates d'évaluation bornées à la session »
+
+### Défaut découvert
+
+Une évaluation/QCM pouvait être enregistrée avec une date hors période de sa session (avant
+date_debut ou après date_fin). Audit production lecture seule : **2 évaluations hors période**
+(créées au smoke test, `date_passage` 2026-09-24 < `date_debut` 2026-09-28) — non corrigées en
+base, seulement signalées.
+
+### Règle retenue
+
+`date_passage` doit être comprise **inclusivement** entre `session.date_debut` et
+`session.date_fin`, pour tous les types de `resultats_qcm`. **Les satisfactions ne sont pas
+concernées** (une `a_froid` peut être recueillie après la session).
+
+### Backend
+
+- `POST /sessions/:id/evaluations` : charge les dates de la session et refuse 400 si la date est
+  hors période (« La date de l'évaluation doit être comprise entre le … et le … »), aucune écriture ;
+- `PATCH /evaluations/:id` : date effective (nouvelle si fournie, sinon actuelle) bornée ; une
+  ancienne ligne déjà hors période reste corrigeable en fournissant une date valide ;
+- import CSV : ligne hors période ⇒ invalide (« Hors période de session : … »), revalidée à la
+  confirmation (transactionnelle) ;
+- `PATCH /sessions/:id` : la correction des dates vérifie désormais **absences ET évaluations**,
+  bloque avant toute écriture, message combinant les deux compteurs (« Impossible : 1 absence et
+  2 évaluations tomberaient hors… ») ;
+- UI : `min`/`max` sur le champ date d'évaluation (aide utilisateur, le backend reste autoritaire).
+
+### Tests
+
+- création : date = date_debut / date_fin acceptées, avant/après refusées ; PATCH : nouvelle date
+  valide OK, avant/après refusés, ancienne ligne hors période corrigeable ; import : dans/avant/
+  après période, confirmation revalide ; session : dates excluant une évaluation 400, absences +
+  évaluations comptées sans écriture ; satisfaction `a_froid` après date_fin acceptée ;
+- suite complète : **318/318** (303 avant → +15).
+
+### Vérification navigateur / API (PostgreSQL jetable)
+
+QCM dans période OK ; QCM avant/après refusés avec message ; import CSV hors période ⇒ aperçu
+invalide ; modification des dates de session bloquée (message combiné absences + évaluations) ;
+correction du QCM puis modification de session acceptée ; satisfaction `a_froid` après date_fin OK.
+
+### État
+
+Correctif local en attente — **aucun push**. Prochaine étape : validation utilisateur puis push.

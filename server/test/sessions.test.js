@@ -30,7 +30,7 @@ const sessionDefaut = {
 
 // Enregistre chaque requête reçue et rejoue fidèlement l'UPDATE (plusieurs
 // colonnes) : les tests vérifient ainsi ce que la route a RÉELLEMENT écrit.
-function baseSimulee({ session = {}, doublonReference = null, absences = [] } = {}) {
+function baseSimulee({ session = {}, doublonReference = null, absences = [], evaluations = [] } = {}) {
   const appels = [];
   let etat = { ...sessionDefaut, ...session };
   const executer = async (text, params) => {
@@ -46,6 +46,10 @@ function baseSimulee({ session = {}, doublonReference = null, absences = [] } = 
     if (sql.startsWith("SELECT count(*)::int AS n FROM absences")) {
       const [, debut, fin] = params;   // id, debut, fin
       return { rows: [{ n: absences.filter((a) => a.date_absence < debut || a.date_absence > fin).length }] };
+    }
+    if (sql.startsWith("SELECT count(*)::int AS n FROM resultats_qcm")) {
+      const [, debut, fin] = params;
+      return { rows: [{ n: evaluations.filter((e) => e.date_passage < debut || e.date_passage > fin).length }] };
     }
     if (sql.startsWith("SELECT COALESCE(sum(a.duree_heures)")) {
       const total = absences.reduce((s, a) => s + (Number(a.duree_heures) || 0), 0);
@@ -303,6 +307,7 @@ test("corriger un champ imprimé n'écrit ni generation ni document", async () =
       a.sql === SQL_UTILISATEUR || a.sql === SQL_SESSION ||
       /^UPDATE sessions SET /.test(a.sql) ||
       a.sql.startsWith("SELECT count(*)::int AS n FROM absences") ||
+      a.sql.startsWith("SELECT count(*)::int AS n FROM resultats_qcm") ||
       a.sql.startsWith("SELECT COALESCE(sum(a.duree_heures)");
     assert.ok(connu, "requête inattendue : " + a.sql);
   }
@@ -354,6 +359,45 @@ test("plusieurs absences hors période sont comptées, sans écriture partielle"
   assert.equal(b.ecritures().length, 0, "aucune écriture partielle");
   assert.equal(b.etat().reference, "SESS-1", "la référence n'a pas bougé");
   assert.equal(b.etat().date_debut, "2026-01-05", "la date n'a pas bougé");
+});
+
+// ── Dates vs évaluations existantes ──────────────────────────
+
+test("corriger les dates sans évaluation hors période est accepté", async () => {
+  const b = baseSimulee({ evaluations: [{ date_passage: "2026-02-10" }] }).installer();
+  const r = await patcher(7, { date_debut: "2026-01-10", date_fin: "2026-02-28" });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.session.date_debut, "2026-01-10");
+});
+
+test("un date_debut qui exclut une évaluation répond 400", async () => {
+  const b = baseSimulee({ evaluations: [{ date_passage: "2026-02-10" }] }).installer();
+  const r = await patcher(7, { date_debut: "2026-02-15" });
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /1 évaluation tomberait hors/);
+  assert.equal(b.ecritures().length, 0, "aucune écriture");
+  assert.equal(b.etat().date_debut, "2026-01-05", "la date n'a pas bougé");
+});
+
+test("un date_fin qui exclut une évaluation répond 400", async () => {
+  const b = baseSimulee({ evaluations: [{ date_passage: "2026-02-10" }] }).installer();
+  const r = await patcher(7, { date_fin: "2026-02-01" });
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /1 évaluation tomberait hors/);
+  assert.equal(b.ecritures().length, 0);
+});
+
+test("absences ET évaluations hors période sont comptées, sans écriture", async () => {
+  const b = baseSimulee({
+    absences: [{ date_absence: "2026-02-10", duree_heures: 3.5 }],
+    evaluations: [{ date_passage: "2026-02-10" }, { date_passage: "2026-02-20" }],
+  }).installer();
+  const r = await patcher(7, { date_debut: "2026-03-01", reference: "AUTRE" });
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /1 absence et 2 évaluations tomberaient hors/);
+  assert.equal(b.ecritures().length, 0, "aucune écriture partielle");
+  assert.equal(b.etat().reference, "SESS-1");
+  assert.equal(b.etat().date_debut, "2026-01-05");
 });
 
 // ── Durée prévue vs absences ─────────────────────────────────

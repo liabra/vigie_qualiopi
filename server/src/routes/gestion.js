@@ -88,6 +88,22 @@ export function estDateValide(valeur) {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valeur;
 }
 
+// « AAAA-MM-JJ » → « JJ/MM/AAAA » pour les messages destinés aux humains.
+function dateFr(d) {
+  const t = String(d || "").slice(0, 10);
+  const [a, m, j] = t.split("-");
+  return a && m && j ? `${j}/${m}/${a}` : t;
+}
+
+// Une évaluation appartient à la période de sa session, bornes INCLUSES.
+// (Les satisfactions ne sont PAS concernées : une satisfaction a_froid peut
+// légitimement être recueillie après la session.)
+function evaluationHorsPeriode(datePassage, session) {
+  if (!datePassage || !session?.date_debut || !session?.date_fin) return false;
+  return datePassage < session.date_debut || datePassage > session.date_fin;
+}
+
+
 // undefined : valeur refusée (hors des valeurs admises par la migration 001).
 // null : « demi-journée non précisée », que le schéma autorise.
 function lireDemiJournee(valeur) {
@@ -314,20 +330,33 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
   }
   if (fin < debut) return res.status(400).json({ error: "La date de fin précède la date de début." });
 
-  // Une correction de dates ne doit jamais laisser une absence existante
-  // hors période : les routes d'absences bornent la saisie à la période, une
-  // telle absence deviendrait incohérente et non modifiable.
+  // Une correction de dates ne doit jamais laisser une absence OU une
+  // évaluation existante hors période : les routes de saisie bornent à la
+  // période, une telle donnée deviendrait incohérente et non modifiable.
+  // Les deux vérifications se font AVANT toute écriture.
   const datesModifiees = debut !== actuelle.date_debut || fin !== actuelle.date_fin;
   if (datesModifiees) {
-    const { rows: [hors] } = await query(
-      `SELECT count(*)::int AS n FROM absences a JOIN inscriptions i ON i.id = a.inscription_id
-       WHERE i.session_id = $1 AND (a.date_absence < $2 OR a.date_absence > $3)`,
-      [id, debut, fin]
-    );
-    if (hors.n > 0) {
-      const verbe = hors.n > 1 ? "tomberaient" : "tomberait";
+    const [abs, ev] = await Promise.all([
+      query(
+        `SELECT count(*)::int AS n FROM absences a JOIN inscriptions i ON i.id = a.inscription_id
+         WHERE i.session_id = $1 AND (a.date_absence < $2 OR a.date_absence > $3)`,
+        [id, debut, fin]
+      ),
+      query(
+        `SELECT count(*)::int AS n FROM resultats_qcm e JOIN inscriptions i ON i.id = e.inscription_id
+         WHERE i.session_id = $1 AND (e.date_passage < $2 OR e.date_passage > $3)`,
+        [id, debut, fin]
+      ),
+    ]);
+    const nbAbsences = abs.rows[0].n;
+    const nbEvaluations = ev.rows[0].n;
+    if (nbAbsences > 0 || nbEvaluations > 0) {
+      const parties = [];
+      if (nbAbsences > 0) parties.push(`${nbAbsences} absence${nbAbsences > 1 ? "s" : ""}`);
+      if (nbEvaluations > 0) parties.push(`${nbEvaluations} évaluation${nbEvaluations > 1 ? "s" : ""}`);
+      const verbe = (nbAbsences + nbEvaluations) > 1 ? "tomberaient" : "tomberait";
       return res.status(400).json({
-        error: `Impossible : ${hors.n} absence${hors.n > 1 ? "s" : ""} ${verbe} hors des nouvelles dates de la session. Modifiez ou supprimez d'abord ces absences.`,
+        error: `Impossible : ${parties.join(" et ")} ${verbe} hors des nouvelles dates de la session. Corrigez d'abord leurs dates.`,
       });
     }
   }
@@ -1194,13 +1223,21 @@ router.post("/sessions/:id/evaluations", requireRedacteur, wrap(async (req, res)
   if (!corps.type) return res.status(400).json({ error: "Type d'évaluation obligatoire." });
   if (!corps.date_passage) return res.status(400).json({ error: "Date de passage obligatoire." });
 
-  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  const { rows: [session] } = await query("SELECT id, date_debut, date_fin FROM sessions WHERE id = $1", [sessionId]);
   if (!session) return res.status(404).json({ error: "Session introuvable." });
   const ins = await inscriptionDeSession(query, inscriptionId, sessionId);
   if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
 
   const { champs, erreur } = champsEvaluation(corps);
   if (erreur) return res.status(400).json({ error: erreur });
+
+  // Date de passage bornée à la période de la session (bornes incluses).
+  // Les satisfactions ne sont pas concernées (a_froid possible après).
+  if (evaluationHorsPeriode(champs.date_passage, session)) {
+    return res.status(400).json({
+      error: `La date de l'évaluation doit être comprise entre le ${dateFr(session.date_debut)} et le ${dateFr(session.date_fin)} pour cette session.`,
+    });
+  }
 
   // Rattachement Drive réservé à l'admin : la recherche Drive étant globale
   // et admin-only, un contributeur ne doit pas pouvoir y rattacher un fichier.
@@ -1227,7 +1264,11 @@ router.patch("/evaluations/:id", requireRedacteur, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant d'évaluation invalide." });
   const { rows: [avant] } = await query(
-    "SELECT e.*, i.session_id FROM resultats_qcm e JOIN inscriptions i ON i.id = e.inscription_id WHERE e.id = $1",
+    `SELECT e.*, i.session_id, s.date_debut, s.date_fin
+     FROM resultats_qcm e
+     JOIN inscriptions i ON i.id = e.inscription_id
+     JOIN sessions s ON s.id = i.session_id
+     WHERE e.id = $1`,
     [id]
   );
   if (!avant) return res.status(404).json({ error: "Évaluation introuvable." });
@@ -1243,6 +1284,16 @@ router.patch("/evaluations/:id", requireRedacteur, wrap(async (req, res) => {
   const { champs, erreur } = champsEvaluation(corps, avant);
   if (erreur) return res.status(400).json({ error: erreur });
   if (!Object.keys(champs).length) return res.status(400).json({ error: "Rien à modifier." });
+
+  // Date effective (nouvelle date si fournie, sinon la date actuelle) bornée
+  // à la période de la session. Une ancienne ligne déjà hors période reste
+  // corrigeable : fournir une nouvelle date valide suffit.
+  const dateEffective = champs.date_passage !== undefined ? champs.date_passage : avant.date_passage;
+  if (evaluationHorsPeriode(dateEffective, avant)) {
+    return res.status(400).json({
+      error: `La date de l'évaluation doit être comprise entre le ${dateFr(avant.date_debut)} et le ${dateFr(avant.date_fin)} pour cette session.`,
+    });
+  }
 
   if (corps.drive_file_id && req.user.role !== "admin") {
     return res.status(403).json({ error: "Le rattachement d'un fichier Drive est réservé aux administrateurs." });
@@ -1271,6 +1322,10 @@ async function classerResultats({ req, sessionId, texte }) {
     return { erreur: "Colonnes ambiguës : " + ambigus.map((a) => `${a.cle} (${a.noms.join(", ")})`).join(" ; ") + "." };
   }
   if (!Object.values(colonnes).includes("email")) return { erreur: "Colonne obligatoire absente : « email »." };
+
+  // Période de la session, pour borner les dates d'évaluation (bornes incluses).
+  const { rows: [session] } = await req("SELECT date_debut, date_fin FROM sessions WHERE id = $1", [sessionId]);
+  const periode = session ? { debut: session.date_debut, fin: session.date_fin } : null;
 
   const { rows: inscriptions } = await req(
     `SELECT i.id AS inscription_id, s.id AS stagiaire_id, s.email, s.nom, s.prenom
@@ -1320,6 +1375,10 @@ async function classerResultats({ req, sessionId, texte }) {
 
       if (!type) { ligne.statut = "invalide"; ligne.motif = "type d'évaluation inconnu ou absent"; }
       else if (!date) { ligne.statut = "invalide"; ligne.motif = "date absente ou illisible"; }
+      else if (periode && (date < periode.debut || date > periode.fin)) {
+        ligne.statut = "invalide";
+        ligne.motif = `Hors période de session : date attendue entre le ${dateFr(periode.debut)} et le ${dateFr(periode.fin)}.`;
+      }
       else if (resultat === null) { ligne.statut = "invalide"; ligne.motif = `résultat illisible : ${v.resultat}`; }
       else if (scoreR.erreur || maxR.erreur || pctR.erreur || seuilR.erreur) {
         ligne.statut = "invalide"; ligne.motif = scoreR.erreur || maxR.erreur || pctR.erreur || seuilR.erreur;

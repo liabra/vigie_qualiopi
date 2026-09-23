@@ -888,7 +888,8 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
       )}
 
       <Bloc titre="Évaluations & satisfaction">
-        <Evaluations sessionId={sessionId} stagiaires={d.stagiaires} peutSaisir={peutSaisir} admin={admin} erreur={erreur} />
+        <Evaluations sessionId={sessionId} stagiaires={d.stagiaires} peutSaisir={peutSaisir} admin={admin}
+          debut={d.session.date_debut} fin={d.session.date_fin} erreur={erreur} />
       </Bloc>
 
       <Bloc titre="Documents / Assiduité" ouvertParDefaut>

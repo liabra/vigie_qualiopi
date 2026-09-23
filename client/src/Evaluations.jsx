@@ -23,7 +23,7 @@ const videSatisfaction = () => ({
 // Bloc « Évaluations & satisfaction » d'une session : consultation,
 // saisie manuelle, import CSV (aperçu puis confirmation), rattachement
 // d'un fichier Drive vérifié. Aucun moteur de questionnaire ici.
-export default function Evaluations({ sessionId, stagiaires, peutSaisir, admin, erreur }) {
+export default function Evaluations({ sessionId, stagiaires, peutSaisir, admin, debut, fin, erreur }) {
   const [evals, setEvals] = useState(null);
   const [sats, setSats] = useState(null);
   const [formEval, setFormEval] = useState(null);       // null | { id?, ... }
@@ -171,7 +171,7 @@ export default function Evaluations({ sessionId, stagiaires, peutSaisir, admin, 
             {Object.entries(TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <input placeholder="Intitulé (ex. QCM fin séance 1)" value={formEval.intitule} onChange={(e) => setFormEval({ ...formEval, intitule: e.target.value })} />
-          <input type="date" value={formEval.date_passage} onChange={(e) => setFormEval({ ...formEval, date_passage: e.target.value })} />
+          <input type="date" min={debut || undefined} max={fin || undefined} value={formEval.date_passage} onChange={(e) => setFormEval({ ...formEval, date_passage: e.target.value })} />
           <input type="number" min="0" placeholder="Score" value={formEval.score} onChange={(e) => setFormEval({ ...formEval, score: e.target.value })} />
           <input type="number" min="1" placeholder="Score max" value={formEval.score_max} onChange={(e) => setFormEval({ ...formEval, score_max: e.target.value })} />
           <input type="number" min="0" placeholder="Seuil (facultatif)" value={formEval.seuil_reussite} onChange={(e) => setFormEval({ ...formEval, seuil_reussite: e.target.value })} />

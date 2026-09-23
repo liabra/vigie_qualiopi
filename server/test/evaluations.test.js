@@ -17,7 +17,8 @@ const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "co
 const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 
-function baseSimulee({ sessions = { 1: true }, inscriptions = { 10: { session_id: 1, stagiaire_id: 100 } },
+function baseSimulee({ sessions = { 1: { date_debut: "2026-01-05", date_fin: "2026-03-05" } },
+                       inscriptions = { 10: { session_id: 1, stagiaire_id: 100 } },
                        stagiaires = { 100: { nom: "Stark", prenom: "Blandine", email: "blandine@exemple.fr" } },
                        evaluations = [], satisfactions = [] } = {}) {
   const etat = {
@@ -54,8 +55,14 @@ function baseSimulee({ sessions = { 1: true }, inscriptions = { 10: { session_id
       return { rows: u ? [u] : [] };
     }
 
+    if (sql === "SELECT id, date_debut, date_fin FROM sessions WHERE id = $1") {
+      const s = etat.sessions[params[0]];
+      return { rows: s ? [{ id: params[0], ...s }] : [] };
+    }
+
     if (sql === "SELECT id FROM sessions WHERE id = $1") {
-      return { rows: etat.sessions[params[0]] ? [{ id: params[0] }] : [] };
+      const s = etat.sessions[params[0]];
+      return { rows: s ? [{ id: params[0] }] : [] };
     }
 
     if (sql === "SELECT id, session_id FROM inscriptions WHERE id = $1") {
@@ -76,11 +83,12 @@ function baseSimulee({ sessions = { 1: true }, inscriptions = { 10: { session_id
       return { rows };
     }
 
-    if (sql.startsWith("SELECT e.*, i.session_id FROM resultats_qcm")) {
+    if (sql.startsWith("SELECT e.*, i.session_id")) {
       const e = etat.evaluations.get(params[0]);
       if (!e) return { rows: [] };
-      const sessionId = etat.inscriptions[e.inscription_id]?.session_id;
-      return { rows: [{ ...e, session_id: sessionId }] };
+      const ins = etat.inscriptions[e.inscription_id] || {};
+      const s = etat.sessions[ins.session_id] || {};
+      return { rows: [{ ...e, session_id: ins.session_id, date_debut: s.date_debut, date_fin: s.date_fin }] };
     }
 
     if (sql.startsWith("INSERT INTO resultats_qcm")) {
@@ -281,6 +289,70 @@ test("un seuil sans score maximum est refusé", async () => {
   const r = await creerEvaluation({ inscription_id: 10, type: "validation_etape", date_passage: "2026-03-02", seuil_reussite: 10, resultat: "valide" });
   assert.equal(r.statut, 400);
   assert.match(r.corps.error, /sans score maximum/);
+});
+
+// ── Date de passage bornée à la période de la session ────────
+
+test("une évaluation à la date de début de session est acceptée", async () => {
+  baseSimulee().installer();
+  const r = await creerEvaluation({ inscription_id: 10, type: "qcm", date_passage: "2026-01-05" });
+  assert.equal(r.statut, 201);
+});
+
+test("une évaluation à la date de fin de session est acceptée", async () => {
+  baseSimulee().installer();
+  const r = await creerEvaluation({ inscription_id: 10, type: "qcm", date_passage: "2026-03-05" });
+  assert.equal(r.statut, 201);
+});
+
+test("une évaluation avant la session est refusée", async () => {
+  baseSimulee().installer();
+  const r = await creerEvaluation({ inscription_id: 10, type: "qcm", date_passage: "2026-01-04" });
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /doit être comprise entre le 05\/01\/2026 et le 05\/03\/2026/);
+});
+
+test("une évaluation après la session est refusée", async () => {
+  baseSimulee().installer();
+  const r = await creerEvaluation({ inscription_id: 10, type: "qcm", date_passage: "2026-03-06" });
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /doit être comprise entre/);
+});
+
+test("modifier vers une date valide est accepté", async () => {
+  baseSimulee({ evaluations: [{ id: 1, inscription_id: 10, type: "qcm", date_passage: "2026-02-10" }] }).installer();
+  const r = await appel("/api/evaluations/1", { methode: "PATCH", corps: { date_passage: "2026-02-15" } });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.evaluation.date_passage, "2026-02-15");
+});
+
+test("modifier vers une date avant la session est refusé", async () => {
+  baseSimulee({ evaluations: [{ id: 1, inscription_id: 10, type: "qcm", date_passage: "2026-02-10" }] }).installer();
+  const r = await appel("/api/evaluations/1", { methode: "PATCH", corps: { date_passage: "2026-01-01" } });
+  assert.equal(r.statut, 400);
+});
+
+test("modifier vers une date après la session est refusé", async () => {
+  baseSimulee({ evaluations: [{ id: 1, inscription_id: 10, type: "qcm", date_passage: "2026-02-10" }] }).installer();
+  const r = await appel("/api/evaluations/1", { methode: "PATCH", corps: { date_passage: "2026-04-01" } });
+  assert.equal(r.statut, 400);
+});
+
+test("une ancienne ligne hors période est corrigeable avec une date valide", async () => {
+  const b = baseSimulee({ evaluations: [{ id: 1, inscription_id: 10, type: "qcm", date_passage: "2024-12-31", resultat: "non_determine" }] });
+  b.installer();
+  const r = await appel("/api/evaluations/1", { methode: "PATCH", corps: { date_passage: "2026-02-15", resultat: "valide" } });
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.evaluation.date_passage, "2026-02-15");
+  assert.equal(r.corps.evaluation.resultat, "valide");
+});
+
+// ── Satisfaction non bornée par la session ───────────────────
+
+test("une satisfaction a_froid après la date de fin reste autorisée", async () => {
+  baseSimulee().installer();
+  const r = await creerSatisfaction({ type: "a_froid", date_recueil: "2026-06-01", note_globale: 4, note_max: 5 });
+  assert.equal(r.statut, 201);
 });
 
 test("plusieurs évaluations pour un même stagiaire sont acceptées", async () => {

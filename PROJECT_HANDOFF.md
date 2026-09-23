@@ -917,6 +917,11 @@ autres outils ; Vigie enregistre les résultats et les preuves.
 - seuil de réussite : `>= 0` si renseigné, `<= score_max` si `score_max` renseigné, et
   **interdit** sans `score_max` (jamais de seuil orphelin) ;
 - `resultat` jamais déduit du seuil ;
+- **`date_passage` bornée à la session** (bornes INCLUSES) : `date < date_debut` ou
+  `date > date_fin` ⇒ 400 ; la correction des dates d'une session est BLOQUÉE si une évaluation
+  (ou une absence) tomberait hors des nouvelles dates — message combinant les deux compteurs ;
+- les **satisfactions ne sont PAS bornées** par la session (une `a_froid` peut être recueillie
+  après la date de fin).
 - satisfaction : `note_globale >= 0`, `note_max > 0`, `note_globale <= note_max` — la dernière
   règle est appliquée par l'API (le SQL n'impose que `note_globale >= 0` et `note_max > 0`).
 
@@ -926,7 +931,8 @@ Réutilise le parseur L3 (`parserCsv`, `normaliserEmail`, `validerEmail`, `norma
 mapping tolérant dédié (`construireMappingResultats`). Rapprochement **par email uniquement**
 (normalisé, unique) : inconnu ⇒ invalide, partagé ⇒ à vérifier, jamais de fusion sur nom/prénom.
 Doublon exact (inscription + type + intitulé + date) signalé, jamais fusionné. Pourcentage seul
-normalisé en `score/100`, affiché dans l'aperçu avant confirmation.
+normalisé en `score/100`, affiché dans l'aperçu avant confirmation. **Ligne hors période de
+session ⇒ invalide** (revalidée côté serveur à la confirmation, transactionnelle).
 
 ### UI
 
@@ -954,11 +960,13 @@ Aucun moteur de questionnaire.
   Drive réservée à l'admin, contributeur sans Drive (status/disconnect/attach 403)**, droits ;
 - `server/test/importResultats.test.js` (nouveau) : aperçu sans écriture, email exact/inconnu/
   ambigu, doublon fichier, pourcentage → score/100 affiché, confirmation transactionnelle,
-  rollback ;
+  rollback, **lignes hors période invalides** ;
 - test migration 013 sur base avec ligne historique (harnais embarqué) : ligne conservée,
   `resultat` = non_determine, `commentaire` NULL, nouveaux types acceptés, règles de score,
   satisfactions intactes ;
-- non-régression L1–L6 : suite complète **303/303**.
+- `sessions.test.js` : la correction des dates d'une session bloque si une évaluation tomberait
+  hors période (message combinant absences + évaluations, aucune écriture) ;
+- non-régression L1–L6 : suite complète **318/318**.
 
 ### Limites restantes
 
@@ -972,10 +980,19 @@ Aucun moteur de questionnaire.
    évaluations) ;
 5. l'UX du formulaire est brute : refonte visuelle dans un chantier UX/UI ultérieur.
 
-### Production
+### Production — TERMINÉ
 
-- **non déployé** : commit local seulement, push et déploiement Railway en attente de validation
-  explicite de l'utilisateur (aucun push sans autorisation).
+- commit : `a0ee566` — « Evaluations : suivre les QCM et la satisfaction » ;
+- **correctif** : commit local « Evaluations : contrôler les dates de session » (non poussé) —
+  règle de période des évaluations, protection du PATCH session, revalidation import ;
+- migration : **013_evaluations_qcm.sql** (appliquée une seule fois, migration courante 013) ;
+- tests au moment du déploiement : **303/303** (avant correctif) ;
+- déploiement Railway **SUCCESS**, `/api/health` **200** ;
+- production lecture seule : `resultats_qcm` 0 ligne, `satisfactions` 0 ligne, sessions/
+  inscriptions/absences intactes ;
+- audit avant correctif : 2 évaluations créées au smoke test étaient **hors période**
+  (`date_passage` 2026-09-24 < `date_debut` 2026-09-28) — non corrigées en base, signalées ;
+- **lot L7 TERMINÉ.**
 
 ---
 

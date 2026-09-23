@@ -12,7 +12,7 @@ const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin
 const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 
-function baseSimulee({ inscriptions = [], failOn = null } = {}) {
+function baseSimulee({ inscriptions = [], failOn = null, session = { date_debut: "2026-01-05", date_fin: "2026-03-05" } } = {}) {
   const etat = { inscriptions, resultats: [], prochainId: 1, appels: [] };
 
   const executer = async (text, params = []) => {
@@ -24,6 +24,9 @@ function baseSimulee({ inscriptions = [], failOn = null } = {}) {
     }
     if (sql === "SELECT id FROM sessions WHERE id = $1") {
       return { rows: [{ id: params[0] }] };
+    }
+    if (sql === "SELECT date_debut, date_fin FROM sessions WHERE id = $1") {
+      return { rows: [{ ...session }] };
     }
     if (sql.startsWith("SELECT i.id AS inscription_id")) {
       const rows = etat.inscriptions
@@ -131,6 +134,34 @@ test("un pourcentage seul est normalisé en score/100 et affiché", async () => 
   assert.equal(l.score, 75);
   assert.equal(l.score_max, 100);
   assert.equal(l.normalisePourcentage, true);
+});
+
+test("une ligne hors période de session est invalide dans l'aperçu", async () => {
+  baseSimulee({ inscriptions: STAGIAIRES }).installer();
+  const texte = [
+    "email;type;intitule;date;resultat",
+    "blandine@exemple.fr;qcm;QCM avant;2026-01-01;valide",
+    "blandine@exemple.fr;qcm;QCM après;2026-04-01;valide",
+    "blandine@exemple.fr;qcm;QCM ok;2026-03-02;valide",
+  ].join("\n");
+  const r = await apercu(texte);
+  assert.equal(r.corps.lignes[0].statut, "invalide");
+  assert.match(r.corps.lignes[0].motif, /Hors période de session/);
+  assert.equal(r.corps.lignes[1].statut, "invalide");
+  assert.equal(r.corps.lignes[2].statut, "pret");
+});
+
+test("la confirmation n'importe pas les lignes hors période", async () => {
+  const b = baseSimulee({ inscriptions: STAGIAIRES }); b.installer();
+  const texte = [
+    "email;type;intitule;date;resultat",
+    "blandine@exemple.fr;qcm;QCM avant;2026-01-01;valide",
+    "blandine@exemple.fr;qcm;QCM ok;2026-03-02;valide",
+  ].join("\n");
+  const r = await confirmer(texte);
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.bilan.importes, 1);
+  assert.equal(b.etat.resultats.length, 1);
 });
 
 test("la confirmation importe les lignes prêtes et ignore les autres", async () => {

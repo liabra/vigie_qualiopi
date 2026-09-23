@@ -1216,12 +1216,17 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     });
     res.json(r);
   } catch (e) {
-    // Une erreur SQL (code PostgreSQL) n'est JAMAIS une erreur métier :
-    // elle remonte au handler global (500 générique) sans exposer de détail.
-    if (e.code) throw e;
-    // 409 : des documents existent déjà, l'écran doit proposer de remplacer.
-    const code = e.dejaGeneres ? 409 : 400;
-    res.status(code).json({ error: e.message, dejaGeneres: e.dejaGeneres, diagnostic: e.diagnostic || null });
+    // Une erreur SQL (code PostgreSQL, 5 caractères) n'est JAMAIS une
+    // erreur métier : elle remonte au handler global (500 générique) sans
+    // exposer de détail.
+    if (typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code)) throw e;
+    // 409 : des documents existent déjà, ou une génération est en cours.
+    if (e.dejaGeneres) return res.status(409).json({ error: e.message, dejaGeneres: e.dejaGeneres });
+    if (e.genEnCours) return res.status(409).json({ error: e.message });
+    // 503 : Google indisponible. 400 : erreur métier exploitable. Le
+    // diagnostic Google complet reste dans les logs serveur uniquement.
+    if (e.statut) return res.status(e.statut).json({ error: e.message });
+    return res.status(400).json({ error: e.message });
   }
 }));
 

@@ -997,7 +997,7 @@ Aucun moteur de questionnaire.
 
 ---
 
-## 7 nonies. Lot L8 — robustesse HTTP / identifiants / erreurs — TERMINÉ (local, non déployé)
+## 7 nonies. Lot L8 — robustesse HTTP / identifiants / erreurs — TERMINÉ (déployé)
 
 Objectif : uniformiser la gestion des identifiants et des erreurs HTTP. Aucune fonctionnalité
 nouvelle, aucune migration. C'est un durcissement transversal de l'API.
@@ -1129,6 +1129,103 @@ Toutes les AUTRES erreurs SQL sont retirées du mapping global et tombent en **5
   satisfactions ; 403 contributeur non testable en prod (aucun compte contributeur) ;
 - données métier inchangées (aucune écriture) ;
 - **lot L8 TERMINÉ.**
+
+---
+
+## 7 decies. Lot L9 — robustesse de la génération Drive / Docs — TERMINÉ (local, non déployé)
+
+Objectif : fiabiliser le moteur EXISTANT de génération de documents Google Docs /
+Drive, sans le reconstruire et sans refonte UX. Aucune migration.
+
+### Audit initial — ordre réel d'une génération
+
+1. la route `POST /generations` valide `modele_id` / `session_id` / `groupe_id` ;
+2. `genererDocuments` charge le modèle (`modeles_documents WHERE actif`) ;
+3. charge le contexte (session + groupe éventuel) et les cibles (stagiaires) ;
+4. lit les documents déjà générés (409 si existants et non « remplacer ») ;
+5. crée/trouve les dossiers Drive, copie le modèle puis remplace les marqueurs ;
+6. écrit en base (générations, preuves, pièces jointes, documents_generes) ;
+7. renvoie le résumé.
+
+Points de panne identifiés : fichier Drive sans ligne DB, ligne DB sans fichier,
+document partiellement rempli, doublon, génération annoncée réussie à tort.
+
+### Décision — aucune migration
+
+Le schéma (`generations` sans statut/erreur, `documents_generes` sans historique)
+suffit : une génération ÉCHOUÉE n'écrit aucune ligne (l'INSERT vient en dernier),
+les échecs sont journalisés côté serveur. Les deux besoins non couverts sont
+DOCUMENTÉS comme limites (pas de blocage de robustesse) : pas de table d'historique
+des documents (le lien Drive de l'ancien document est remplacé en base, l'ancien
+fichier n'est que mis à la corbeille), pas d'audit des générations échouées.
+
+### Comportements ajoutés
+
+- **modèle vérifié sur Drive AVANT toute copie** (`files.get`) : absent / en
+  corbeille ⇒ 400 clair, inaccessible ⇒ 400, ni Doc ni Sheet ⇒ 400 ;
+- **Drive non connecté ⇒ 503**, lecture seule ⇒ 400 (convention des preuves) ;
+- **erreurs Google** : traduites en message métier sûr (400/503), sans token ni
+  détail (diagnostic complet masqué journalisé côté serveur uniquement) ;
+- **marqueurs inconnus** détectés sur le modèle (déjà présent) ET **marqueurs non
+  résolus** détectés par RELECTURE de chaque copie Doc après remplacement ;
+- **double clic** : bouton désactivé (UI, déjà présent) + garde serveur en mémoire
+  (une génération à la fois par modèle/session/groupe) ⇒ 409 ;
+- **cohérence Drive/DB** : si la copie ou le remplacement échoue, la copie est mise
+  à la corbeille (best-effort) ; si la DB échoue après les copies, toutes les
+  copies sont mises à la corbeille (best-effort), l'erreur d'origine est conservée ;
+- **nommage** : nom de fichier assaini (`nomSain`), jamais vide ni séparateur de
+  chemin ;
+- **régénération — ordre sûr** : nouveau Drive → Docs → DB (COMMIT) → PUIS
+  ancien fichier à la corbeille. L'ancien reste INTACT tant que la base n'a pas
+  confirmé le remplacement ; un échec d'archivage de l'ancien NE remet PAS en
+  cause la génération (journalisé + `anciensNonArchives` renvoyé) ; `remplace_le`
+  horodate le remplacement (l'ancien lien DB est remplacé, documenté comme limite).
+
+### Droits
+
+Inchangés : modèles = `requireAdmin` ; génération = `requireRedacteur` (admin +
+contributeur) ; Drive = `requireAdmin`. Le contributeur ne gagne aucun accès Drive.
+
+### Tests
+
+- `generationRobuste.test.js` (nouveau, 14 tests) : modèle inexistant / introuvable
+  (404) / inaccessible (403) / trashed / non Doc-Sheet ; groupe d'une autre session ;
+  Drive absent ⇒ 503, lecture seule ⇒ 400 ; marqueur inconnu remonté, marqueur non
+  résolu remonté ; échec de copie ⇒ 400 sans écriture, échec batchUpdate ⇒ copie à
+  la corbeille sans écriture, échec DB ⇒ 500 sans fuite + copie à la corbeille ;
+  deux générations simultanées ⇒ 409 ; régénération ⇒ nouveau créé, DB écrite,
+  ancien trashé SEULEMENT après le commit ; régénération DB échoue ⇒ ancien intact
+  + nouveau trashé + erreur conservée ; trash ancien échoue après DB ⇒ génération
+  réussie + `anciensNonArchives` signalé ; contributeur 200, anonyme 401 ;
+- `documents.test.js` : relecture post-remplacement des copies Doc (compteurs
+  modèle/copie séparés) ;
+- non-régression L1–L8 : suite complète **344/344**.
+
+### Limites impossibles à rendre atomiques (Drive ↔ PostgreSQL)
+
+1. l'ordre réel est « Drive d'abord, base ensuite » : si la base échoue APRÈS les
+   copies, le nettoyage est best-effort — un fichier peut rester orphelin (mis à la
+   corbeille si l'appel réussit, sinon signalé en log) ;
+2. l'archivage de l'ancien fichier est fait APRÈS le commit DB, en best-effort :
+   s'il échoue, la base pointe déjà vers le nouveau document et l'ancien reste dans
+   le Drive (récupérable) — signalé par `anciensNonArchives`, sans rollback ;
+3. la garde anti double clic est en MÉMOIRE (portée processus) : elle protège le
+   double clic / retry sur l'instance courante, mais NE garantit PAS l'idempotence
+   multi-instance ; la contrainte UNIQUE de `documents_generes` empêche néanmoins
+   deux lignes divergentes (le dernier `ON CONFLICT DO UPDATE` l'emporte), mais deux
+   instances parallèles peuvent chacune créer un fichier Drive et laisser un
+   orphelin — dette technique documentée ;
+4. l'ancien lien Drive d'un document régénéré n'est pas conservé en base (pas de
+   table d'historique) — l'ancien fichier reste consultable dans la corbeille Drive.
+
+### Production — NON DÉPLOYÉ
+
+- **aucune migration** ;
+- commit local : « Documents : fiabiliser la génération Drive et Docs » ;
+- tests : **344/344** ; build client OK ; `git diff --check` OK ;
+- production lecture seule (aucune écriture) : `modeles_documents` 2,
+  `generations` 4, `documents_generes` 6, `preuves` 144, `preuve_fichiers` 115 ;
+- **lot L9 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
 
 ---
 

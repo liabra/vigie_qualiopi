@@ -24,7 +24,7 @@ const docAvec = (textes) => ({
 });
 
 function faussesApis(document, mime = DOC) {
-  const appels = { copies: 0, lectures: 0, remplacements: 0 };
+  const appels = { copies: 0, lecturesModele: 0, lecturesCopie: 0, remplacements: 0 };
   return {
     appels,
     drive: { files: { copy: async ({ requestBody }) => {
@@ -32,7 +32,13 @@ function faussesApis(document, mime = DOC) {
       return { data: { id: "copie-" + appels.copies, name: requestBody.name, mimeType: mime, webViewLink: "https://d/c" } };
     } } },
     docs: { documents: {
-      get: async () => { appels.lectures++; return { data: document }; },
+      // Le modèle est lu sur l'ORIGINAL (id "MODELE") ; la copie relue
+      // APRÈS remplacement est vide : tous ses marqueurs ont été remplacés.
+      get: async ({ documentId }) => {
+        if (documentId === "MODELE") { appels.lecturesModele++; return { data: document }; }
+        appels.lecturesCopie++;
+        return { data: { body: { content: [] }, headers: {}, footers: {} } };
+      },
       batchUpdate: async () => { appels.remplacements++; return { data: {} }; },
     } },
     sheets: { spreadsheets: { batchUpdate: async () => { appels.remplacements++; return { data: {} }; } } },
@@ -58,7 +64,8 @@ test("un marqueur non reconnu dans le modèle est remonté par la génération",
   assert.equal(r.detectionMarqueurs, true);
   // civilite existe désormais dans la convention, date_naissance non
   assert.deepEqual(r.marqueursInconnusTrouves, ["date_naissance"]);
-  assert.equal(apis.appels.lectures, 1, "le modèle est lu pour y chercher les marqueurs");
+  assert.equal(apis.appels.lecturesModele, 1, "le modèle est lu pour y chercher les marqueurs");
+  assert.equal(apis.appels.lecturesCopie, 1, "la copie est relue après remplacement");
   assert.equal(apis.appels.remplacements, 1);
 });
 
@@ -81,7 +88,8 @@ test("le modèle n'est lu qu'une fois pour plusieurs copies", async () => {
   const r1 = await copier(apis, { cacheMarqueurs });
   const r2 = await copier(apis, { cacheMarqueurs });
   assert.equal(apis.appels.copies, 2, "deux copies produites");
-  assert.equal(apis.appels.lectures, 1, "mais une seule lecture du modèle");
+  assert.equal(apis.appels.lecturesModele, 1, "mais une seule lecture du modèle");
+  assert.equal(apis.appels.lecturesCopie, 2, "et chaque copie est relue après remplacement");
   assert.deepEqual(r1.marqueursInconnusTrouves, ["inconnu_x"]);
   assert.deepEqual(r2.marqueursInconnusTrouves, ["inconnu_x"]);
 });
@@ -94,7 +102,8 @@ test("sur un Sheet, la détection est annoncée comme non faite plutôt que sile
   assert.equal(r.marqueursRemplaces, true, "les marqueurs sont bien remplacés");
   assert.equal(r.detectionMarqueurs, false, "mais aucun contrôle des marqueurs inconnus");
   assert.deepEqual(r.marqueursInconnusTrouves, []);
-  assert.equal(apis.appels.lectures, 0);
+  assert.equal(apis.appels.lecturesModele, 0);
+  assert.equal(apis.appels.lecturesCopie, 0, "pas de relecture de copie sur un Sheet");
 });
 
 test("si le modèle ne peut pas être lu, la génération se fait quand même", async () => {

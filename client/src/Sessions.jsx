@@ -608,6 +608,7 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
       });
       erreur(null);
       const inconnus = r.marqueursInconnus || [];
+      const nonResolus = r.marqueursNonResolus || [];
       window.alert(
         `${r.documents} document(s) généré(s)${r.remplaces ? `, dont ${r.remplaces} remplacé(s)` : ""}.\n` +
         `${r.preuves} preuve(s) rattachée(s).` +
@@ -615,10 +616,17 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
           ? `\n\nAttention, marqueur(s) non reconnu(s) dans le modèle : ${inconnus.join(", ")}.\n` +
             "Ils restent tels quels dans les documents produits."
           : "") +
+        (nonResolus.length
+          ? `\n\nAttention, marqueur(s) resté(s) non remplacé(s) dans les documents : ${nonResolus.join(", ")}.\n` +
+            "Vérifiez que le modèle ne les coupe pas sur plusieurs lignes."
+          : "") +
         (r.detectionMarqueurs === false
           ? "\n\nLes marqueurs inconnus ne sont pas détectés sur ce type de fichier."
           : "") +
-        (r.marqueursNonRemplaces ? `\n${r.marqueursNonRemplaces} fichier(s) ni Doc ni Sheet : marqueurs non remplacés.` : "")
+        (r.marqueursNonRemplaces ? `\n${r.marqueursNonRemplaces} fichier(s) ni Doc ni Sheet : marqueurs non remplacés.` : "") +
+        (r.anciensNonArchives && r.anciensNonArchives.length
+          ? `\n\nLe nouveau document est enregistré, mais ${r.anciensNonArchives.length} ancien(s) fichier(s) n'ont pas pu être archivé(s).`
+          : "")
       );
       charger();
       onChange?.();

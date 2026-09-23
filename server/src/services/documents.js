@@ -14,7 +14,7 @@
 import { config } from "../config.js";
 import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
-import { marqueursInconnus, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
+import { marqueursInconnus, marqueursRestants, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
 import { calculerAssiduite } from "./assiduite.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
@@ -125,42 +125,65 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
     { api: "drive", modele: modele.nom, jeton }
   );
 
-  const mime = copie.mimeType || modele.drive_mime;
-  if (mime === SHEET) {
-    await appelGoogle(
-      "sheets.spreadsheets.batchUpdate",
-      () => clients.sheets.spreadsheets.batchUpdate({
-        spreadsheetId: copie.id, requestBody: { requests: requetesSheets(valeurs) },
-      }),
-      { api: "sheets", fichierId: copie.id, jeton }
-    );
-  } else if (mime === DOC) {
-    // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
-    // copie déjà nettoyée) : c'est le seul moment où les marqueurs non
-    // reconnus sont encore visibles.
-    const inconnus = await marqueursNonReconnus(clients, modele, jeton, cacheMarqueurs);
-    await appelGoogle(
-      "docs.documents.batchUpdate",
-      () => clients.docs.documents.batchUpdate({
-        documentId: copie.id, requestBody: { requests: requetesDocs(valeurs) },
-      }),
-      { api: "docs", fichierId: copie.id, jeton }
-    );
-    return {
-      ...copie, marqueursRemplaces: true,
-      marqueursInconnusTrouves: inconnus || [],
-      detectionMarqueurs: inconnus !== null,
-    };
-  } else {
+  try {
+    const mime = copie.mimeType || modele.drive_mime;
+    if (mime === SHEET) {
+      await appelGoogle(
+        "sheets.spreadsheets.batchUpdate",
+        () => clients.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: copie.id, requestBody: { requests: requetesSheets(valeurs) },
+        }),
+        { api: "sheets", fichierId: copie.id, jeton }
+      );
+      // Sheet : le remplacement a bien lieu, mais la détection des marqueurs
+      // inconnus n'est pas faite (il faudrait parcourir toutes les cellules).
+      return { ...copie, marqueursRemplaces: true, marqueursInconnusTrouves: [], detectionMarqueurs: false };
+    }
+    if (mime === DOC) {
+      // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
+      // copie déjà nettoyée) : c'est le seul moment où les marqueurs non
+      // reconnus sont encore visibles.
+      const inconnus = await marqueursNonReconnus(clients, modele, jeton, cacheMarqueurs);
+      await appelGoogle(
+        "docs.documents.batchUpdate",
+        () => clients.docs.documents.batchUpdate({
+          documentId: copie.id, requestBody: { requests: requetesDocs(valeurs) },
+        }),
+        { api: "docs", fichierId: copie.id, jeton }
+      );
+      // Relit la COPIE pour vérifier qu'aucun marqueur {{...}} ne subsiste :
+      // un marqueur éclaté sur plusieurs éléments texte n'aurait pas été
+      // remplacé par replaceAllText. Un échec de relecture n'annule pas la
+      // copie : on le signale seulement (verificationMarqueurs: false).
+      let marqueursNonResolus = [];
+      let verificationMarqueurs = false;
+      try {
+        const { data: relu } = await appelGoogle(
+          "docs.documents.get",
+          () => clients.docs.documents.get({ documentId: copie.id }),
+          { api: "docs", fichierId: copie.id, jeton }
+        );
+        marqueursNonResolus = marqueursRestants(texteDuDocument(relu));
+        verificationMarqueurs = true;
+      } catch (e) {
+        console.error("Génération — relecture de la copie impossible : " + (e.message || "erreur inconnue"));
+      }
+      return {
+        ...copie, marqueursRemplaces: true,
+        marqueursInconnusTrouves: inconnus || [],
+        detectionMarqueurs: inconnus !== null,
+        marqueursNonResolus, verificationMarqueurs,
+      };
+    }
     // Ni Doc ni Sheet : la copie existe, mais aucun marqueur n'a pu être
     // remplacé. On le dit plutôt que de laisser croire au remplacement.
     return { ...copie, marqueursRemplaces: false, marqueursInconnusTrouves: [], detectionMarqueurs: false };
+  } catch (e) {
+    // La copie a été créée mais la suite (remplacement) a échoué : on la
+    // met à la corbeille (au mieux) et on ne masque pas l'erreur d'origine.
+    await nettoyerCopies(clients, [copie.id], jeton);
+    throw e;
   }
-  // Sheet : le remplacement a bien lieu, mais la détection des marqueurs
-  // inconnus n'est pas faite — elle demanderait de parcourir toutes les
-  // cellules de tous les onglets. `detectionMarqueurs: false` dit que
-  // l'absence d'avertissement ne prouve rien pour ce document.
-  return { ...copie, marqueursRemplaces: true, marqueursInconnusTrouves: [], detectionMarqueurs: false };
 }
 
 // Preuve d'un document généré : une par (modèle, indicateur, session,
@@ -228,10 +251,105 @@ export async function contexteGeneration(sessionId, groupeId) {
            heuresPrevues: session.duree_heures_reelle ?? session.duree_heures_defaut ?? null };
 }
 
+// ── Robustesse du flux de génération (lot L9) ────────────────
+
+// Une erreur Google (gaxios/googleapis) → message métier sûr, sans token
+// ni détail technique. `appelGoogle` a déjà journalisé le diagnostic
+// complet (champs sensibles masqués) côté serveur.
+function erreurGoogle(e) {
+  const statut = e?.status ?? e?.response?.status ?? null;
+  if (statut === 401) return { statut: 400, message: "La connexion Google a expiré. Reconnectez le Drive depuis les réglages." };
+  if (statut === 403) return { statut: 400, message: "Google refuse l'accès à ce fichier. Vérifiez les autorisations du modèle." };
+  if (statut === 404) return { statut: 400, message: "Le fichier Google demandé est introuvable ou a été supprimé." };
+  if (statut && statut >= 500) return { statut: 503, message: "Google est momentanément indisponible. Réessayez dans un instant." };
+  return { statut: 503, message: "Google est indisponible ou la requête a échoué. Réessayez." };
+}
+
+// Vérifie le fichier MODÈLE sur Drive AVANT de copier : absent, en
+// corbeille, inaccessible ou d'un type non remplaçable ⇒ erreur claire
+// AVANT toute création de copie.
+async function verifierModeleDrive(d, modele, jeton) {
+  let infos;
+  try {
+    ({ data: infos } = await appelGoogle(
+      "drive.files.get",
+      () => d.drive.files.get({
+        fileId: modele.drive_file_id,
+        fields: "id,name,mimeType,trashed",
+        supportsAllDrives: true,
+      }),
+      { api: "drive", modele: modele.nom, jeton }
+    ));
+  } catch (e) {
+    const { statut } = erreurGoogle(e);
+    const propre = new Error(
+      e?.response?.status === 404
+        ? `Le fichier du modèle « ${modele.nom} » est introuvable ou a été supprimé du Drive.`
+        : e?.response?.status === 403
+          ? `Le modèle « ${modele.nom} » n'est pas accessible : vérifiez son partage sur Drive.`
+          : "Impossible de vérifier le modèle sur Drive."
+    );
+    propre.statut = statut;
+    throw propre;
+  }
+  if (!infos || infos.trashed) {
+    const e = new Error(`Le fichier du modèle « ${modele.nom} » est introuvable ou a été supprimé du Drive.`);
+    e.statut = 400;
+    throw e;
+  }
+  if (infos.mimeType !== DOC && infos.mimeType !== SHEET) {
+    const e = new Error(`Le modèle « ${modele.nom} » n'est ni un Google Doc ni un Google Sheet : ses marqueurs ne peuvent pas être remplacés.`);
+    e.statut = 400;
+    throw e;
+  }
+  return infos;
+}
+
+// Met à la corbeille, au mieux, les copies déjà créées : on ne masque
+// jamais l'erreur d'origine, et un fichier orphelin vaut mieux qu'une
+// génération annoncée réussie à tort.
+async function nettoyerCopies(d, ids, jeton) {
+  for (const id of ids) {
+    await appelGoogle(
+      "drive.files.update",
+      () => d.drive.files.update({ fileId: id, requestBody: { trashed: true }, supportsAllDrives: true }),
+      { api: "drive", fichierId: id, jeton }
+    ).catch((e) => console.error("Génération — nettoyage de la copie " + id + " impossible : " + (e.message || "erreur inconnue")));
+  }
+}
+
+// Archive les ANCIENS fichiers après un remplacement réussi en base.
+// Un échec d'archivage ne remet JAMAIS en cause la génération : il est
+// journalisé et la liste des fichiers non archivés est renvoyée.
+async function archiverAnciens(d, ids, jeton) {
+  const echoues = [];
+  for (const id of ids) {
+    const ok = await appelGoogle(
+      "drive.files.update",
+      () => d.drive.files.update({ fileId: id, requestBody: { trashed: true }, supportsAllDrives: true }),
+      { api: "drive", fichierId: id, jeton }
+    ).then(() => true).catch((e) => {
+      console.error("Génération — archive de l'ancien fichier " + id + " impossible : " + (e.message || "erreur inconnue"));
+      return false;
+    });
+    if (!ok) echoues.push(id);
+  }
+  return echoues;
+}
+
+// Garde anti double clic : une seule génération à la fois pour un même
+// (modèle, session, groupe). Portée du PROCESSUS (une seule instance en
+// production) — documenté comme limite, pas une infrastructure distribuée.
+const generationsEnCours = new Map();
+
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
 export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, client: clientGoogle = null } = {}) {
   const d = clientGoogle || (await getDrive());
-  if (!d) throw new Error("Drive non connecté : connectez le compte de l'organisme avant de générer.");
+  if (!d) {
+    const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
+    e.statut = 503;
+    throw e;
+  }
   if (!d.row.scopes.split(/\s+/).includes(DRIVE_FILE)) {
     throw new Error("Le Drive est connecté en lecture seule. Reconnectez-le pour autoriser la création de documents.");
   }
@@ -262,38 +380,57 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     throw e;
   }
 
-  const dejaParCle = new Map(existants.map((x) => [x.stagiaire_id ?? 0, x]));
-  const dossierId = await dossierCible(d.drive, ctx, jeton);
-  const produits = [];
-  let remplaces = 0;
-  // Un seul modèle par génération : le cache évite de le relire à chaque copie.
-  const cacheMarqueurs = new Map();
-
-  for (const { stagiaire } of aProduire) {
-    // Assiduité par stagiaire : le MÊME calcul que le lot L2, pas une copie.
-    const assiduite = stagiaire
-      ? calculerAssiduite({ heuresPrevues: ctx.heuresPrevues, heuresAbsence: stagiaire.heures_absence, statut: stagiaire.statut })
-      : null;
-    const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom });
-    const nom = stagiaire
-      ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`
-      : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}`;
-
-    const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-    const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs, cacheMarqueurs }, jeton);
-
-    // L'ancien fichier part à la corbeille : il a été créé par
-    // l'application, drive.file suffit donc pour l'y mettre.
-    if (ancien) {
-      await appelGoogle(
-        "drive.files.update",
-        () => d.drive.files.update({ fileId: ancien.drive_file_id, requestBody: { trashed: true }, supportsAllDrives: true }),
-        { api: "drive", fichierId: ancien.drive_file_id, jeton }
-      ).catch(() => {});   // déjà supprimé à la main : sans conséquence
-      remplaces++;
-    }
-    produits.push({ stagiaire, copie, nom });
+  // Garde anti double clic : une seule génération à la fois pour ce couple.
+  const cle = `${modeleId}:${sessionId}:${groupeId ?? ""}`;
+  if (generationsEnCours.has(cle)) {
+    const e = new Error("Une génération est déjà en cours pour ce modèle et cette session.");
+    e.genEnCours = true;
+    throw e;
   }
+  generationsEnCours.set(cle, true);
+
+  // Copies Drive créées au fil de l'eau : en cas d'échec, on les met à la
+  // corbeille (au mieux) pour ne pas laisser d'orphelin.
+  const copiesCreees = [];
+  try {
+    // Le modèle doit exister, être accessible et remplaçable AVANT toute copie.
+    await verifierModeleDrive(d, modele, jeton);
+
+    const dejaParCle = new Map(existants.map((x) => [x.stagiaire_id ?? 0, x]));
+    const dossierId = await dossierCible(d.drive, ctx, jeton);
+    const produits = [];
+    let remplaces = 0;
+    // Anciens fichiers à archiver : mis à la corbeille SEULEMENT APRÈS le
+    // succès de l'écriture en base (sinon la DB pointerait vers un fichier
+    // déjà trashé). Collectés ici, exécutés après COMMIT.
+    const anciensATrasher = [];
+    // Un seul modèle par génération : le cache évite de le relire à chaque copie.
+    const cacheMarqueurs = new Map();
+
+    for (const { stagiaire } of aProduire) {
+      // Assiduité par stagiaire : le MÊME calcul que le lot L2, pas une copie.
+      const assiduite = stagiaire
+        ? calculerAssiduite({ heuresPrevues: ctx.heuresPrevues, heuresAbsence: stagiaire.heures_absence, statut: stagiaire.statut })
+        : null;
+      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom });
+      // Nom de fichier sûr : jamais de séparateur de chemin ni de nom vide.
+      const brut = stagiaire
+        ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`
+        : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}`;
+      const nom = nomSain(brut);
+
+      const ancien = dejaParCle.get(stagiaire?.id ?? 0);
+      const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs, cacheMarqueurs }, jeton);
+      copiesCreees.push(copie.id);
+
+      if (ancien) {
+        // Rien n'est trashé ici : on garde l'ancien fichier intact tant que
+        // la base n'a pas confirmé le remplacement.
+        anciensATrasher.push(ancien.drive_file_id);
+        remplaces++;
+      }
+      produits.push({ stagiaire, copie, nom });
+    }
 
   // Écriture en base : tout ou rien.
   const cx = await getPool().connect();
@@ -339,22 +476,50 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       );
     }
     await cx.query("COMMIT");
+
+    // Seulement APRÈS le succès DB : archive l'ancien fichier. Un échec
+    // d'archivage ne remet JAMAIS en cause la génération déjà enregistrée —
+    // il est journalisé et signalé (anciensNonArchives), sans rollback.
+    const anciensNonArchives = await archiverAnciens(d, anciensATrasher, jeton);
+
     return {
       generationId: gen.id, modele: modele.nom, portee: modele.portee,
       documents: produits.length, remplaces, preuves: preuves.length,
       dossierId,
+      anciensNonArchives,
       marqueursNonRemplaces: produits.filter((p) => !p.copie.marqueursRemplaces).length,
       // Marqueurs écrits dans le modèle mais absents de la convention :
       // ils restent tels quels dans les documents produits.
       marqueursInconnus: [...new Set(produits.flatMap((p) => p.copie.marqueursInconnusTrouves || []))],
+      // Marqueurs {{...}} encore présents dans une copie après remplacement :
+      // la génération n'est pas silencieusement présentée comme parfaite.
+      marqueursNonResolus: [...new Set(produits.flatMap((p) => p.copie.marqueursNonResolus || []))],
       // false quand aucune copie n'a pu être analysée (Sheet, ou format
       // non géré) : l'absence d'avertissement ne prouve alors rien.
       detectionMarqueurs: produits.some((p) => p.copie.detectionMarqueurs),
+      // false quand la relecture post-remplacement n'a pas pu être faite.
+      verificationMarqueurs: produits.some((p) => p.copie.verificationMarqueurs),
     };
   } catch (e) {
     await cx.query("ROLLBACK");
     throw e;
   } finally {
     cx.release();
+  }
+  } catch (e) {
+    // Des copies Drive ont pu être créées avant l'échec : on les met à la
+    // corbeille (au mieux), sans jamais masquer l'erreur d'origine.
+    if (copiesCreees.length) await nettoyerCopies(d, copiesCreees, jeton);
+    // Une erreur Google brute ne doit pas fuir : message métier sûr, le
+    // diagnostic complet (champs sensibles masqués) est déjà journalisé.
+    if (!e.statut && !e.dejaGeneres && !e.genEnCours && e.diagnostic) {
+      const { statut, message } = erreurGoogle(e);
+      const propre = new Error(message);
+      propre.statut = statut;
+      throw propre;
+    }
+    throw e;
+  } finally {
+    generationsEnCours.delete(cle);
   }
 }

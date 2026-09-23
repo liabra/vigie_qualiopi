@@ -1658,3 +1658,64 @@ satisfactions 2 · referentiel_versions 1 · veille 1.
 ### État
 
 **L8 VALIDÉ EN PRODUCTION — lot TERMINÉ.**
+
+## 2026-09-23 (suite 22) — L9 : robustesse de la génération Drive / Docs (local, non déployé)
+
+### Audit (avant modification)
+
+Ordre réel d'une génération : validation route → lecture modèle → contexte/cibles →
+lecture des existants (409 si non « remplacer ») → dossiers + copie + remplacement →
+écriture en base → résumé. Points de panne : fichier Drive sans ligne DB, ligne DB sans
+fichier, document partiellement rempli, doublon, succès annoncé à tort.
+
+### Décision
+
+**Aucune migration** : une génération échouée n'écrit aucune ligne (l'INSERT vient en
+dernier) ; l'audit des échecs reste en log serveur. Pas de table d'historique ni de
+statut « en cours/échec » : documenté comme limite, pas un blocage de robustesse.
+
+### Backend
+
+- `services/documents.js` :
+  - `verifierModeleDrive` : le modèle est contrôlé sur Drive (existence, corbeille,
+    accessibilité, mimeType Doc/Sheet) AVANT toute copie ;
+  - `erreurGoogle` : toute erreur Google brute devient un message métier sûr (400/503),
+    le diagnostic complet (champs sensibles masqués) reste en log serveur ;
+  - `nettoyerCopies` : mise à la corbeille best-effort des copies orphelines, sans
+    masquer l'erreur d'origine ;
+  - `archiverAnciens` : l'ANCIEN fichier d'un remplacement n'est mis à la corbeille
+    qu'APRÈS le COMMIT DB ; un échec d'archivage est journalisé et renvoyé via
+    `anciensNonArchives` sans remettre en cause la génération ;
+  - `generationsEnCours` : garde anti double clic en mémoire (une génération à la fois
+    par modèle/session/groupe) ⇒ 409 ;
+  - relecture de chaque copie Doc après remplacement → `marqueursNonResolus` ;
+  - nom de fichier assaini via `nomSain` ;
+- `services/marqueurs.js` : nouveau `marqueursRestants` (tous les `{{...}}` restants) ;
+- `routes/gestion.js` `POST /generations` : mapping d'erreurs (409 dejaGeneres /
+  genEnCours, 503 Google indisponible, 400 métier, SQL → 500 générique sans diagnostic
+  exposé au client) ;
+- `client/src/Sessions.jsx` : alerte « marqueurs non résolus » en plus des marqueurs
+  inconnus (le bouton « Génération… » était déjà désactivé pendant la requête).
+
+### Tests
+
+- `generationRobuste.test.js` (nouveau, 16 tests) : validation (modèle absent/introuvable/
+  inaccessible/trashed/non Doc-Sheet, groupe d'une autre session), Drive absent ⇒ 503,
+  lecture seule ⇒ 400, marqueurs inconnu/non résolu, échec de copie ⇒ 400 sans écriture,
+  échec batchUpdate ⇒ copie à la corbeille sans écriture, échec DB ⇒ 500 sans fuite +
+  copie à la corbeille, double requête ⇒ 409, régénération (nouveau créé → DB écrite →
+  ancien trashé SEULEMENT après le commit ; DB échoue ⇒ ancien intact + nouveau trashé +
+  erreur conservée ; trash ancien échoue après DB ⇒ génération réussie + avertissement),
+  droits (contributeur 200, anonyme 401) ;
+- `documents.test.js` : relecture post-remplacement (compteurs modèle/copie séparés) ;
+- non-régression L1–L8 : suite complète **344/344**.
+
+### Production lecture seule (aucune écriture)
+
+`modeles_documents` 2 (stagiaire=2) · `generations` 4 · `documents_generes` 6 ·
+`preuves` 144 · `preuve_fichiers` 115.
+
+### État
+
+**L9 TERMINÉ (local).** Aucune migration — 344/344 — build OK — `git diff --check` OK.
+**Push et déploiement Railway en attente de validation humaine.**

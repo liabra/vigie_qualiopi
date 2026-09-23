@@ -136,6 +136,14 @@ export function marqueursInconnus(texte) {
   return [...new Set(trouves.filter((n) => !MARQUEURS.includes(n)))];
 }
 
+// TOUS les marqueurs {{...}} encore présents dans un texte, connus ou non.
+// Sert à vérifier, APRÈS remplacement, qu'aucun marqueur n'a été oublié
+// (ex. un marqueur éclaté sur plusieurs éléments texte, que replaceAllText
+// n'aurait pas pu recoller).
+export function marqueursRestants(texte) {
+  return [...new Set([...String(texte || "").matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
+}
+
 // Requêtes de remplacement pour l'API Google Docs.
 export function requetesDocs(valeurs) {
   return MARQUEURS.map((nom) => ({

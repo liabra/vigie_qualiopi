@@ -69,6 +69,7 @@ function clientGoogleSimule() {
       row: { scopes: DRIVE_FILE, expiry: Date.now() + 60_000, access_token: "x" },
       drive: {
         files: {
+          get: async () => ({ data: { id: "MODELE", name: "Attestation", mimeType: DOC, trashed: false } }),
           list: async () => ({ data: { files: [] } }),
           create: async () => ({ data: { id: "dossier-" + ++n } }),
           copy: async ({ requestBody }) => ({ data: { id: "copie-" + ++n, name: requestBody.name, webViewLink: "https://d/c", mimeType: DOC } }),

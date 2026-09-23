@@ -1719,3 +1719,28 @@ statut « en cours/échec » : documenté comme limite, pas un blocage de robust
 
 **L9 TERMINÉ (local).** Aucune migration — 344/344 — build OK — `git diff --check` OK.
 **Push et déploiement Railway en attente de validation humaine.**
+
+## 2026-09-23 (suite 23) — L9 : validation production (clôture)
+
+### Push et déploiement
+
+- pré-push : 344/344, build OK, `git diff --check` propre ; `origin/main` = `32eca1b`
+  (ancêtre de HEAD) ; seuls `90acd03` + `39ac114` à pousser ;
+- push **sans `--force`** : `32eca1b..39ac114 main -> main` ;
+- déploiement Railway (commitHash `39ac114…`) → **SUCCESS**, `/api/health` **200** ;
+- **aucune migration nouvelle** : migration courante **013_evaluations_qcm.sql**.
+
+### Contrôles production lecture seule (aucune écriture)
+
+- volumes inchangés : `modeles_documents` 2 · `generations` 4 · `documents_generes` 6 ·
+  `preuve_fichiers source='generation'` 6 ; sessions 1 · inscriptions 8 · resultats_qcm 2 ·
+  satisfactions 2 ;
+- routes/droits : anonyme ⇒ 401 (modèles, générations) ; admin `GET /api/modeles` ⇒ 200 ;
+  contributeur non testé en prod (aucun compte) — couvert par tests automatisés ;
+- **aucun test destructif Google** : aucun document généré, aucun modèle temporaire, aucun
+  fichier déplacé/trashé ;
+- logs : aucune erreur OAuth / Drive / Docs (seul l'avertissement npm bénin).
+
+### État
+
+**L9 VALIDÉ EN PRODUCTION — lot TERMINÉ.**

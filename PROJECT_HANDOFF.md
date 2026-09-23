@@ -1132,7 +1132,7 @@ Toutes les AUTRES erreurs SQL sont retirées du mapping global et tombent en **5
 
 ---
 
-## 7 decies. Lot L9 — robustesse de la génération Drive / Docs — TERMINÉ (local, non déployé)
+## 7 decies. Lot L9 — robustesse de la génération Drive / Docs — TERMINÉ (déployé)
 
 Objectif : fiabiliser le moteur EXISTANT de génération de documents Google Docs /
 Drive, sans le reconstruire et sans refonte UX. Aucune migration.
@@ -1218,14 +1218,20 @@ contributeur) ; Drive = `requireAdmin`. Le contributeur ne gagne aucun accès Dr
 4. l'ancien lien Drive d'un document régénéré n'est pas conservé en base (pas de
    table d'historique) — l'ancien fichier reste consultable dans la corbeille Drive.
 
-### Production — NON DÉPLOYÉ
+### Production — TERMINÉ
 
 - **aucune migration** ;
-- commit local : « Documents : fiabiliser la génération Drive et Docs » ;
+- commit : `39ac114` — « Documents : fiabiliser la génération Drive et Docs »
+  (poussé avec `90acd03` « Documentation : valider le lot robustesse API ») ;
 - tests : **344/344** ; build client OK ; `git diff --check` OK ;
-- production lecture seule (aucune écriture) : `modeles_documents` 2,
-  `generations` 4, `documents_generes` 6, `preuves` 144, `preuve_fichiers` 115 ;
-- **lot L9 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
+- déploiement Railway **SUCCESS** (commitHash `39ac114…`), `/api/health` **200** ;
+- migration courante inchangée : **013_evaluations_qcm.sql** (13 migrations, aucune nouvelle) ;
+- production lecture seule (aucune écriture) : `modeles_documents` 2, `generations` 4,
+  `documents_generes` 6, `preuve_fichiers source='generation'` 6 ; sessions/inscriptions/
+  resultats_qcm/satisfactions intactes ;
+- aucun test destructif Google en production (aucun document généré, aucun modèle
+  temporaire, aucun fichier déplacé/trashé) ;
+- **lot L9 TERMINÉ.**
 
 ---
 

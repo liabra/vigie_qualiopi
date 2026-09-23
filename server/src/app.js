@@ -2,7 +2,6 @@ import express from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { config } from "./config.js";
 import { sessionMiddleware } from "./session.js";
 import authRoutes from "./routes/auth.js";
 import apiRoutes from "./routes/api.js";
@@ -28,9 +27,35 @@ export function createApp() {
     app.get("*", (_req, res) => res.sendFile(path.join(CLIENT_DIST, "index.html")));
   }
 
+  // Une seule erreur SQL est traduite GLOBALEMENT : 23505 (violation d'unicité).
+  // Toutes les contraintes UNIQUE de Vigie portent sur une clé MÉTIER saisie
+  // par l'utilisateur (email, code_interne, référence, nom de groupe, code de
+  // version, couple preuve×fichier, modèle×portée…). Une violation d'unicité
+  // est donc TOUJOURS un conflit de données, jamais un bug serveur.
+  //
+  // Les autres erreurs SQL (FK 23503, CHECK 23514, NOT NULL 23502,
+  // invalid_text 22P02, numeric out of range 22003…) peuvent tout aussi bien
+  // provenir d'un bug de programmation que d'une saisie : on NE les présente
+  // JAMAIS comme une erreur utilisateur. Les routes qui connaissent ces
+  // conflits les traduisent explicitement ; le reste tombe en 500 générique.
+  const ERREURS_SQL = {
+    "23505": { statut: 409, message: "Conflit : cet enregistrement existe déjà." },
+  };
+
   app.use((err, _req, res, _next) => {
+    const sql = ERREURS_SQL[err.code];
+    if (sql) {
+      console.error(`[SQL ${err.code}] ${err.message}`);
+      return res.status(sql.statut).json({ error: sql.message });
+    }
+    // JSON mal formé (body-parser) ou autre erreur d'appel connue.
+    if (err.type === "entity.parse.failed" || (err.status && err.status < 500)) {
+      return res.status(400).json({ error: "Requête invalide : corps ou JSON mal formé." });
+    }
+    // Erreur serveur réellement inattendue : jamais de stack, de requête SQL
+    // ni de détail PostgreSQL exposé au client. Le détail reste côté serveur.
     console.error(err.message || err);
-    res.status(500).json({ error: config.isProd ? "Erreur serveur." : err.message });
+    res.status(500).json({ error: "Erreur serveur." });
   });
   return app;
 }

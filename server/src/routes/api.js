@@ -2,6 +2,7 @@ import { Router } from "express";
 import { config, googleConfigured } from "../config.js";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth } from "../session.js";
+import { parseIdPositif } from "../services/ids.js";
 import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
 import { champsAudit } from "../services/audits.js";
@@ -104,7 +105,8 @@ router.get("/referentiel/versions", requireAuth, wrap(async (_req, res) => {
 }));
 
 router.get("/referentiel/versions/:id", requireAuth, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de version invalide." });
   const { rows: [version] } = await query("SELECT * FROM referentiel_versions WHERE id = $1", [id]);
   if (!version) return res.status(404).json({ error: "Version introuvable." });
   const [{ rows: criteres }, { rows: indicateurs }] = await Promise.all([
@@ -139,7 +141,8 @@ router.post("/referentiel/versions", requireAdmin, wrap(async (req, res) => {
 
 // Activer une version : une seule active à la fois, transactionnel.
 router.post("/referentiel/versions/:id/activer", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de version invalide." });
   const { rows: [version] } = await query("SELECT * FROM referentiel_versions WHERE id = $1", [id]);
   if (!version) return res.status(404).json({ error: "Version introuvable." });
 
@@ -187,7 +190,8 @@ router.get("/indicateurs", requireAuth, wrap(async (_req, res) => {
 // Marque ou réactive un indicateur, indépendamment de ses preuves.
 // Réversible : la ligne existe ou non dans indicateurs_non_applicables.
 router.patch("/indicateurs/:id/non-applicable", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'indicateur invalide." });
   const { non_applicable, motif } = req.body || {};
   if (typeof non_applicable !== "boolean") {
     return res.status(400).json({ error: "Le champ non_applicable (true/false) est requis." });
@@ -216,13 +220,21 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
   const filtres = ["1 = 1"];
   const params = [];
   if (req.query.statut && STATUTS.includes(req.query.statut)) { params.push(req.query.statut); filtres.push(`p.statut = $${params.length}`); }
-  if (req.query.indicateur) { params.push(Number(req.query.indicateur)); filtres.push(`i.numero = $${params.length}`); }
+  if (req.query.indicateur) {
+    const n = parseIdPositif(req.query.indicateur);
+    if (!n) return res.status(400).json({ error: "Paramètre « indicateur » invalide." });
+    params.push(n); filtres.push(`i.numero = $${params.length}`);
+  }
   if (req.query.a_confirmer === "1") filtres.push("p.a_confirmer");
   if (req.query.alerte && ["perime", "bientot"].includes(req.query.alerte)) {
     params.push(req.query.alerte); filtres.push(`p.alerte_statut = $${params.length}`);
   }
   if (req.query.q) { params.push(`%${req.query.q}%`); filtres.push(`p.titre ILIKE $${params.length}`); }
-  if (req.query.session) { params.push(Number(req.query.session)); filtres.push(`p.session_id = $${params.length}`); }
+  if (req.query.session) {
+    const s = parseIdPositif(req.query.session);
+    if (!s) return res.status(400).json({ error: "Paramètre « session » invalide." });
+    params.push(s); filtres.push(`p.session_id = $${params.length}`);
+  }
   const { rows } = await query(
     `SELECT p.id, p.titre, p.description, p.indicateur_id, p.statut, p.statut_effectif, p.a_confirmer,
             p.motif_confirmation, p.candidats,
@@ -256,6 +268,8 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
 // Une seule preuve, telle que la liste la renvoie : sert à rafraîchir une
 // ligne après modification, sans recharger tout l'écran.
 router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de preuve invalide." });
   const { rows } = await query(
     `SELECT p.id, p.titre, p.description, p.indicateur_id, p.statut, p.statut_effectif, p.a_confirmer,
             p.motif_confirmation, p.candidats,
@@ -278,7 +292,7 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
      LEFT JOIN sessions s ON s.id = p.session_id
      LEFT JOIN groupes g ON g.id = p.groupe_id
      WHERE p.id = $1`,
-    [Number(req.params.id)]
+    [id]
   );
   if (!rows.length) return res.status(404).json({ error: "Preuve introuvable." });
   res.json({ preuve: rows[0] });
@@ -380,9 +394,11 @@ function champsVeille(corps, avant = {}) {
 
 // Liste des indicateurs visés. null = non fourni (lien inchangé).
 function indicateursVeille(corps) {
-  if (corps.indicateur_ids === undefined) return null;
+  if (corps.indicateur_ids === undefined) return { ids: null };
   const liste = Array.isArray(corps.indicateur_ids) ? corps.indicateur_ids : [];
-  return [...new Set(liste.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  const uniques = [...new Set(liste)];
+  if (uniques.some((v) => !parseIdPositif(v))) return { erreur: "Identifiant d'indicateur invalide." };
+  return { ids: uniques.map((v) => parseIdPositif(v)) };
 }
 
 // Valide que les indicateurs visés existent — sinon on créerait des liens
@@ -433,36 +449,53 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   if (type_alerte === "echeance_fixe" && !date_echeance) {
     return res.status(400).json({ error: "Indiquez la date d'échéance." });
   }
+  if (periodicite_mois !== undefined && periodicite_mois !== null && periodicite_mois !== "" && !parseIdPositif(periodicite_mois)) {
+    return res.status(400).json({ error: "Périodicité invalide : nombre entier de mois positif." });
+  }
 
   // `indicateur_ids` fait foi ; `indicateur_id` reste accepté pour un appel
-  // simple. Les doublons sont retirés : un même indicateur ne reçoit qu'une
-  // preuve, jamais deux dans le même appel.
-  const demandes = (Array.isArray(indicateur_ids) ? indicateur_ids : [indicateur_id])
-    .map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  const ids = [...new Set(demandes)];
-  if (!ids.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
+  // simple. Tout identifiant doit être un entier positif : une saisie
+  // illisible est refusée (400), jamais silencieusement ignorée.
+  const bruts = (Array.isArray(indicateur_ids) ? indicateur_ids : [indicateur_id])
+    .filter((v) => v !== undefined && v !== null && v !== "");
+  if (!bruts.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
+  const uniques = [...new Set(bruts)];
+  if (uniques.some((v) => !parseIdPositif(v))) {
+    return res.status(400).json({ error: "Identifiant d'indicateur invalide." });
+  }
+  const ids = uniques.map((v) => parseIdPositif(v));
 
-  // Rattachement à une session / un groupe : existence vérifiée, et un
-  // groupe fourni doit appartenir à la session fournie — sinon on créerait
-  // une pièce silencieusement rattachée à un mauvais groupe.
-  const sid = session_id !== undefined && session_id !== null ? Number(session_id) : null;
-  const gid = groupe_id !== undefined && groupe_id !== null ? Number(groupe_id) : null;
-  if (sid !== null) {
-    const { rowCount } = await query("SELECT 1 FROM sessions WHERE id = $1", [sid]);
+  // Rattachement à une session / un groupe : identifiant validé PUIS
+  // existence vérifiée, et un groupe fourni doit appartenir à la session
+  // fournie — sinon on créerait une pièce silencieusement rattachée à un
+  // mauvais groupe.
+  const lireLien = (valeur, libelle) => {
+    if (valeur === undefined || valeur === null || valeur === "") return null;
+    const id = parseIdPositif(valeur);
+    if (!id) return { erreur: `${libelle} invalide.` };
+    return { id };
+  };
+  const sid = lireLien(session_id, "Session");
+  if (sid?.erreur) return res.status(400).json({ error: sid.erreur });
+  const gid = lireLien(groupe_id, "Groupe");
+  if (gid?.erreur) return res.status(400).json({ error: gid.erreur });
+  if (sid) {
+    const { rowCount } = await query("SELECT 1 FROM sessions WHERE id = $1", [sid.id]);
     if (!rowCount) return res.status(400).json({ error: "Session introuvable." });
   }
-  if (gid !== null) {
-    const { rows: [groupe] } = await query("SELECT session_id FROM groupes WHERE id = $1", [gid]);
+  if (gid) {
+    const { rows: [groupe] } = await query("SELECT session_id FROM groupes WHERE id = $1", [gid.id]);
     if (!groupe) return res.status(400).json({ error: "Groupe introuvable." });
-    if (sid !== null && groupe.session_id !== sid) {
+    if (sid && groupe.session_id !== sid.id) {
       return res.status(400).json({ error: "Ce groupe n'appartient pas à la session indiquée." });
     }
   }
 
   // Rattachement à une veille (preuve d'action) : l'entrée doit exister.
-  const vid = veille_id !== undefined && veille_id !== null ? Number(veille_id) : null;
-  if (vid !== null) {
-    const { rowCount } = await query("SELECT 1 FROM veille WHERE id = $1", [vid]);
+  const vid = lireLien(veille_id, "Veille");
+  if (vid?.erreur) return res.status(400).json({ error: vid.erreur });
+  if (vid) {
+    const { rowCount } = await query("SELECT 1 FROM veille WHERE id = $1", [vid.id]);
     if (!rowCount) return res.status(400).json({ error: "Veille introuvable." });
   }
 
@@ -519,7 +552,7 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
          mode_fichiers || "unique", type_alerte || null,
          type_alerte === "revision_periodique" ? periodicite_mois : null,
          type_alerte === "echeance_fixe" ? date_echeance : null,
-         sid, gid, vid, req.user.id]
+         sid?.id ?? null, gid?.id ?? null, vid?.id ?? null, req.user.id]
       );
       // Le même fichier est rattaché à chacune des preuves créées : la
       // contrainte d'unicité porte sur (preuve_id, drive_file_id), donc
@@ -552,7 +585,8 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
 // (ou colle un identifiant Drive), ajuste le statut, le mode de fichiers,
 // la session rattachée, ou déclare la preuve confirmée telle quelle.
 router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de preuve invalide." });
   const {
     statut, titre, description, indicateur_id, drive_file_id, drive_url, drive_nom, drive_mime, confirmer,
     mode_fichiers, session_id, groupe_id,
@@ -563,7 +597,7 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   // rattachée au mauvais indicateur, ou mal nommée, doit pouvoir être
   // réparée sans être supprimée puis recréée.
   if (titre !== undefined && !titre?.trim()) return res.status(400).json({ error: "Titre obligatoire." });
-  if (indicateur_id !== undefined && !Number.isInteger(Number(indicateur_id))) {
+  if (indicateur_id !== undefined && !parseIdPositif(indicateur_id)) {
     return res.status(400).json({ error: "Indicateur invalide." });
   }
   if (mode_fichiers !== undefined && !MODES.includes(mode_fichiers)) {
@@ -587,10 +621,10 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   }
   if (titre !== undefined) set("titre", titre.trim());
   if (description !== undefined) set("description", description?.trim() || null);
-  if (indicateur_id !== undefined) set("indicateur_id", Number(indicateur_id));
+  if (indicateur_id !== undefined) set("indicateur_id", parseIdPositif(indicateur_id));
   if (mode_fichiers !== undefined) set("mode_fichiers", mode_fichiers);
-  if (session_id !== undefined) set("session_id", session_id || null);
-  if (groupe_id !== undefined) set("groupe_id", groupe_id || null);
+  if (session_id !== undefined) set("session_id", session_id === "" || session_id === null ? null : parseIdPositif(session_id));
+  if (groupe_id !== undefined) set("groupe_id", groupe_id === "" || groupe_id === null ? null : parseIdPositif(groupe_id));
   // Changer de type d'échéance efface les champs de l'ancien type : une
   // preuve remise à « aucune » ne doit garder ni date ni périodicité. Sauf
   // si cette même requête fixe justement cette valeur — jamais deux SET
@@ -600,7 +634,7 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     if (type_alerte !== "revision_periodique" && periodicite_mois === undefined) set("periodicite_mois", null);
     if (type_alerte !== "echeance_fixe" && date_echeance === undefined) set("date_echeance", null);
   }
-  if (periodicite_mois !== undefined) set("periodicite_mois", periodicite_mois || null);
+  if (periodicite_mois !== undefined) set("periodicite_mois", periodicite_mois === "" || periodicite_mois === null ? null : parseIdPositif(periodicite_mois));
   if (date_echeance !== undefined) set("date_echeance", date_echeance || null);
   if (date_derniere_revision !== undefined) set("date_derniere_revision", date_derniere_revision || null);
   else if (marquer_revise) set("date_derniere_revision", new Date().toISOString().slice(0, 10));
@@ -624,7 +658,7 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
         `SELECT 1 FROM indicateurs i
          JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
          WHERE i.id = $1`,
-        [Number(indicateur_id)]
+        [parseIdPositif(indicateur_id)]
       );
       if (!rowCount) {
         await client.query("ROLLBACK");
@@ -670,9 +704,20 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
 
 // Ajoute une pièce jointe à une preuve qui accepte plusieurs fichiers.
 router.post("/preuves/:id/fichiers", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de preuve invalide." });
   const { drive_file_id, drive_url, drive_nom, drive_mime, stagiaire_id } = req.body || {};
   if (!drive_file_id) return res.status(400).json({ error: "Aucun fichier Drive indiqué." });
+  // Un stagiaire visé doit exister : sinon la pièce serait rattachée à
+  // une personne fantôme (FK), ou la saisie illisible ferait 500 en base.
+  let stagiaire = null;
+  if (stagiaire_id !== undefined && stagiaire_id !== null && stagiaire_id !== "") {
+    const sid = parseIdPositif(stagiaire_id);
+    if (!sid) return res.status(400).json({ error: "Stagiaire invalide." });
+    const { rowCount } = await query("SELECT 1 FROM stagiaires WHERE id = $1", [sid]);
+    if (!rowCount) return res.status(400).json({ error: "Stagiaire introuvable." });
+    stagiaire = sid;
+  }
   const { rows: [preuve] } = await query("SELECT mode_fichiers FROM preuves WHERE id = $1", [id]);
   if (!preuve) return res.status(404).json({ error: "Preuve introuvable." });
   if (preuve.mode_fichiers === "unique") {
@@ -687,17 +732,19 @@ router.post("/preuves/:id/fichiers", requireAdmin, wrap(async (req, res) => {
        drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime
      RETURNING id, drive_file_id, drive_url AS url, drive_nom AS nom, drive_mime AS mime, source`,
     [id, drive_file_id, drive_url || lienDrive(drive_file_id), drive_nom || null, drive_mime || null,
-     stagiaire_id || null, req.user.id]
+     stagiaire, req.user.id]
   );
   const { rows: [apres] } = await query(ETAT_APRES, [id]);
   res.json({ ok: true, fichier, ...apres });
 }));
 
 router.delete("/preuves/:id/fichiers/:fichierId", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  const fichierId = parseIdPositif(req.params.fichierId);
+  if (!id || !fichierId) return res.status(400).json({ error: "Identifiant de fichier invalide." });
   const { rowCount } = await query(
     "DELETE FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2",
-    [Number(req.params.fichierId), id]
+    [fichierId, id]
   );
   if (!rowCount) return res.status(404).json({ error: "Fichier introuvable sur cette preuve." });
   const { rows: [apres] } = await query(ETAT_APRES, [id]);
@@ -709,15 +756,17 @@ router.patch("/preuves", requireAdmin, wrap(async (req, res) => {
   const { ids, statut } = req.body || {};
   if (!STATUTS.includes(statut)) return res.status(400).json({ error: "Statut inconnu." });
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "Aucune preuve sélectionnée." });
-  const propres = [...new Set(ids.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
-  if (!propres.length) return res.status(400).json({ error: "Identifiants de preuve invalides." });
+  if (ids.some((v) => !parseIdPositif(v))) return res.status(400).json({ error: "Identifiants de preuve invalides." });
+  const propres = [...new Set(ids.map((v) => parseIdPositif(v)))];
   if (propres.length > 500) return res.status(400).json({ error: "500 preuves au maximum par changement groupé." });
   const { rowCount } = await query("UPDATE preuves SET statut = $1 WHERE id = ANY($2::int[])", [statut, propres]);
   res.json({ ok: true, misAJour: rowCount });
 }));
 
 router.delete("/preuves/:id", requireAdmin, wrap(async (req, res) => {
-  const { rowCount } = await query("DELETE FROM preuves WHERE id = $1", [Number(req.params.id)]);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de preuve invalide." });
+  const { rowCount } = await query("DELETE FROM preuves WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Preuve introuvable." });
   res.json({ ok: true });
 }));
@@ -804,7 +853,8 @@ router.post("/audits", requireAdmin, wrap(async (req, res) => {
 }));
 
 router.patch("/audits/:id", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'audit invalide." });
   const { champs, erreur } = champsAudit(req.body || {});
   if (erreur) return res.status(400).json({ error: erreur });
   const colonnes = Object.keys(champs);
@@ -845,7 +895,8 @@ router.get("/veille", requireAuth, wrap(async (req, res) => {
 }));
 
 router.get("/veille/:id", requireAuth, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de veille invalide." });
   const { rows: [v] } = await query(
     `SELECT v.*,
        COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero, 'libelle', i.libelle) ORDER BY i.numero)
@@ -870,7 +921,9 @@ router.post("/veille", requireAdmin, wrap(async (req, res) => {
   const { champs, erreur } = champsVeille(corps);
   if (erreur) return res.status(400).json({ error: erreur });
   if (!champs.titre) return res.status(400).json({ error: "Titre obligatoire." });
-  const ids = indicateursVeille(req.body || {}) || [];
+  const li = indicateursVeille(req.body || {});
+  if (li.erreur) return res.status(400).json({ error: li.erreur });
+  const ids = li.ids || [];
 
   const client = await getPool().connect();
   try {
@@ -895,12 +948,15 @@ router.post("/veille", requireAdmin, wrap(async (req, res) => {
 }));
 
 router.patch("/veille/:id", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de veille invalide." });
   const { rows: [avant] } = await query("SELECT * FROM veille WHERE id = $1", [id]);
   if (!avant) return res.status(404).json({ error: "Veille introuvable." });
   const { champs, erreur } = champsVeille(req.body || {}, avant);
   if (erreur) return res.status(400).json({ error: erreur });
-  const ids = indicateursVeille(req.body || {});
+  const li = indicateursVeille(req.body || {});
+  if (li.erreur) return res.status(400).json({ error: li.erreur });
+  const ids = li.ids;
   if (!Object.keys(champs).length && ids === null) return res.status(400).json({ error: "Rien à modifier." });
 
   const client = await getPool().connect();

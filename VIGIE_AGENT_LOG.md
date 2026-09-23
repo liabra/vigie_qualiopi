@@ -1553,3 +1553,76 @@ correctement ; satisfaction à froid après la session OK.
 ### Prochaine étape
 
 Lot **L8** — robustesse HTTP / identifiants / erreurs.
+
+## 2026-09-23 (suite 20) — L8 : robustesse HTTP / identifiants / erreurs (local, non déployé)
+
+### Audit (avant modification)
+
+- lecture des identifiants incohérente entre routes (`abc`/`1abc`/`1.5`/`0`/`-1` non rejetés
+  uniformément) ;
+- erreurs SQL (23505/23503/23514/23502/22P02/22003) toutes traduites globalement ⇒ risque de
+  **masquer un bug serveur derrière un 400** ;
+- l'ancien handler d'erreur lisait `config` pour un message prod/dev — supprimé ;
+- quelques routes ne validaient pas leur `:id` avant la requête SQL.
+
+### Décision
+
+**Aucune migration** (durcissement sans schéma). Helper central `parseIdPositif` +
+convention : 401 non authentifié / 403 rôle insuffisant / 400 mal formé·e / 404 valide-absent /
+409 conflit réel / 500 imprévu uniquement. Ordre des gardes **auth → authz → validation**.
+
+### Mapping SQL global — avant / après
+
+| Code | Avant | Après | Pourquoi |
+| --- | --- | --- | --- |
+| JSON mal formé | 400 | **400** | parseur global, sûr |
+| 23505 unique | 409 | **409** | clés UNIQUE = clés MÉTIER utilisateur, toujours un conflit |
+| 23503 FK | 400 | **500** | routes la traduisent localement ; sinon inattendue |
+| 23514 CHECK | 400 | **500** | peut cacher une validation défaillante |
+| 23502 NOT NULL | 400 | **500** | peut cacher un champ oublié par le serveur |
+| 22P02 conversion | 400 | **500** | peut cacher une valeur fabriquée par le serveur |
+| 22003 hors limites | 400 | **500** | idem |
+
+Tout SQL inattendu ⇒ **500 `{ error: "Erreur serveur." }`**, sans code SQL, `detail`, stack
+ni requête exposés (détail journalisé serveur uniquement).
+
+### Backend
+
+- `server/src/services/ids.js` (nouveau) : `parseIdPositif` ;
+- `api.js` + `gestion.js` : identifiants de CHEMIN et de REQUÊTE migrés, **et identifiants de
+  CORPS désormais validés** (`indicateur_id(s)`, `session_id`, `groupe_id`, `veille_id`,
+  `stagiaire_id`, `formation_id`, `modele_id`) + champs numériques (`periodicite_mois`,
+  `duree_heures_reelle`, `duree_heures_defaut`, `tarif_ht`, dates de session) validés avant
+  écriture pour que la saisie utilisateur réponde 400 et non 500 ;
+- `PATCH /inscriptions/:id` : `Number(groupe_id)` + `Number.isInteger` remplacé par
+  `parseIdPositif` — `null` efface, `undefined` laisse inchangé, tout le reste (`1.5`, `1e0`,
+  `abc`, `0`, `-1`, `""`, espaces) ⇒ 400 ;
+- `POST /generations` : ne renvoie plus jamais `e.message` d'une erreur SQL (elle remonte au
+  handler global) ;
+- `app.js` : handler global réduit à 23505→409 ; JSON mal formé →400 ; reste →500 générique.
+
+### Tests
+
+- `server/test/idsErreurs.test.js` (10 tests) : parseIdPositif ; matrice 400/404 ; PATCH
+  vide/inconnu ; 401/403 ; 23505→409 ; **23503/23514/23502/22P02/22003 → 500 générique sans
+  aucune fuite** (corps exactement `{ error: "Erreur serveur." }`) ; JSON mal formé→400 sans
+  fuite (authentifié ET anonyme) ;
+- `stagiaires.test.js` : `PATCH /inscriptions/:id` refuse 400 les `groupe_id` non entiers
+  (`1.5`, `1e0`, `abc`, `0`, `-1`, `""`, espaces) et accepte un entier positif (comportement
+  inchangé) ;
+- suite complète : **328/328** (318 avant → +10).
+
+### Vérification navigateur / API (PostgreSQL jetable)
+
+- IDs malformés (session/évaluation/veille/preuve/version) ⇒ **400** ;
+- ID valide inexistant (session/évaluation/veille/preuve) ⇒ **404** ;
+- `formation_id`/`duree_heures_reelle`/`date_debut` invalides sur `POST /sessions` ⇒ **400** ;
+- PATCH session corps vide ⇒ **400** ; anonyme ⇒ **401** ; contributeur sur route admin ⇒ **403** ;
+- JSON mal formé **anonyme** ⇒ **400** (parseur global avant auth — exception documentée) ;
+- app fonctionnelle après : `GET /api/sessions` et `/api/referentiel` **200**, SPA servie **200** ;
+- **aucun 500 sur erreur utilisateur.**
+
+### État
+
+**L8 TERMINÉ (local).** Aucune migration — 328/328 — build OK — `git diff --check` OK.
+**Push et déploiement Railway en attente de validation humaine.**

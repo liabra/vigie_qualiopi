@@ -997,6 +997,136 @@ Aucun moteur de questionnaire.
 
 ---
 
+## 7 nonies. Lot L8 — robustesse HTTP / identifiants / erreurs — TERMINÉ (local, non déployé)
+
+Objectif : uniformiser la gestion des identifiants et des erreurs HTTP. Aucune fonctionnalité
+nouvelle, aucune migration. C'est un durcissement transversal de l'API.
+
+### Audit initial — incohérences relevées
+
+- les identifiants de chemin étaient lus via un helper local tolérant (`Number(valeur)` ou
+  `parseInt`) : `abc` ⇒ `NaN` ⇒ 404/400 selon la route, `1abc` ⇒ `1` (silencieusement), `1.5`
+  ⇒ parfois accepté, `0` / `-1` non rejetés systématiquement — incohérent entre les routes ;
+- sur une donnée invalide, PostgreSQL pouvait renvoyer `22P02` (invalid_text_representation)
+  et l'ancien handler renvoyait **500** avec un message générique ;
+- les erreurs SQL (`23505` unique, `23503` FK, `23514` CHECK, `23502` NOT NULL, `22P02`
+  invalid_text, `22003` numeric out of range) n'étaient pas toutes traduites ;
+- le handler d'erreur final lisait `config` uniquement pour choisir un message prod/dev
+  (supprimé : plus aucun détail interne, jamais de stack/requête exposés) ;
+- quelques routes ne validaient pas leur `:id` avant la requête SQL (d'où un risque de 500).
+
+### Helper central — `server/src/services/ids.js`
+
+`parseIdPositif(valeur)` : accepte uniquement un entier **strictement positif** (chaîne
+`/^\d+$/` ou nombre entier sûr > 0), sinon `null`. Rejette : `abc`, `1abc`, `1.5`, `0`, `-1`,
+`""`, espaces, `1e2`, `0x10`, `12.0`, `NaN`, `Infinity`, nombres non entiers.
+
+### Convention retenue
+
+| Situation | Statut |
+| --- | --- |
+| non authentifié | **401** |
+| authentifié mais rôle insuffisant | **403** |
+| ID mal formé / corps vide / JSON mal formé / date invalide / relation invalide | **400** |
+| ID valide mais ressource absente | **404** |
+| conflit réel (référence unique, version déjà active…) | **409** |
+| imprévu uniquement | **500** |
+
+Ordre des gardes : **auth → authz → validation** (une route admin répond 403 avant de
+révéler l'existence d'une ressource). Un ID invalide est refusé **avant** tout accès base.
+
+### Routes corrigées
+
+- `api.js` : `GET /referentiel/versions/:id`, `POST /referentiel/versions/:id/activer`,
+  `PATCH /indicateurs/:id/non-applicable`, `GET/PATCH/DELETE /preuves/:id`,
+  `POST /preuves/:id/fichiers`, `DELETE /preuves/:id/fichiers/:fichierId` (les deux ids),
+  `PATCH /audits/:id`, `GET/PATCH /veille/:id`, les paramètres de requête `?indicateur=` /
+  `?session=` de `GET /preuves`, et les identifiants de CORPS (`indicateur_id(s)`,
+  `session_id`, `groupe_id`, `veille_id`, `stagiaire_id`, `periodicite_mois`) de
+  `POST /preuves` et `PATCH /preuves` ;
+- `gestion.js` : `PUT /formations/:id`, `GET /formations/:id/versions`, `GET /sessions/:id`,
+  `POST /sessions/:id/groupes`, `POST /sessions/:id/stagiaires`, `DELETE /modeles/:id` — plus
+  les identifiants de CORPS (`formation_id`, `stagiaire_id`, `groupe_id` de l'inscription,
+  `modele_id`/`session_id`/`groupe_id` de la génération) et les champs numériques exposés
+  (`duree_heures_reelle`, `duree_heures_defaut`, `tarif_ht`, dates de session) désormais
+  validés AVANT l'écriture ;
+- le helper local `identifiant` de `gestion.js` délègue à `parseIdPositif` (tous les appels
+  existants sont donc couverts).
+
+### Erreurs SQL traduites (handler global, `server/src/app.js`)
+
+Une SEULE erreur SQL est traduite GLOBALEMENT : **`23505` (violation d'unicité) ⇒ 409
+« existe déjà »**. Justification : toutes les contraintes UNIQUE de Vigie portent sur une clé
+MÉTIER saisie par l'utilisateur (email, code interne, référence, nom de groupe, code de
+version, couple preuve×fichier, modèle×portée…) — une violation d'unicité est donc TOUJOURS
+un conflit de données, jamais un bug serveur.
+
+Toutes les AUTRES erreurs SQL sont retirées du mapping global et tombent en **500 générique
+« Erreur serveur. »** :
+
+- `23503` FK : les routes la traduisent explicitement là où elle est issue d'un identifiant
+  fourni (preuves, groupes) ; une FK non interceptée est inattendue ;
+- `23514` CHECK, `23502` NOT NULL, `22P02` conversion, `22003` hors limites : elles peuvent
+  provenir d'un bug de programmation (champ oublié, validation défaillante, valeur fabriquée
+  par le serveur) — on ne les présente JAMAIS comme une erreur utilisateur. Les routes
+  valident la saisie en amont pour qu'une erreur utilisateur réponde 400 au bon endroit.
+
+**Aucun détail SQL, stack, chaîne de connexion ni message interne ne fuit vers le client**
+(le détail est journalisé côté serveur uniquement).
+
+### Corps de requête
+
+- corps JSON mal formé ⇒ 400 sans détail interne (géré par `express.json`, intercepté par le
+  handler final) ;
+- **exception documentée** : `express.json()` analyse le corps AVANT tout middleware d'auth —
+  un JSON mal formé répond donc **400 même anonyme** (le parseur global refuse avant
+  l'authentification). Aucune ressource ni information sensible n'est exposée ;
+- corps absent / non-objet : couvert par les gardes existantes (`req.body || {}`) — pas de
+  réimplémentation de body-parser ;
+- PATCH : corps vide ⇒ **400 « Rien à modifier. »** ; champs inconnus **ignorés** (extraction
+  en liste blanche) ; si seuls des champs inconnus sont fournis ⇒ 400 « Rien à modifier. » ;
+- aucune écriture partielle non transactionnelle : chaque PATCH valide puis exécute un unique
+  `UPDATE … RETURNING` (les gardes métier L7 — période de session, seuils — s'exécutent avant).
+
+### Tests
+
+- `server/test/idsErreurs.test.js` : unitaire de `parseIdPositif` ; matrice 400 sur IDs mal
+  formés (`abc`/`0`/`-1`/`1.5`) pour sessions, inscriptions, absences, évaluations,
+  satisfactions, preuves, veille, versions — avec une fausse base qui **refuse toute requête**
+  (preuve que les 400 ne touchent pas la base) ; 404 sur ID valide inexistant (fausse base
+  vide) ; PATCH corps vide / champs inconnus ⇒ 400 ; anonyme 401, contributeur 403 sur route
+  admin ; `23505` ⇒ 409 ; **erreurs SQL inattendues (`23503`/`23514`/`23502`/`22P02`/`22003`)
+  ⇒ 500 générique** dont le corps est exactement `{ error: "Erreur serveur." }` (aucun code
+  SQL, ni `detail`, ni stack, ni requête) ; JSON mal formé ⇒ 400 sans fuite (authentifié ET
+  anonyme) ;
+- non-régression L1–L7 : suite complète **328/328**.
+
+### Limites restantes
+
+1. Le PATCH avec champs **connus + inconnus** applique les champs connus et ignore
+   silencieusement les inconnus (convention historique du projet, documentée ici ; pas de rejet
+   explicite) ;
+2. `PATCH /preuves/:id` valide le corps (400 « Rien à modifier. ») avant la recherche
+   d'existence : un ID inexistant avec corps vide répond donc 400, pas 404 (comportement
+   documenté, cohérent avec les autres PATCH) ;
+3. l'audit transversal n'a pas prétendu couvrir chaque route du référentiel : les routes non
+   citées n'avaient pas de paramètre `:id` exposé ;
+4. les dates d'échéance des preuves (`date_echeance`, `date_derniere_revision`) ne sont pas
+   encore validées en format : une saisie illisible y produisait déjà un 500 avant ce lot
+   (code PostgreSQL 22007, non concerné par ce durcissement) — reste à traiter plus tard.
+
+### Production — NON DÉPLOYÉ
+
+- **aucune migration** (durcissement sans schéma) ;
+- commit local : « API : fiabiliser les identifiants et erreurs HTTP » ;
+- tests : **328/328** ; build client OK ; `git diff --check` OK ;
+- vérification sur instance jetable (embedded-postgres + app réelle) : tous les cas 400/404/
+  401/403 conformes, `formation_id`/`duree`/`date` invalides ⇒ 400, JSON mal formé anonyme ⇒
+  400, **aucun 500 sur erreur utilisateur**, app fonctionnelle après ;
+- **lot L8 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
+
+---
+
 
 Historique de principe :
 

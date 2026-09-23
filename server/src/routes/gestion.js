@@ -9,6 +9,7 @@ import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
 import { getDrive } from "../services/google.js";
+import { parseIdPositif } from "../services/ids.js";
 // Évaluations / QCM + satisfaction (lot L7) : validation et parsing purs.
 import {
   champsEvaluation, champsSatisfaction,
@@ -75,8 +76,7 @@ const DUREE_MAX = 24;
 // Un identifiant d'URL qui n'est pas un entier positif est une erreur
 // d'appel : 400 le dit, plutôt que de laisser PostgreSQL répondre 500.
 function identifiant(valeur) {
-  const n = Number(valeur);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return parseIdPositif(valeur);
 }
 
 // « AAAA-MM-JJ » strict. Le 30 février doit être refusé, pas reporté au
@@ -148,6 +148,19 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
   res.json({ formations: rows, total: rows.length });
 }));
 
+// Champs numériques d'une version de formation : une saisie illisible (ou
+// négative) est refusée AVANT l'écriture — sinon PostgreSQL répondrait par
+// une erreur de conversion, qu'on refuse de déguiser en 400 global.
+function erreurVersion(corps) {
+  for (const c of ["duree_heures_defaut", "tarif_ht"]) {
+    const v = corps?.[c];
+    if (v === undefined || v === null || v === "") continue;
+    const n = typeof v === "number" ? v : Number(String(v).replace(",", "."));
+    if (!Number.isFinite(n) || n < 0) return `Champ ${c} invalide : nombre positif attendu.`;
+  }
+  return null;
+}
+
 async function creerVersion(cx, formationId, corps, utilisateurId) {
   const { rows: [{ suivant }] } = await cx.query(
     "SELECT COALESCE(max(numero), 0) + 1 AS suivant FROM formation_versions WHERE formation_id = $1",
@@ -171,6 +184,8 @@ router.post("/formations", requireAdmin, wrap(async (req, res) => {
   const { intitule, code_interne } = req.body || {};
   if (!intitule?.trim()) return manque(res, "intitule");
   if (req.body.modalite && !MODALITES.includes(req.body.modalite)) return res.status(400).json({ error: "Modalité inconnue." });
+  const errV = erreurVersion(req.body);
+  if (errV) return res.status(400).json({ error: errV });
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
@@ -191,8 +206,11 @@ router.post("/formations", requireAdmin, wrap(async (req, res) => {
 // Modifier une formation = créer une NOUVELLE version. Les sessions déjà
 // créées continuent de pointer sur la leur.
 router.put("/formations/:id", requireAdmin, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
   if (req.body?.modalite && !MODALITES.includes(req.body.modalite)) return res.status(400).json({ error: "Modalité inconnue." });
+  const errV = erreurVersion(req.body);
+  if (errV) return res.status(400).json({ error: errV });
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
@@ -216,9 +234,11 @@ router.put("/formations/:id", requireAdmin, wrap(async (req, res) => {
 }));
 
 router.get("/formations/:id/versions", requireAuth, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
   const { rows } = await query(
     "SELECT * FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC",
-    [Number(req.params.id)]
+    [id]
   );
   res.json({ versions: rows, total: rows.length });
 }));
@@ -227,16 +247,26 @@ router.get("/formations/:id/versions", requireAuth, wrap(async (req, res) => {
 
 router.post("/sessions", requireAdmin, wrap(async (req, res) => {
   const { formation_id, date_debut, date_fin, reference, lieu, modalite, formateur, duree_heures_reelle, horaire } = req.body || {};
-  if (!formation_id) return manque(res, "formation_id");
+  const fid = identifiant(formation_id);
+  if (!fid) return res.status(400).json({ error: "Identifiant de formation invalide." });
   if (!date_debut) return manque(res, "date_debut");
   if (!date_fin) return manque(res, "date_fin");
+  if (!estDateValide(date_debut)) return res.status(400).json({ error: "Date de début invalide : format attendu AAAA-MM-JJ." });
+  if (!estDateValide(date_fin)) return res.status(400).json({ error: "Date de fin invalide : format attendu AAAA-MM-JJ." });
   if (date_fin < date_debut) return res.status(400).json({ error: "La date de fin précède la date de début." });
   if (modalite && !MODALITES.includes(modalite)) return res.status(400).json({ error: "Modalité inconnue." });
+
+  let duree = null;
+  if (duree_heures_reelle !== undefined && duree_heures_reelle !== null && duree_heures_reelle !== "") {
+    const n = typeof duree_heures_reelle === "number" ? duree_heures_reelle : Number(String(duree_heures_reelle).replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: "Durée prévue invalide : nombre d'heures positif." });
+    duree = n;
+  }
 
   // La session fige la version en vigueur au moment où on la crée.
   const { rows: [version] } = await query(
     "SELECT id FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1",
-    [formation_id]
+    [fid]
   );
   if (!version) return res.status(400).json({ error: "Cette formation n'a aucune version : complétez-la d'abord." });
 
@@ -244,15 +274,16 @@ router.post("/sessions", requireAdmin, wrap(async (req, res) => {
     `INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin,
        lieu, modalite, formateur, duree_heures_reelle, horaire)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [formation_id, version.id, reference?.trim() || null, date_debut, date_fin,
-     lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree_heures_reelle || null,
+    [fid, version.id, reference?.trim() || null, date_debut, date_fin,
+     lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree,
      normaliserHoraire(horaire)]
   );
   res.status(201).json({ session });
 }));
 
 router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
-  const id = Number(req.params.id);
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
   const { rows: [session] } = await query(
     `SELECT s.*, f.intitule AS formation, v.numero AS version_numero, v.duree_heures_defaut
      FROM sessions s JOIN formations f ON f.id = s.formation_id
@@ -428,7 +459,8 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
 }));
 
 router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
-  const sessionId = Number(req.params.id);
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   const { nom, lieu, formateur } = req.body || {};
   if (!nom?.trim()) return manque(res, "nom");
   try {
@@ -449,7 +481,8 @@ router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
 // inscription. C'est l'inscription qui porte le prescripteur, l'état du
 // dossier et l'abandon éventuel.
 router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) => {
-  const sessionId = Number(req.params.id);
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   const { civilite, nom, prenom, email, telephone, groupe_id, prescripteur, dossier_complet, date_inscription, stagiaire_id } = req.body || {};
   if (!stagiaire_id && (!nom?.trim() || !prenom?.trim())) return manque(res, "nom et prenom");
   if (!(await prescripteurConnu(prescripteur))) return res.status(400).json({ error: "Prescripteur inconnu." });
@@ -460,11 +493,22 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
     await cx.query("BEGIN");
     const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
     if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
-    if (groupe_id) {
-      const { rowCount } = await cx.query("SELECT 1 FROM groupes WHERE id = $1 AND session_id = $2", [groupe_id, sessionId]);
+    let gid = null;
+    if (groupe_id !== undefined && groupe_id !== null && groupe_id !== "") {
+      gid = identifiant(groupe_id);
+      if (!gid) { await cx.query("ROLLBACK"); return res.status(400).json({ error: "Groupe invalide." }); }
+    }
+    if (gid) {
+      const { rowCount } = await cx.query("SELECT 1 FROM groupes WHERE id = $1 AND session_id = $2", [gid, sessionId]);
       if (!rowCount) { await cx.query("ROLLBACK"); return res.status(400).json({ error: "Ce groupe n'appartient pas à la session." }); }
     }
-    let personneId = stagiaire_id || null;
+    let personneId = null;
+    if (stagiaire_id) {
+      personneId = identifiant(stagiaire_id);
+      if (!personneId) { await cx.query("ROLLBACK"); return res.status(400).json({ error: "Stagiaire invalide." }); }
+      const { rowCount } = await cx.query("SELECT 1 FROM stagiaires WHERE id = $1", [personneId]);
+      if (!rowCount) { await cx.query("ROLLBACK"); return res.status(400).json({ error: "Stagiaire introuvable." }); }
+    }
     if (!personneId) {
       const { rows: [p] } = await cx.query(
         "INSERT INTO stagiaires (civilite, nom, prenom, email, telephone) VALUES ($1,$2,$3,$4,$5) RETURNING id",
@@ -478,7 +522,7 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
        ON CONFLICT (stagiaire_id, session_id) DO UPDATE SET groupe_id = EXCLUDED.groupe_id,
          prescripteur = EXCLUDED.prescripteur, dossier_complet = EXCLUDED.dossier_complet
        RETURNING *`,
-      [personneId, sessionId, groupe_id || null, prescripteur || null, dossier_complet === true, date_inscription || null]
+      [personneId, sessionId, gid, prescripteur || null, dossier_complet === true, date_inscription || null]
     );
     await cx.query("COMMIT");
     res.status(201).json({ inscription });
@@ -500,10 +544,19 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
 
   // Un groupe ne se rattache qu'à SA session : le corps ne doit pas pouvoir
   // déplacer une inscription vers un groupe d'une autre session.
-  const gid = groupe_id === undefined ? undefined
-    : (groupe_id === "" || groupe_id === null ? null : Number(groupe_id));
-  if (gid !== undefined && gid !== null) {
-    if (!Number.isInteger(gid) || gid <= 0) return res.status(400).json({ error: "Groupe invalide." });
+  // `groupe_id` doit être un entier strictement positif (parseIdPositif) :
+  // `null` efface le groupe, `undefined` le laisse inchangé, toute autre
+  // valeur ("1.5", "1e0", "abc", 0, -1, "", espaces) est refusée (400).
+  let gid;
+  if (groupe_id === undefined) {
+    gid = undefined;
+  } else if (groupe_id === null) {
+    gid = null;
+  } else {
+    gid = identifiant(groupe_id);
+    if (!gid) return res.status(400).json({ error: "Groupe invalide." });
+  }
+  if (gid) {
     const { rowCount } = await query(
       "SELECT 1 FROM groupes g JOIN inscriptions i ON i.session_id = g.session_id WHERE g.id = $1 AND i.id = $2",
       [gid, id]
@@ -1095,7 +1148,13 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   if (!PORTEES.includes(portee)) return res.status(400).json({ error: "Portée inconnue." });
   const fileId = extraireFileId(lien);
   if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
-  const numeros = Array.isArray(indicateurs) ? indicateurs.map(Number).filter((n) => n > 0) : [];
+  // Un numéro d'indicateur doit être un entier positif : une valeur
+  // illisible est refusée ici, jamais laissée à PostgreSQL (conversion 500).
+  const bruts = Array.isArray(indicateurs) ? indicateurs : [];
+  if (bruts.some((v) => !parseIdPositif(v))) {
+    return res.status(400).json({ error: "Indicateur(s) invalide(s) : numéro entier positif attendu." });
+  }
+  const numeros = bruts.map((v) => parseIdPositif(v));
   if (!numeros.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
 
   const cx = await getPool().connect();
@@ -1131,7 +1190,9 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
 }));
 
 router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
-  const { rowCount } = await query("UPDATE modeles_documents SET actif = false WHERE id = $1", [Number(req.params.id)]);
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  const { rowCount } = await query("UPDATE modeles_documents SET actif = false WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
   res.json({ ok: true });
 }));
@@ -1139,16 +1200,25 @@ router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
 // ── Génération ───────────────────────────────────────────────
 router.post("/generations", requireRedacteur, wrap(async (req, res) => {
   const { modele_id, session_id, groupe_id = null, remplacer = false } = req.body || {};
-  if (!modele_id) return manque(res, "modele_id");
-  if (!session_id) return manque(res, "session_id");
+  const modeleId = identifiant(modele_id);
+  const sessionId = identifiant(session_id);
+  if (!modeleId) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  let groupeId = null;
+  if (groupe_id !== undefined && groupe_id !== null && groupe_id !== "") {
+    groupeId = identifiant(groupe_id);
+    if (!groupeId) return res.status(400).json({ error: "Identifiant de groupe invalide." });
+  }
   try {
     const r = await genererDocuments({
-      modeleId: Number(modele_id), sessionId: Number(session_id),
-      groupeId: groupe_id ? Number(groupe_id) : null,
+      modeleId, sessionId, groupeId,
       remplacer: remplacer === true, utilisateurId: req.user.id,
     });
     res.json(r);
   } catch (e) {
+    // Une erreur SQL (code PostgreSQL) n'est JAMAIS une erreur métier :
+    // elle remonte au handler global (500 générique) sans exposer de détail.
+    if (e.code) throw e;
     // 409 : des documents existent déjà, l'écran doit proposer de remplacer.
     const code = e.dejaGeneres ? 409 : 400;
     res.status(code).json({ error: e.message, dejaGeneres: e.dejaGeneres, diagnostic: e.diagnostic || null });

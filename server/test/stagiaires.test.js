@@ -528,6 +528,23 @@ test("un groupe d'une autre session est refusé", async () => {
   assert.match(r.corps.error, /n'appartient pas/);
 });
 
+test("un groupe_id non entier est refusé 400, un entier positif est accepté", async () => {
+  const base = baseSimulee({
+    stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine" }],
+    inscriptions: [{ id: 11, stagiaire_id: 1, session_id: 7 }],
+    groupes: [{ id: 3, session_id: 7, nom: "Soula" }],
+  }).installer();
+  for (const mauvaise of ["1.5", "1e0", "abc", 0, -1, "", "   "]) {
+    const r = await appel("PATCH", "/api/inscriptions/11", { groupe_id: mauvaise });
+    assert.equal(r.statut, 400, `groupe_id=${JSON.stringify(mauvaise)} doit répondre 400`);
+    assert.match(r.corps.error, /Groupe invalide/);
+  }
+  // Un identifiant entier positif conserve le comportement actuel.
+  const ok = await appel("PATCH", "/api/inscriptions/11", { groupe_id: 3 });
+  assert.equal(ok.statut, 200);
+  assert.equal(base.etat.inscriptions[0].groupe_id, 3);
+});
+
 test("l'abandon reste intact (non-régression L2)", async () => {
   const base = baseSimulee({
     stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine" }],

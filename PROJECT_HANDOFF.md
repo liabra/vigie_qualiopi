@@ -845,10 +845,20 @@ Aucune colonne retirée, aucune ligne réécrite, aucune contrainte existante le
    existante de `preuves`) : une preuve de veille porte donc sur un indicateur précis.
 3. Aucune « clôture » de veille dédiée : on passe par `statut`/`statut_action` (pas de suppression).
 
-### Production
+### Production — TERMINÉ
 
-- **non déployé** : commit local seulement, push et déploiement Railway en attente de validation
-  explicite de l'utilisateur (aucun push sans autorisation).
+- commit : `7ae2f94` — « Referentiel : versionner et exploiter la veille Qualiopi » ;
+- migration : **012_veille_actions.sql** (appliquée une seule fois, migration courante 012) ;
+- tests au moment du déploiement : **267/267** ;
+- déploiement Railway **SUCCESS**, `/api/health` **200** ;
+- production lecture seule : V9 **seule version active**, 7 critères / 32 indicateurs intacts,
+  aucune coquille V10 ni version de test introduite, `veille` à 0 ligne avant/après ;
+- smoke test production : Référentiel / Versions OK, V9 active consultable OK, création réelle
+  d'une veille OK, modification analyse / action / statuts OK, contributeur lecture seule OK ;
+- droits backend vérifiés : contributeur (lecture versions + veille, écriture refusée 403),
+  anonyme 401 ;
+- garde métier validée : une version vide ne peut pas devenir active (409) ;
+- **lot L6 TERMINÉ.**
 
 ---
 

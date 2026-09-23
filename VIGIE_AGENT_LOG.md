@@ -1373,3 +1373,41 @@ utilisée par le tableau de bord, les preuves et la veille).
 ### État
 
 Garde intégrée, tests 267/267, build OK, `git diff --check` propre. **Aucun push**.
+
+---
+
+## 2026-09-23 (suite 16) — L6 : validation en production (clôture)
+
+### Push et déploiement
+
+- pré-push : 267/267 tests, build OK, `git diff --check` propre ; `origin/main` inchangé
+  (`65b70ef`), ancêtre de HEAD ; commits au-dessus : `8b8d7d8` (doc L5) + `7ae2f94` (L6) ;
+- push **sans `--force`** : `65b70ef..7ae2f94 main -> main` ;
+- déploiement Railway `e2afc3eb` → **SUCCESS**, `/api/health` **200** ;
+- log déploiement : « Migration appliquée : 012_veille_actions.sql » — **une seule fois** ;
+- `schema_migrations` : 001→012, **012 présent exactement 1 fois**, migration courante **012** ;
+- logs runtime : aucune erreur (2 avertissements non bloquants : `npm config production`,
+  « Config as Code deprecated » à migrer avant le 01/12/2026).
+
+### Contrôles production lecture seule (aucune écriture)
+
+- V9 seule version active, **7 critères / 32 indicateurs** intacts ;
+- aucune V10 / coquille de test en production (1 seule ligne `referentiel_versions`) ;
+- `veille` : **0 ligne avant → 0 ligne après** ; colonnes 012 présentes
+  (`date_consultation`, `action`, `statut_action`, `action_realisee_le`) ;
+- routes montées, anonyme 401 : `/api/referentiel/versions`, `/api/referentiel/versions/:id`,
+  `/api/veille`, `/api/veille/:id`.
+
+### Smoke test production (utilisateur)
+
+Référentiel / Versions OK ; V9 active consultable OK ; création réelle d'une veille OK ;
+modification analyse / action / statuts OK ; contributeur lecture seule OK. L'UX du formulaire
+Veille est volontairement brute : refonte visuelle dans un chantier UX/UI ultérieur.
+
+### État
+
+**L6 TERMINÉ.** Commit : `7ae2f94` — migration 012 — 267/267 — Railway SUCCESS.
+
+### Prochaine étape
+
+Lot **L7** — évaluations / QCM / satisfaction.

@@ -722,6 +722,19 @@ Côté serveur, `POST /api/preuves` vérifie :
 3. Le classement Drive des exports EduSign rattachés n'est pas automatisé (le fichier reste à son
    emplacement d'origine).
 
+### Production — TERMINÉ
+
+- commit : `65b70ef` — « Documents : structurer l'assiduité et les pièces EduSign » ;
+- tests au moment du déploiement : **235/235** ;
+- déploiement Railway **SUCCESS**, `/api/health` **200** ;
+- migration courante : **011_prescripteurs_configurables.sql** (aucune nouvelle migration) ;
+- smoke test production réel (Drive) : bloc Documents / Assiduité, recherche d'un vrai fichier
+  EduSign, sélection sans ID technique, rattachement, affichage, lien vers l'original, aucune
+  copie — **OK** ;
+- génération Drive réelle non faite (aucun modèle d'assiduité utile encore disponible) — non
+  bloquant : le chemin jusqu'au payload Google Docs est couvert par les tests automatisés ;
+- **lot L5 TERMINÉ.**
+
 ---
 
 

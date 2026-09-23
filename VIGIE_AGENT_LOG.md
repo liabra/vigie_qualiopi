@@ -1226,3 +1226,37 @@ rattachement (`POST /api/preuves` reste `requireAdmin`). Aucun droit admin nouve
 ### Prochaine étape
 
 Validation, puis push + déploiement du lot L5.
+
+---
+
+## 2026-09-23 (suite 13) — L5 : validation en production (clôture)
+
+### Push et déploiement
+
+- pré-push : 235/235 tests, build OK, `git diff --check` propre ; `origin/main` inchangé
+  (`fee0376`), ancêtre de HEAD, commits `3a2c93b` (doc L4) + `65b70ef` (L5) au-dessus ;
+- push **sans `--force`** : `fee0376..65b70ef main -> main` ;
+- déploiement Railway `94dd340c` → **SUCCESS**, `/api/health` **200** ;
+- logs : aucune migration supplémentaire, aucune erreur runtime ;
+- contrôles production lecture seule : migration courante **011**, route `/api/drive/recherche`
+  montée (401 sans cookie), données intactes (1 session, 8 inscriptions, 1 absence) ; aucun
+  fichier rattaché ni document généré par l'agent.
+
+### Smoke test production réel (utilisateur)
+
+Bloc Documents / Assiduité, recherche d'un vrai fichier EduSign dans Drive, sélection sans ID
+technique, rattachement, affichage dans Documents externes / EduSign, lien vers le fichier Drive
+original, aucune copie supplémentaire : **OK**.
+
+### Génération réelle
+
+Non faite (aucun modèle d'assiduité utile disponible) — **non bloquant** : le chemin jusqu'au
+payload Google Docs est couvert par `generationAssiduite.test.js`.
+
+### État
+
+**L5 TERMINÉ.** Commit : `65b70ef`.
+
+### Prochaine étape
+
+Lot **L6** — référentiel Qualiopi et veille.

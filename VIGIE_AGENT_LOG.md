@@ -1744,3 +1744,54 @@ statut « en cours/échec » : documenté comme limite, pas un blocage de robust
 ### État
 
 **L9 VALIDÉ EN PRODUCTION — lot TERMINÉ.**
+
+## 2026-09-23 (suite 24) — L10 : droits / données personnelles / sécurité (local, non déployé)
+
+### Audit (avant modification)
+
+67 routes cartographiées (auth public / requireAuth lecture / requireRedacteur saisie
+pédagogique / requireAdmin administration). Aucun spread `req.body`, aucune construction
+SQL dynamique depuis des clés reçues : toutes les écritures passent par des listes blanches
+(`champsAudit`, `champsVeille`, `champsEvaluation`, `champsSatisfaction`, `CHAMPS_VERSION`,
+`set(...)` colonne par colonne).
+
+### Incohérences corrigées
+
+1. `GET /me` exposait `driveAccountEmail` à tout visiteur (anonyme compris) alors que le
+   client ne l'utilise pas — retiré (`api.js`) ;
+2. en-têtes de sécurité absents — ajout de `X-Content-Type-Options: nosniff`,
+   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` en middleware (`app.js`), sans
+   dépendance (`x-powered-by` était déjà désactivé).
+
+### Vérifié conforme (aucun changement)
+
+- mass assignment : `role`/`created_by`/`created_at`/`est_active`/IDs jamais injectables ;
+- cohérences relationnelles (groupe↔session, inscription↔session, absence↔inscription,
+  évaluation/satisfaction↔session, preuve↔contexte, génération↔portée) toutes vérifiées
+  côté serveur (L2→L9) ; pas d'ACL par session (deux rôles globaux, assumé) ;
+- PII : exposées aux rôles authentifiés uniquement (pédagogique), pas de `SELECT *`
+  débordant ; `situation_handicap`/`besoins_adaptation` jamais en log, jamais en erreur,
+  jamais injectés dans les documents ;
+- logs : aucun token/cookie/secret/PII ; diagnostics Google masqués (`nettoyer`) ;
+- secrets : `.env` gitignoré, aucun secret dans l'historique Git ;
+- cookie : HttpOnly + Secure(prod) + SameSite=Lax + signature HMAC ; falsifié/expiré ⇒ 401 ;
+- CSRF borné (SameSite=Lax + JSON + `state` OAuth) ; OAuth admin-only, `state` vérifié,
+  aucun token au frontend ni en log ; Drive recherche admin-only ; suppressions cohérentes ;
+  frontend sans token/secret.
+
+### Tests
+
+- `securite.test.js` (nouveau, 7 tests) : `/me` sans adresse interne ; en-têtes de sécurité ;
+  cookie falsifié ⇒ 401, expiré ⇒ 401 ; mass assignment (PATCH stagiaire, PATCH inscription) ;
+  recherche Drive ⇒ 403 contributeur ;
+- non-régression L1–L9 : suite complète **351/351**.
+
+### Production lecture seule (baseline, aucune écriture)
+
+`utilisateurs` admin=1 ; `x-powered-by` déjà absent des réponses publiques ; logs récents
+sans donnée sensible.
+
+### État
+
+**L10 TERMINÉ (local).** Aucune migration — 351/351 — build OK — `git diff --check` OK.
+**Push et déploiement Railway en attente de validation humaine.**

@@ -1235,6 +1235,96 @@ contributeur) ; Drive = `requireAdmin`. Le contributeur ne gagne aucun accès Dr
 
 ---
 
+## 7 undecies. Lot L10 — droits / données personnelles / sécurité applicative — TERMINÉ (local, non déployé)
+
+Objectif : auditer et durcir Vigie SANS changer son modèle fonctionnel (pas de refonte
+auth, pas d'ACL par session, pas de nouvelle fonction). Aucune migration.
+
+### Matrice de droits (résumé)
+
+- **public** : `GET /health`, `GET /me` (état de session + booléen Google, rien d'autre),
+  `/auth/google/*`, `POST /auth/logout` ;
+- **requireAuth** (admin + contributeur, lecture) : référentiel/versions, indicateurs,
+  preuves (liste + détail), sessions (liste + détail), formations (liste + versions),
+  absences (lecture), prescripteurs, modèles (lecture), audits (lecture), veille (lecture),
+  évaluations/satisfactions (lecture) ;
+- **requireRedacteur** (admin + contributeur, saisie pédagogique) : stagiaires/inscriptions,
+  absences (ajout/modif/suppression), fiche stagiaire, import CSV stagiaires/résultats,
+  évaluations/satisfactions (écriture), génération de documents ;
+- **requireAdmin** : tout le reste (formations/sessions/groupes en écriture, preuves,
+  référentiel, veille en écriture, modèles, prescripteurs en écriture, audits, import
+  classeur, Drive connexion/recherche/statut/déconnexion).
+
+### Incohérences trouvées et corrigées
+
+1. `GET /me` renvoyait `driveAccountEmail` (adresse interne du compte Drive) à TOUT
+   visiteur, anonyme compris, alors que le client ne l'utilise pas (l'admin la voit déjà
+   via `GET /drive/status`, admin-only) — **corrigé** : `driveAccountEmail` retiré de `/me`.
+2. En-têtes de sécurité absents (`X-Content-Type-Options`, `Referrer-Policy`,
+   `X-Frame-Options`) — **corrigé** : ajoutés en middleware, sans dépendance (helmet non
+   introduit pour ne pas toucher Vite/OAuth/Google). `x-powered-by` était déjà désactivé.
+
+### Vérifié conforme (aucun changement nécessaire)
+
+- **mass assignment** : aucune route ne passe `req.body` en spread ni ne construit du SQL
+  depuis des clés reçues ; tous les écritures passent par des listes blanches explicites
+  (`champsAudit`, `champsVeille`, `champsEvaluation`, `champsSatisfaction`, `CHAMPS_VERSION`,
+  appels `set(...)` colonne par colonne) — `role`, `created_by`, `created_at`, `est_active`
+  et IDs internes ne sont jamais injectables ;
+- **IDOR / cohérences relationnelles** : groupe↔session, inscription↔session,
+  absence↔inscription/session, évaluation/satisfaction↔session, preuve↔session/groupe,
+  génération↔portée/session/groupe, fichier↔preuve — toutes vérifiées côté serveur (déjà en
+  place depuis L2→L9). Pas d'ACL par session (modèle à deux rôles globaux, assumé) ;
+- **données personnelles** : nom/prénom/email/téléphone/entreprise/financeur/
+  situation_handicap/besoins_adaptation exposées par `GET /sessions/:id` aux rôles
+  authentifiés (pédagogique, assumé) ; pas de `SELECT *` exposant des colonnes inutiles ;
+- **handicap/adaptation** : présents uniquement dans le détail de session et la fiche
+  stagiaire (authentifié), jamais en log, jamais en message d'erreur, jamais injectés dans
+  les documents (aucun marqueur `{{situation_handicap}}`/`{{besoins_adaptation}}`) ;
+- **logs** : aucun token/cookie/secret/PII — les diagnostics Google masquent les champs
+  sensibles (`nettoyer`), les erreurs SQL ne journalisent que le message (jamais de payload) ;
+- **secrets** : `.env` gitignoré, aucun secret dans l'historique Git (`.env.example` = placeholders
+  uniquement) ; `SESSION_SECRET`/`GOOGLE_CLIENT_SECRET`/`DATABASE_URL` via variables Railway ;
+- **session/cookie** : HttpOnly, Secure en prod, SameSite=Lax, signature HMAC, logout,
+  expiration — un cookie falsifié/expiré ⇒ 401 (jamais 500) ;
+- **CSRF** : SameSite=Lax + corps JSON sur les écritures + `state` anti-CSRF OAuth ⇒ risque
+  borné, pas de bibliothèque ajoutée ;
+- **OAuth** : connexion admin-only via `ADMIN_EMAILS`, `state` vérifié, scopes limités,
+  aucun token renvoyé au frontend ni journalisé ;
+- **Drive** : recherche globale admin-only, `drive_file_id` (évaluation/satisfaction)
+  admin-only, aucune élévation via body ;
+- **suppressions** : modèles/prescripteurs en soft-delete (actif=false), preuves/fichiers
+  en DELETE réel (cascade `preuve_fichiers` attendue, fichiers Drive non touchés) ;
+- **frontend** : aucun secret/token en localStorage/sessionStorage/bundle/URL.
+
+### Tests
+
+- `securite.test.js` (nouveau, 7 tests) : `/me` sans adresse interne ; en-têtes de sécurité ;
+  cookie falsifié ⇒ 401, expiré ⇒ 401 ; mass assignment (role/id/created_at non appliqués sur
+  PATCH stagiaire, created_by/stagiaire_id non appliqués sur PATCH inscription) ; recherche
+  Drive ⇒ 403 contributeur ;
+- non-régression L1–L9 : suite complète **351/351**.
+
+### Limites restantes
+
+1. pas d'ACL par session (deux rôles globaux) : un contributeur voit TOUTES les sessions —
+   assumé, pas un cloisonnement prévu ;
+2. pas de CSP, pas de rotation automatique de secrets, pas d'audit de sécurité tiers —
+   hors périmètre L10 (durcissement adapté à la taille de l'outil) ;
+3. `Referrer-Policy: no-referrer` peut légèrement dégrader les statistiques de provenance —
+   sans conséquence fonctionnelle.
+
+### Production — NON DÉPLOYÉ
+
+- **aucune migration** ;
+- commit local : « Securite : durcir les droits et donnees personnelles » ;
+- tests : **351/351** ; build client OK ; `git diff --check` OK ;
+- production lecture seule (baseline, aucune écriture) : `utilisateurs` admin=1 ;
+  `x-powered-by` déjà absent des réponses publiques ;
+- **lot L10 TERMINÉ — push et déploiement Railway en attente de validation humaine.**
+
+---
+
 
 Historique de principe :
 

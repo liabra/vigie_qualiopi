@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { config, googleConfigured } from "../config.js";
+import { googleConfigured } from "../config.js";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
@@ -37,7 +37,9 @@ router.get("/health", wrap(async (_req, res) => {
 }));
 
 router.get("/me", (req, res) => {
-  res.json({ user: req.user, googleConfigured: googleConfigured(), driveAccountEmail: config.driveAccountEmail });
+  // Seulement l'état de session et le booléen de configuration Google :
+  // aucune adresse interne (compte Drive) n'est exposée ici.
+  res.json({ user: req.user, googleConfigured: googleConfigured() });
 });
 
 // Référentiel actif + tableau de bord de conformité.

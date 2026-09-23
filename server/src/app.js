@@ -12,6 +12,14 @@ const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
+  // En-têtes de sécurité minimaux, sans dépendance : pas de MIME sniffing,
+  // pas d'embarquement en iframe, pas de fuite de référent interne.
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Frame-Options", "DENY");
+    next();
+  });
   app.set("trust proxy", 1); // Railway termine le TLS : cookies secure et req.protocol corrects
   app.use(express.json({ limit: "1mb" }));
   app.use(sessionMiddleware);

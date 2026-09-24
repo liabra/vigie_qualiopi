@@ -30,7 +30,9 @@ export function arreterProprement(server, {
         code = 1;
       }
       clearTimeout(forcer);
-      log(code === 0 ? "Arrêt propre terminé." : "Arrêt terminé avec erreur.");
+      log(code === 0
+        ? "Arrêt propre terminé (serveur HTTP fermé, pool PostgreSQL fermé)."
+        : "Arrêt terminé avec erreur.");
       sortir(code);
       resolve(code);
     });

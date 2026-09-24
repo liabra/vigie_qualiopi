@@ -2132,3 +2132,14 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
 ### État
 
 **L13 VALIDÉ EN PRODUCTION — lot TERMINÉ.** Aucune dette BLOQUANTE avant l'UX/UI.
+
+## 2026-09-24 (suite 32) — L13 : SIGTERM transmis directement à Node
+
+- constat : en production, SIGTERM s'arrêtait dans la couche npm (`npm error signal
+  SIGTERM`), Node ne journalisait jamais « Signal SIGTERM reçu » ;
+- `.railway/railway.ts` : `startCommand` `npm start` → **`node server/src/index.js`** (seul
+  changement ; `drainingSeconds` 15 conservé) ; équivalence vérifiée (script `start` du
+  serveur = `node src/index.js`, aucun hook, aucun `npm_*`, chemins via `import.meta.url`) ;
+- test « processus réel » aligné sur la commande de production (cwd racine) ; message
+  d'arrêt explicite « serveur HTTP fermé, pool PostgreSQL fermé » ;
+- **380/380** × 2, build OK, `git diff --check` OK.

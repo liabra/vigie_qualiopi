@@ -1748,6 +1748,16 @@ brutal comme avant L13). Remède recommandé, **non appliqué** (nouvelle mutati
 configuration) : `deploy.startCommand: "node server/src/index.js"` dans l'IaC (Node reçoit
 directement SIGTERM), puis plan/apply et vérification sur le déploiement suivant.
 
+**Correction appliquée (commit « Maintenance : transmettre les signaux directement a
+Node »)** : `.railway/railway.ts` → `startCommand: "node server/src/index.js"` (seul
+changement de configuration ; `drainingSeconds` reste 15). Équivalence vérifiée :
+`npm start` → `npm start -w server` → `node src/index.js` (cwd `server`), sans hook
+`prestart`/`poststart` ; le runtime ne lit aucun `npm_*`, ne lance aucun processus enfant et
+résout tous ses fichiers (migrations, seed, `client/dist`) via `import.meta.url` ⇒
+indépendant du répertoire courant. Le test « processus réel » (`transversal.test.js`) lance
+désormais exactement `node server/src/index.js` depuis la racine. Le message final d'arrêt
+précise « serveur HTTP fermé, pool PostgreSQL fermé » (émis seulement après les deux).
+
 **Limite Railway** : par défaut l'ancien déploiement reçoit SIGKILL **0 s** après SIGTERM.
 Deux représentations de 15 s : (A) réglage de déploiement `drainingSeconds: 15`
 (`deploy.drainingSeconds` dans `railway.json` aujourd'hui, `deploy: { drainingSeconds }`
@@ -1839,7 +1849,7 @@ ancienne peut pointer vers des fichiers depuis supprimés ou déplacés.
 | --- | --- | --- |
 | 1 | Config as Code `railway.json` coupée le **01/12/2026** | **RÉSOLUE** — IaC `.railway/railway.ts` appliquée, `railway.json` retiré |
 | 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | ASSUMÉE / DOCUMENTÉE — pas disponible sur le plan actuel ; stratégie externe chiffrée à définir |
-| 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production (drainingSeconds 15 appliqué) | À TRAITER PLUS TARD — `startCommand: "node server/src/index.js"` dans l'IaC, à valider |
+| 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production (drainingSeconds 15 appliqué) | correction appliquée (`startCommand: "node server/src/index.js"`) — validation en production ci-dessous |
 | 4 | `NODE_ENV=production` fourni implicitement par Railpack (un changement de builder désactiverait `Secure` et l'exigence de SESSION_SECRET) | À TRAITER PLUS TARD (optionnel, risque faible analysé ; volontairement non activé en L13) |
 | 5 | devDependencies dans l'image prod (`RAILPACK_PRUNE_DEPS` non activé volontairement) ; `npm install` au lieu de `npm ci` | À TRAITER PLUS TARD (optionnel) |
 | 6 | Vite 5 (failles serveur de dev) | À TRAITER PLUS TARD (chantier UX) |

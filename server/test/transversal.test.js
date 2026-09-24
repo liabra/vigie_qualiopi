@@ -536,8 +536,10 @@ test("dates invalides : 400 clair sans détail PostgreSQL ni écriture ; vide/nu
 
 test("processus réel : démarre sur la base à jour, healthcheck 200, SIGTERM ⇒ arrêt propre (code 0)", async () => {
   const port = PORT + 1;
-  const enfant = spawn(process.execPath, ["src/index.js"], {
-    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+  // Exactement la commande de production (.railway/railway.ts) : `node server/src/index.js`
+  // lancé depuis la RACINE du dépôt.
+  const enfant = spawn(process.execPath, ["server/src/index.js"], {
+    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
     env: { PATH: process.env.PATH, PORT: String(port),
       DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT}/vq` },
   });
@@ -558,6 +560,7 @@ test("processus réel : démarre sur la base à jour, healthcheck 200, SIGTERM �
     assert.equal(await fin, 0, err);
     assert.match(out, /Signal SIGTERM reçu/);
     assert.match(out, /Arrêt propre terminé/);
+    assert.match(out, /Référentiel|base déjà à jour/, "migrations lues depuis server/db/migrations malgré le cwd racine");
     assert.doesNotMatch(out + err, /postgres:postgres@/);
   } finally {
     if (enfant.exitCode === null) enfant.kill("SIGKILL");

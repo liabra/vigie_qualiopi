@@ -15,7 +15,11 @@ export default defineRailway((ctx) => {
     source: github("liabra/vigie_qualiopi", { branch: "main" }),
     build: { builder: "RAILPACK", buildCommand: "npm run build" },
     deploy: {
-      startCommand: "npm start",
+      // Node directement (et non `npm start`) : en production, SIGTERM s'arrêtait
+      // dans la couche npm et n'atteignait jamais l'arrêt propre de l'application.
+      // Strictement équivalent : `npm start -w server` ne fait que `node src/index.js`,
+      // et le serveur ne dépend pas du répertoire courant (chemins via import.meta.url).
+      startCommand: "node server/src/index.js",
       healthcheckPath: "/api/health",
       healthcheckTimeout: 120,
       // Politique ON_FAILURE = défaut Railway, stocké comme null : la déclarer

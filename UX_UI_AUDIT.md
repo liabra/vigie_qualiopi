@@ -1,0 +1,906 @@
+# Vigie Qualiopi — Audit UX/UI et proposition de refonte
+
+| Repère | Valeur |
+| --- | --- |
+| Date | 24/09/2026 |
+| Base auditée | `4ad74a6` (production), client `client/src/**` |
+| Nature | **Audit et proposition uniquement** — aucun code, aucun CSS, aucun composant modifié |
+| Contrainte | aucune évolution backend imposée par le design ; ce qui en demanderait une est signalé |
+
+Ce document décrit ce qui existe, ce qui gêne l'usage quotidien, et une cible réaliste
+découpée en phases livrables séparément. Il s'appuie sur la lecture intégrale du client
+(11 composants, ~3 900 lignes, une feuille `styles.css` de 305 lignes) et sur les routes
+réellement exposées par le serveur.
+
+---
+
+## Sommaire
+
+1. [État actuel](#1-état-actuel)
+2. [Principaux problèmes](#2-principaux-problèmes)
+3. [Architecture cible](#3-architecture-cible)
+4. [Navigation cible](#4-navigation-cible)
+5. [Design system proposé](#5-design-system-proposé)
+6. [Détail des écrans](#6-détail-des-écrans)
+7. [Proposition : détail d'une session](#7-proposition--détail-dune-session)
+8. [Proposition : veille](#8-proposition--veille)
+9. [Tableau de bord (Accueil)](#9-tableau-de-bord-accueil)
+10. [Rôles admin / contributeur](#10-rôles-admin--contributeur)
+11. [Responsive et accessibilité](#11-responsive-et-accessibilité)
+12. [Plan d'implémentation par phases](#12-plan-dimplémentation-par-phases)
+13. [Risques de régression à surveiller](#13-risques-de-régression-à-surveiller)
+
+---
+
+## 1. État actuel
+
+### 1.1 Socle technique du client
+
+| Élément | Constat |
+| --- | --- |
+| Framework | React 18 + Vite 5, **aucune bibliothèque d'interface**, aucun routeur |
+| Navigation | un `useState("referentiel")` dans `App.jsx` : 6 boutons d'onglets, rendu conditionnel |
+| URL | **toujours `/`** : pas de lien direct, bouton « Retour » du navigateur inopérant, un rechargement renvoie au tableau de bord |
+| Mise en page | barre supérieure + colonne centrale `max-width: 920px` |
+| Styles | un seul fichier `styles.css`, variables CSS (`--primary: #1f4e79`…), **mode sombre automatique** selon le système |
+| Composants partagés | `RechercheDrive` (réutilisé 6 fois) ; `Bloc` et `Champ` définis localement dans `Sessions.jsx` seulement |
+| Retours utilisateur | message d'erreur global par écran + **3 `window.alert` et 7 `window.confirm`** |
+| Tests client | **aucun** (les 380 tests sont serveur) ; smoke navigateur manuel (L11) |
+
+Le serveur sert déjà `client/dist` avec un repli `app.get("*") → index.html` : un routage
+par URL côté client est donc possible **sans toucher au backend**, à condition de ne pas
+utiliser les préfixes `/api` et `/auth`.
+
+### 1.2 Écrans existants
+
+```text
+Connexion (Google)
+└─ Application
+   ├─ [bandeau admin permanent] Google Drive : connecté / déconnecter
+   └─ Onglets : Tableau de bord · Preuves · Audits · Veille · Sessions* · Modèles**
+      ├─ Tableau de bord = Référentiel V9 (jauge + 7 critères dépliables)
+      │  ├─ vue « Indicateurs non applicables »
+      │  └─ vue « Versions du référentiel »** (+ création de coquille)
+      ├─ Preuves (liste de 144 cartes, création, import classeur**, sélection multiple**)
+      ├─ Audits (historique + formulaire de saisie**)
+      ├─ Veille (liste filtrée → détail → formulaire)
+      ├─ Sessions*
+      │  ├─ Formations** (bloc repliable : liste + création + révision)
+      │  ├─ Prescripteurs** (bloc repliable : liste + ajout + renommer/désactiver)
+      │  ├─ Sessions (liste + formulaire de création permanent**)
+      │  └─ Détail de la session (affiché SOUS la liste)
+      │     ├─ Modifier la session**
+      │     ├─ Groupes (+ ajout**)
+      │     ├─ Stagiaires (+ ajout, + panneaux Dossier / Absences dépliés dans la ligne)
+      │     ├─ Importer des stagiaires (CSV)
+      │     ├─ Évaluations & satisfaction (+ import CSV)
+      │     └─ Documents / Assiduité (génération, documents externes EduSign**)
+      └─ Modèles** (marqueurs, liste, enregistrement)
+
+*  admin + contributeur      ** admin seulement
+```
+
+### 1.3 Ce qui fonctionne déjà bien (à préserver)
+
+- vocabulaire métier juste, en français, sans jargon technique dans la plupart des libellés ;
+- principes métier visibles : « présent par défaut », assiduité jamais inventée, aperçu avant
+  import, confirmation avant remplacement de documents ;
+- statuts de conformité doublés d'un texte (pas seulement la couleur) ;
+- préservation du contexte : le référentiel garde ses critères dépliés après une modification,
+  les preuves gardent la sélection et le défilement ;
+- champs sensibles (handicap, besoins d'adaptation) visibles **uniquement** dans le dossier ;
+- contrastes des couleurs de statut actuelles corrects (4,7 à 8,7:1).
+
+---
+
+## 2. Principaux problèmes
+
+Classés par impact sur l'usage quotidien.
+
+| # | Problème | Où | Impact |
+| --- | --- | --- | --- |
+| P1 | **Page Sessions « tout-en-un »** : formations, prescripteurs, liste, création et détail sur une seule page ; le détail s'ouvre sous la liste, avec 6 blocs empilés et des panneaux dépliés dans les lignes | Sessions | très fort — c'est l'écran le plus utilisé |
+| P2 | **Aucune URL** : impossible de revenir en arrière, d'ouvrir une session dans un nouvel onglet, de partager un lien ; un rechargement perd l'écran courant | global | fort |
+| P3 | **Navigation plate et trompeuse** : « Tableau de bord » affiche en réalité le référentiel ; formations et prescripteurs sont cachés dans Sessions ; versions et non-applicables cachés dans le référentiel ; pas de hiérarchie entre le quotidien et le paramétrage | global | fort |
+| P4 | **Formulaires toujours ouverts** sous les listes (création de session, groupe, stagiaire, audit, modèle, prescripteur, formation) : la page ressemble à un back-office de base de données | Sessions, Audits, Modèles | fort |
+| P5 | **Trois styles de formulaire différents** : `.champ` (libellé au-dessus), `<label>` nus non stylés (Veille, Versions), champs **sans libellé** avec placeholder seul (Évaluations, Satisfaction) | global | moyen, et accessibilité |
+| P6 | **Densité des preuves** : chacune des 144 cartes affiche en permanence statut, mode, session, groupe, échéance, recherche Drive, Modifier, Supprimer | Preuves | fort pour l'admin |
+| P7 | **Retours par boîtes de dialogue natives** : le résultat d'une génération (documents, marqueurs non résolus, archivage) est un `window.alert` de 10 lignes ; erreurs affichées en haut de page, loin du champ | Sessions, Preuves | moyen |
+| P8 | **Pas de tableau de bord réel** : rien ne répond à « qu'est-ce qui demande mon attention ? » (sessions du jour, échéances, actions de veille) | Accueil | fort |
+| P9 | **Hiérarchie visuelle faible** : tout est pastille (`pill`) au même poids, libellés de champs en gris 12,75 px, dates au format `2026-09-28`, jargon ponctuel (« portée stagiaire », « mode par_stagiaire ») | global | moyen |
+| P10 | **Formulaire Veille brut** : 14 champs au même niveau, `select multiple` natif (Ctrl+clic) pour 32 indicateurs, bouton Enregistrer non principal | Veille | fort sur cet écran |
+| P11 | **Ambiguïtés** : pastille « A » pour « À analyser » **et** « Analysée » ; le détail de veille affiche l'identifiant technique de l'indicateur (`indicateur 57`) au lieu de son numéro ; « Marquer non applicable » agit en un clic, sans confirmation | Veille, Référentiel | moyen |
+| P12 | **Actions principales mal choisies** : « Importer le classeur » (rare) est le bouton principal des Preuves ; « Enregistrer » est secondaire dans Veille et Versions | Preuves, Veille | faible à moyen |
+| P13 | **Bandeau Google Drive permanent** en tête de chaque écran admin, alors qu'il n'est utile que s'il y a un problème | global | faible |
+| P14 | **Accessibilité** : aucun style de focus défini, bordure des champs à 1,29:1 (minimum 3:1), onglets sans rôle ARIA, `select multiple` natif, petites zones cliquables (~28 px) | global | moyen |
+| P15 | **Mode sombre automatique** non spécifié ni testé écran par écran : chaque nouveau composant doit être dessiné deux fois | global | faible, mais coûteux pendant la refonte |
+| P16 | **Fonctions backend sans écran** : `PATCH /api/audits/:id` (corriger un audit) n'a pas d'interface ; aucune suppression d'évaluation/satisfaction n'existe côté serveur | Audits, Évaluations | faible |
+
+---
+
+## 3. Architecture cible
+
+### 3.1 Principes
+
+1. **Une page = une tâche.** Liste d'un côté, détail sur sa propre page, création dans un
+   panneau latéral (*drawer*) ou une page dédiée selon la longueur du formulaire.
+2. **Chaque écran a une URL.** Retour arrière, lien direct, rechargement fiables.
+3. **Lecture d'abord, édition à la demande.** Les formulaires ne sont plus ouverts par
+   défaut ; on affiche l'information, puis on édite via un bouton explicite.
+4. **Hiérarchie visible** : un titre de page, une action principale au plus par zone, des
+   sections nommées, des statuts sous forme de badges sobres.
+5. **Aucun changement métier, aucun endpoint nouveau** pour les phases UX-1 à UX-5 — sauf
+   les compléments signalés « backend plus tard » (section 9).
+
+### 3.2 Coque de l'application (*shell*)
+
+```text
+┌──────────────┬──────────────────────────────────────────────────────────┐
+│ Vigie        │  Sessions › SESS-2026-09 A2C                (fil d'Ariane) │
+│ Qualiopi     │ ─────────────────────────────────────────────────────────│
+│              │  Titre de page                         [Action principale]│
+│ Accueil      │  sous-titre / statut                                     │
+│              │                                                          │
+│ FORMATION    │  ┌────────────────────────────────────────────────────┐  │
+│ Sessions     │  │ contenu (cartes, tableaux, onglets)                │  │
+│ Formations*  │  │                                                    │  │
+│              │  └────────────────────────────────────────────────────┘  │
+│ QUALITÉ      │                                                          │
+│ Indicateurs  │                                                          │
+│ Preuves      │                                                          │
+│ Veille       │                                                          │
+│ Audits       │                                                          │
+│              │                                                          │
+│ PARAMÈTRES*  │                                                          │
+│ Modèles      │                                                          │
+│ Prescripteurs│                                                          │
+│ Référentiels │                                                          │
+│ Google Drive │                                                          │
+│ ──────────── │                                                          │
+│ Mme Stark    │                                                          │
+│ Admin ▾      │                                                          │
+└──────────────┴──────────────────────────────────────────────────────────┘
+ * admin seulement
+```
+
+- barre latérale fixe de 240 px sur ordinateur, repliable en icônes sur tablette, tiroir
+  sur mobile ;
+- zone de contenu jusqu'à **1 200 px** (contre 920 px aujourd'hui) pour les listes et le
+  détail de session ; **720 px** maximum pour les formulaires longs ;
+- en-tête de page standard : fil d'Ariane (pages de niveau 2+), titre, sous-titre,
+  actions à droite ;
+- zone de notifications (*toasts*) en bas à droite pour les succès ; les erreurs restent
+  dans la page, près de l'action qui a échoué.
+
+### 3.3 Routage (URL)
+
+Routeur **minimal maison** (API History, ~60 lignes) plutôt qu'une dépendance : le besoin
+est simple et `SECURITY.md` demande d'examiner toute dépendance nouvelle. `react-router`
+reste une alternative acceptable si la décision est prise en connaissance de cause.
+
+| URL | Écran |
+| --- | --- |
+| `/` | Accueil |
+| `/sessions` | Liste des sessions (filtres dans la requête : `?statut=en_cours`) |
+| `/sessions/:id` | Détail — Vue d'ensemble |
+| `/sessions/:id/stagiaires` · `/assiduite` · `/evaluations` · `/satisfaction` · `/documents` | onglets du détail |
+| `/formations` | Catalogue des formations (admin) |
+| `/indicateurs` | Référentiel et conformité (ex-« Tableau de bord ») |
+| `/indicateurs/non-applicables` | Indicateurs écartés |
+| `/preuves` | Preuves (filtres dans la requête) |
+| `/veille` · `/veille/nouvelle` · `/veille/:id` · `/veille/:id/modifier` | Veille |
+| `/audits` · `/audits/:id` | Audits |
+| `/parametres/modeles` · `/prescripteurs` · `/referentiels` · `/drive` | Paramètres (admin) |
+
+Garde-fous : aucune route client sous `/api` ou `/auth` ; le retour OAuth (`/?erreur=…`,
+`/?drive=ok`) continue d'être lu puis retiré de l'URL ; une URL admin ouverte par un
+contributeur affiche un état « accès réservé » (le serveur refuse de toute façon).
+
+### 3.4 Motifs d'écran réutilisables
+
+| Motif | Usage | Exemple |
+| --- | --- | --- |
+| **Liste** | tableau ou cartes + barre de filtres + action « Nouveau » | Sessions, Veille, Preuves, Audits |
+| **Détail** | en-tête d'objet + onglets ou sections + actions contextuelles | Session, Veille, Audit |
+| **Panneau latéral** (*drawer*, 480–560 px) | création/édition courte **sans quitter la liste** | nouvelle session, dossier stagiaire, absence, groupe, prescripteur |
+| **Page formulaire** (720 px max) | formulaire long en sections, barre d'actions collante en bas | veille, audit, nouvelle preuve |
+| **Modale** | uniquement confirmation destructive ou choix bloquant | supprimer, remplacer des documents, marquer non applicable |
+| **Assistant 2 étapes** | aperçu puis confirmation | imports CSV, import du classeur |
+
+---
+
+## 4. Navigation cible
+
+### 4.1 Proposition
+
+| Groupe | Entrée | Admin | Contributeur | Remarque |
+| --- | --- | --- | --- | --- |
+| — | **Accueil** | ✓ | ✓ | nouveau tableau de bord « à traiter » (section 9) |
+| **Formation** | **Sessions** | ✓ | ✓ | le cœur opérationnel |
+| | Formations | ✓ | — | sorti de la page Sessions |
+| **Qualité** | **Indicateurs** | ✓ | ✓ (lecture) | l'actuel « Tableau de bord » = conformité au référentiel |
+| | **Preuves** | ✓ | ✓ (lecture) | |
+| | **Veille** | ✓ | ✓ (lecture) | |
+| | **Audits** | ✓ | ✓ (lecture) | |
+| **Paramètres** | Modèles de documents | ✓ | — | |
+| | Prescripteurs | ✓ | — | sorti de la page Sessions |
+| | Versions du référentiel | ✓ | — | sorti du tableau de bord |
+| | Google Drive | ✓ | — | remplace le bandeau permanent |
+| (pied de barre) | Nom, rôle, Déconnexion | ✓ | ✓ | |
+
+- **Admin : 10 entrées en 3 groupes + Accueil** ; **contributeur : 6 entrées**, sans aucun
+  groupe « Paramètres ».
+- « Indicateurs » plutôt que « Référentiel » : c'est ce que l'utilisateur regarde (32
+  indicateurs et leur statut) ; le mot « référentiel » reste dans le titre de page.
+- **Pas d'entrée « Stagiaires » globale** pour l'instant : le serveur n'expose aucune
+  liste transverse des stagiaires (`GET /api/stagiaires` n'existe pas). Les stagiaires se
+  gèrent dans leur session. Une page transverse est une évolution **backend plus tard**.
+- **Signal d'attention dans la barre** : petit compteur à côté de Veille (actions à
+  réaliser) et de Preuves (périmées + à confirmer, admin), calculé avec les filtres déjà
+  exposés par l'API.
+- **Drive déconnecté** : alerte en haut de l'Accueil et bannière discrète sur les écrans
+  qui en dépendent (Documents d'une session, Preuves), au lieu du bandeau permanent.
+
+### 4.2 Parcours et gains
+
+**Admin — préparer et suivre une session**
+
+| Étape | Aujourd'hui | Cible |
+| --- | --- | --- |
+| Créer une formation | onglet Sessions → déplier « Formations » → formulaire en bas du bloc | Formations → « Nouvelle formation » (drawer) |
+| Créer la session | faire défiler jusqu'au formulaire sous la liste ; le détail s'ouvre sous la liste | Sessions → « Nouvelle session » (drawer) → **redirection vers la page de la session** |
+| Créer un groupe | détail → bloc Groupes → formulaire en ligne | Vue d'ensemble → carte Groupes → « Ajouter » (drawer) |
+| Inscrire / importer | bloc Stagiaires (formulaire permanent) + bloc Import séparé | onglet Stagiaires → « Ajouter » ou « Importer un CSV » (assistant) |
+| Compléter un dossier | bouton « Dossier » → panneau déplié **dans la ligne** | clic sur le stagiaire → drawer « Dossier » à sections |
+| Suivre les absences | bouton « Absences (n) » par stagiaire, panneau dans la ligne | onglet Assiduité : tableau par stagiaire + « Saisir une absence » |
+| Évaluations / satisfaction | un bloc fermé mêlant les deux, formulaires sans libellés | deux onglets distincts, formulaires en drawer |
+| Documents | bloc en bas, résultat en `alert()` | onglet Documents, résultat affiché dans la page |
+| Preuves / audit | changer d'onglet, perdre le contexte de la session | liens contextuels (« 3 preuves liées à cette session ») |
+
+Clics et défilement évités : le détail n'est plus sous une liste, chaque sous-partie est à
+un clic et possède son URL.
+
+**Contributeur — gérer ses stagiaires**
+
+Aujourd'hui le contributeur arrive sur le référentiel (qu'il ne peut pas modifier) et doit
+aller dans Sessions. Cible : l'Accueil liste **ses sessions en cours et à venir** avec
+leurs points d'attention (dossiers incomplets, assiduité) ; un clic ouvre la session.
+
+**Veille → preuve → audit**
+
+Aujourd'hui : liste → détail → Modifier (formulaire de 14 champs) → retour → rattacher une
+preuve (formulaire avec `<label>` nus). Cible : fiche structurée en trois temps
+(**S'informer → Analyser → Agir**), statut toujours visible, indicateurs choisis dans une
+liste cochable avec recherche, preuve rattachée depuis la section « Agir ». Depuis un
+indicateur, on voit ses preuves et les veilles qui le concernent.
+
+---
+
+## 5. Design system proposé
+
+Objectif : **sobre, clair, rassurant**. Une couleur de marque, des neutres, cinq couleurs de
+statut. Aucun dégradé, aucun effet de verre, animations limitées à des transitions de
+150 ms (ouverture de drawer, survol).
+
+### 5.1 Couleurs
+
+Contrastes calculés (WCAG) — texte ≥ 4,5:1, composants (bordures de champ, focus) ≥ 3:1.
+
+| Rôle | Jeton | Valeur | Contraste |
+| --- | --- | --- | --- |
+| Fond de l'application | `--bg` | `#F6F7F9` | — |
+| Surface (cartes, tableaux) | `--surface` | `#FFFFFF` | — |
+| Surface secondaire (en-têtes de tableau, zones) | `--surface-2` | `#F2F4F7` | — |
+| Texte principal | `--text` | `#111827` | 16,5:1 sur `--bg` |
+| Texte secondaire | `--text-2` | `#4B5563` | 7,6:1 sur blanc |
+| Bordure de carte / séparateur | `--border` | `#E3E7ED` | décorative |
+| **Bordure de champ** | `--border-input` | `#858F9E` | **3,3:1** (actuelle : 1,29:1) |
+| **Primaire** (marque, actuelle) | `--primary` | `#1F4E79` | 8,7:1 sur blanc |
+| Primaire survol | `--primary-hover` | `#173D61` | 11,2:1 |
+| Primaire léger (sélection, onglet actif) | `--primary-soft` | `#EEF4FA` | texte primaire 7,8:1 |
+| Anneau de focus | `--focus` | `#2563EB` | 5,2:1 |
+
+Statuts : texte foncé sur fond clair, **toujours accompagnés d'un libellé ou d'une icône**.
+
+| Statut | Texte | Fond | Contraste | Usage |
+| --- | --- | --- | --- | --- |
+| SUCCESS | `#067647` | `#ECFDF3` | 5,4:1 | Maîtrisé, dossier complet, validé, justifiée |
+| WARNING | `#93370D` | `#FFFAEB` | 7,2:1 | À consolider, bientôt à revoir, à vérifier |
+| ERROR | `#B42318` | `#FEF3F2` | 6,1:1 | À risque, périmé, non validé, invalide |
+| INFO | `#1D4ED8` | `#EAF1FD` | 5,9:1 | À analyser, en cours, information |
+| NEUTRAL | `#475467` | `#F2F4F7` | 7,0:1 | Non applicable, brouillon, sans objet |
+
+Correspondance avec les statuts métier existants (inchangés) :
+`maitrise` → success · `a_consolider` → warning · `a_risque` → error ·
+`non_applicable` → neutral ; sessions : `planifiee` → neutral, `en_cours` → info,
+`terminee` → success, `annulee` → neutral barré.
+
+**Mode sombre** : proposé **hors périmètre** de la refonte. Recommandation : fixer
+l'application en clair pendant UX-1 à UX-5 (`color-scheme: light`), garder les jetons
+pour pouvoir réintroduire un thème sombre plus tard, dessiné et testé.
+
+### 5.2 Typographie
+
+Police système (aucun téléchargement) : `system-ui, -apple-system, "Segoe UI", Roboto,
+sans-serif` ; chiffres tabulaires (`font-variant-numeric: tabular-nums`) dans les tableaux.
+
+| Niveau | Taille / interligne | Graisse | Usage |
+| --- | --- | --- | --- |
+| Titre de page | 24 / 32 px | 600 | un par page |
+| Titre de section | 18 / 26 px | 600 | cartes, onglets de détail |
+| Sous-titre | 15 / 22 px | 600 | groupes de champs |
+| Corps | 15 / 22 px | 400 | texte courant (inchangé) |
+| Libellé de champ | 14 / 20 px | 500, **couleur texte** | au-dessus du champ (aujourd'hui gris 12,75 px) |
+| Secondaire / aide | 13 / 18 px | 400, `--text-2` | aides, métadonnées |
+| Badge | 12 / 16 px | 500 | statuts |
+
+### 5.3 Espacements, rayons, ombres
+
+- grille de 4 px : 4 · 8 · 12 · 16 · 24 · 32 · 48 ;
+- marges internes : carte 20–24 px, cellule de tableau 12 × 16 px, drawer 24 px ;
+- rayons : 6 px (champs, boutons), 10 px (cartes), 999 px (badges) ;
+- une seule ombre légère pour les éléments flottants (drawer, menu, toast) ; les cartes ont
+  une bordure, pas d'ombre.
+
+### 5.4 Composants de base (UX-1)
+
+| Composant | Règles |
+| --- | --- |
+| **Bouton** | 4 variantes : *primaire* (fond `--primary`), *secondaire* (bordure), *discret* (texte), *danger* (texte/bordure rouge ; fond rouge seulement dans la modale de confirmation). Hauteur 36 px (32 px en « compact » dans les tableaux). Libellé verbe + objet (« Créer la session »). État *en cours* : libellé « Création… » + bouton désactivé. **Une seule action primaire par zone.** |
+| **Champ** (`Field`) | libellé au-dessus, **toujours présent** (jamais de placeholder seul) ; mention « facultatif » plutôt que des astérisques ; aide sous le champ ; erreur en rouge sous le champ avec `aria-describedby` ; hauteur 38 px ; bordure `--border-input`. |
+| **Sélecteur multiple** | liste de cases à cocher avec recherche et regroupement (ex. indicateurs par critère), + « puces » des éléments choisis ; remplace les `select multiple` natifs. |
+| **Date** | champ natif `type="date"` conservé (bonne accessibilité) ; **affichage** toujours en `JJ/MM/AAAA` ou « 28 sept. 2026 » via une fonction unique `formatDate`. |
+| **Badge** | pastille + texte, couleur de statut ; réservé aux **statuts**. Les métadonnées (type, catégorie, compteur) deviennent du texte secondaire ou des « étiquettes » neutres. |
+| **Alerte** | 4 variantes (info, succès, avertissement, erreur), icône + titre + texte + action éventuelle ; `role="alert"` pour les erreurs. |
+| **Toast** | succès non bloquants (« Absence enregistrée »), 4 s, fermable, `aria-live="polite"`. |
+| **Tableau** | en-tête collant, lignes de 48 px, colonne principale cliquable (lien), actions de ligne regroupées dans un menu « … » au-delà de 2, tri sur 1–2 colonnes utiles, état vide intégré. |
+| **Onglets** | soulignés, `role="tablist"`/`tab`, flèches clavier, **chacun lié à une URL**. |
+| **Drawer** | à droite, 480–560 px (plein écran sur mobile), titre + fermer, contenu défilant, **pied collant** Annuler / Enregistrer, piège du focus, Échap ferme (avec confirmation si des saisies sont en cours). |
+| **Modale de confirmation** | remplace `window.confirm` ; titre explicite, conséquence en une phrase, bouton d'action nommé (« Supprimer l'absence »), focus initial sur Annuler pour les actions destructives. |
+| **En-tête de page** | fil d'Ariane, titre, sous-titre, actions ; même structure partout. |
+| **Carte de synthèse** | chiffre + libellé + lien « Voir » ; utilisée sur l'Accueil et la Vue d'ensemble. |
+| **État vide** | illustration sobre ou icône, phrase utile, action principale (voir 5.6). |
+
+### 5.5 Règles des formulaires
+
+1. **Largeur** : 720 px maximum ; champs courts (dates, nombres, civilité) en grille de 2–3
+   colonnes, champs texte longs sur toute la largeur.
+2. **Sections nommées** : 3 à 7 champs par section ; ordre = ordre de la tâche réelle.
+3. **Obligatoire vs facultatif** : les obligatoires en premier ; les champs rarement utilisés
+   dans une section repliable « Plus d'options ».
+4. **Validation** : au moment d'enregistrer, message sous le champ fautif + résumé en tête
+   si plusieurs erreurs ; le texte d'erreur du serveur est affiché tel quel (il est déjà
+   rédigé pour l'utilisateur).
+5. **Boutons** : pied de formulaire, action primaire à droite (« Enregistrer … »), Annuler
+   à côté ; barre collante sur les formulaires longs.
+6. **Modifications non enregistrées** : avertissement si l'on quitte un drawer ou une page
+   de formulaire modifiés.
+7. **Textes longs** (`textarea`) : hauteur initiale 4 lignes, redimensionnable, compteur
+   seulement si une limite existe.
+8. **Aide contextuelle** : une phrase sous le champ, pas de paragraphe au-dessus du
+   formulaire (ex. l'aide sur les colonnes CSV passe dans l'assistant d'import).
+9. **Jamais de dump** : aucun champ technique visible (identifiants, codes internes) ;
+   les listes affichent des libellés humains (« Un document par stagiaire » plutôt que
+   « portée stagiaire »).
+
+### 5.6 États d'interface
+
+| État | Convention |
+| --- | --- |
+| **Chargement** | squelettes (lignes grises) pour listes et cartes ; bouton « … en cours » pour une action ; jamais d'écran blanc |
+| **Vide** | message + action : « Aucune session pour le moment. » [Créer une session] (admin) / « Aucune session ne vous est encore accessible. » (contributeur) ; « Aucun résultat pour ces filtres. » [Effacer les filtres] |
+| **Erreur de chargement** | alerte erreur dans la zone concernée + [Réessayer] ; le reste de la page reste utilisable (comportement actuel du référentiel, à généraliser) |
+| **Erreur d'action** | message sous le champ ou dans le drawer, au plus près de l'action ; pas de disparition automatique |
+| **Succès** | toast bref ; pour une action riche (génération, import), **résumé affiché dans la page** avec les détails (remplace les `alert`) |
+| **Avertissement métier** | alerte warning persistante dans le contexte (statut incohérent avec les dates, documents peut-être obsolètes, absences > durée prévue) |
+| **Donnée absente** | tiret cadratin « — » en tableau ; « Non renseigné » en fiche ; jamais de valeur inventée (principe déjà appliqué à l'assiduité) |
+| **Permission insuffisante** | l'action n'est **pas affichée** au contributeur ; si une URL réservée est ouverte : page « Cette page est réservée aux administrateurs » + lien Accueil ; un 403 serveur est affiché comme tel |
+| **Action en cours** | bouton désactivé + libellé d'état ; double clic impossible (déjà le cas pour la génération) |
+| **Connexion Drive requise** | alerte info avec action « Connecter le Drive » (admin) ou « Demandez à un administrateur » (contributeur) |
+
+---
+
+## 6. Détail des écrans
+
+Légende densité : ● faible · ●● correcte · ●●● trop dense.
+
+### 6.1 Connexion
+
+| | |
+| --- | --- |
+| Objectif | se connecter avec le compte Google autorisé |
+| Informations / actions | titre, phrase, bouton Google ; messages d'erreur OAuth (`messages.js`) |
+| Problèmes | correcte ; bouton sans logo Google, carte isolée sur fond uni |
+| Densité / rôles | ● / identique |
+| Cible | conserver ; ajouter le nom de l'organisme, le logo Google conforme, un pied « Accès réservé à l'équipe A2C ». Priorité basse (UX-5). |
+
+### 6.2 Tableau de bord actuel → « Indicateurs »
+
+| | |
+| --- | --- |
+| Objectif | voir la conformité au référentiel, indicateur par indicateur |
+| Informations | score (n au vert sur N), jauge, 7 critères dépliables, 32 indicateurs avec statut, preuves, catégories, gradation |
+| Actions | rechercher ; déplier ; admin : Marquer non applicable, Versions, voir les non applicables |
+| Problèmes | mal nommé (« Tableau de bord ») ; badges nombreux au même poids (catégorie, spécifique, provisoire, NC majeure) ; « Marquer non applicable » sans confirmation ni motif ; aucun lien vers les preuves d'un indicateur ; bouton Versions à côté de la recherche |
+| Densité / rôles | ●● / contributeur : lecture seule, cohérent |
+| Cible | page « Indicateurs » : bandeau de synthèse (4 compteurs cliquables par statut), filtres par statut, critères en accordéon conservés ; ligne d'indicateur = numéro + libellé + badge statut + « n preuves » (lien vers `/preuves?indicateur=…`) ; détails secondaires (catégories, gradation, provisoire) dans un panneau au clic ; « Marquer non applicable » dans un menu « … » **avec modale de confirmation** ; Versions → Paramètres. |
+
+### 6.3 Versions du référentiel (admin)
+
+| | |
+| --- | --- |
+| Objectif | voir la version active, préparer la future (V10), activer une version |
+| Problèmes | caché derrière un bouton du tableau de bord ; pastilles « A/F/H » ; formulaire en `<label>` nus ; « Activer » en un clic, sans confirmation alors qu'il change tout le référentiel affiché |
+| Cible | Paramètres › Versions : tableau (code, libellé, application, statut Active/Future/Historique en toutes lettres) ; « Préparer une version » en drawer ; **modale de confirmation** pour « Activer ». |
+
+### 6.4 Indicateurs non applicables
+
+| | |
+| --- | --- |
+| Objectif | retrouver et réactiver les indicateurs écartés |
+| Problèmes | accessible seulement via un bouton dans la ligne du score |
+| Cible | onglet/filtre « Non applicables » dans Indicateurs ; motif affiché ; Réactiver avec confirmation. |
+
+### 6.5 Preuves
+
+| | |
+| --- | --- |
+| Objectif | admin : rattacher, corriger et tenir à jour les preuves ; contributeur : consulter |
+| Informations | 144 preuves : indicateur, titre, fichiers Drive, statut, mode de fichiers, session/groupe, échéance, alerte |
+| Actions | Ajouter, Aperçu/Import du classeur, filtres (à confirmer, statut, échéance, recherche), sélection multiple + statut en masse, et par carte : statut, mode, session, groupe, échéance, rattacher/remplacer/retirer un fichier, Modifier, Supprimer, Confirmer sans fichier |
+| Problèmes | **trop de contrôles visibles par carte** ; pas de regroupement par indicateur ni pagination ; la recherche relance le serveur à chaque frappe ; import en action principale ; le mode « par stagiaire » exige de comprendre « fichiers attendus » |
+| Densité / rôles | ●●● admin, ●● contributeur / cohérent |
+| Cible | **tableau compact** : indicateur, titre (lien), fichiers (« 2/8 » + badge), échéance (badge), statut (badge) ; filtres en haut (statut, échéance, à confirmer, indicateur, recherche différée de 300 ms) ; clic → **drawer « Preuve »** à sections (*Document* : titre, description, indicateur · *Fichiers* : liste + ajouter depuis le Drive · *Échéance* · *Rattachement* : session/groupe) ; sélection multiple conservée ; « Ajouter une preuve » = action principale ; import du classeur dans un menu « Importer… » (assistant aperçu → confirmation). |
+
+### 6.6 Sessions (liste)
+
+| | |
+| --- | --- |
+| Objectif | trouver une session, en créer une |
+| Informations | référence, formation, statut, dates, horaire, lieu, inscrits |
+| Problèmes | liste mêlée aux blocs Formations et Prescripteurs ; formulaire de création **permanent** ; détail rendu sous la liste ; dates ISO |
+| Cible | tableau : Session (référence + formation), Dates (« 28 sept. → 12 déc. 2026 »), Statut, Lieu, Inscrits ; segments **À venir / En cours / Terminées / Toutes** (calculés côté client à partir des dates et du statut) + recherche ; « Nouvelle session » (admin) → drawer à 2 sections (*Formation et dates* : obligatoires · *Organisation* : lieu, formateur, durée, horaire) → redirection vers la page de la session. |
+
+### 6.7 Détail de session
+
+Voir la proposition complète en [section 7](#7-proposition--détail-dune-session).
+Problèmes actuels : 6 blocs repliables empilés sous la liste ; formulaires toujours
+ouverts ; panneaux Dossier/Absences dépliés dans la ligne du stagiaire ; résultat de
+génération en `alert` ; « Modifier la session » en bloc replié au milieu des données.
+
+### 6.8 Groupes
+
+| | |
+| --- | --- |
+| Objectif | organiser la session par lieu/formateur (souvent 1 à 3 groupes) |
+| Problèmes | bloc à part, formulaire permanent (admin), aucune modification possible d'un groupe existant côté API |
+| Cible | carte « Groupes » dans la Vue d'ensemble (nom, lieu, formateur, inscrits) + « Ajouter un groupe » (drawer, admin) ; filtre par groupe dans l'onglet Stagiaires. |
+
+### 6.9 Stagiaires / inscriptions / dossier
+
+| | |
+| --- | --- |
+| Objectif | inscrire, compléter les dossiers, gérer groupe/prescripteur/abandon |
+| Informations | nom, groupe, prescripteur, dossier complet/incomplet, absences, assiduité, abandon |
+| Actions | ajouter, importer CSV, civilité rapide (admin), Dossier, Absences, Abandon |
+| Problèmes | formulaire d'ajout de 7 champs toujours visible ; « Dossier » ouvre deux formulaires (fiche + inscription) avec deux boutons Enregistrer distincts, dans la ligne ; sélecteur de civilité dans chaque ligne (admin) ; bouton « Abandon » rouge au même niveau que Dossier |
+| Cible | onglet Stagiaires : tableau (Nom, Groupe, Prescripteur, Dossier ✓/incomplet, Assiduité, Statut) + filtres (groupe, dossier incomplet, abandons) ; « Ajouter un stagiaire » (drawer) et « Importer un CSV » (assistant) ; clic → **drawer Dossier** avec sections *Identité* · *Contact* · *Inscription* (groupe, prescripteur, dossier complet) · *Accessibilité* (handicap, besoins — section distincte, rappel de confidentialité) · *Absences* (résumé + lien vers l'onglet Assiduité) ; « Déclarer un abandon » dans le menu « … » avec modale (date + motif, champs déjà supportés par l'API). |
+
+### 6.10 Absences / assiduité
+
+| | |
+| --- | --- |
+| Objectif | saisir les absences (présence par défaut), suivre les taux |
+| Problèmes | saisie stagiaire par stagiaire via un panneau déplié ; message « présent par défaut » en petit gris ; aucune vue d'ensemble de la session |
+| Cible | onglet Assiduité : en-tête (durée prévue, source de la durée, total des absences) ; tableau par stagiaire (absences, heures, taux, badge ≥ 80 % / < 80 % / non calculé + raison) ; ligne dépliable = liste des absences ; « Saisir une absence » (drawer : stagiaire, date bornée à la session, demi-journée, durée, justifiée, motif) ; alerte « absences > durée prévue » conservée. |
+
+### 6.11 Évaluations / QCM
+
+| | |
+| --- | --- |
+| Objectif | saisir ou importer les résultats |
+| Problèmes | mêlé à la satisfaction dans un bloc fermé ; **9 champs sans libellé** (placeholders seuls ; 6 de plus côté satisfaction) ; import CSV toujours affiché ; lien « fichier » construit en dur |
+| Cible | onglet Évaluations : synthèse (validés / non validés / non déterminés) ; tableau (stagiaire, type, intitulé, date, score, résultat) ; « Ajouter un résultat » (drawer, libellés, sections *Stagiaire et épreuve* · *Résultat* · *Pièce Drive (admin)*) ; « Importer » (assistant). |
+
+### 6.12 Satisfaction
+
+| | |
+| --- | --- |
+| Objectif | enregistrer les réponses (à chaud, à froid, financeur…) |
+| Problèmes | mêmes défauts que les évaluations ; moyenne affichée dans une pastille |
+| Cible | onglet Satisfaction : carte « Moyenne x/5 » (ou message « échelles différentes »), répartition anonymes/nominatives, tableau des réponses, drawer d'ajout. |
+
+### 6.13 Documents (génération, EduSign)
+
+| | |
+| --- | --- |
+| Objectif | générer les documents d'une session, rattacher les pièces externes |
+| Problèmes | résultat de génération en `alert` de plusieurs lignes ; 409 « déjà générés » via `confirm` ; « portée stagiaire » ; formulaire EduSign admin toujours ouvert |
+| Cible | onglet Documents : section *Documents générés* (tableau : nom → Drive, modèle, groupe, date) + « Générer des documents » (drawer : modèle avec portée en clair, groupe, **résultat affiché dans le drawer** avec les avertissements de marqueurs) ; remplacement via **modale** explicite ; section *Documents externes (EduSign…)* + « Rattacher un document » (drawer, admin). |
+
+### 6.14 Veille
+
+Voir [section 8](#8-proposition--veille).
+
+### 6.15 Audits
+
+| | |
+| --- | --- |
+| Objectif | garder la mémoire des audits et de leurs non-conformités |
+| Problèmes | formulaire de 12 champs toujours ouvert sous l'historique ; **aucune modification possible d'un audit** alors que l'API la permet (`PATCH /api/audits/:id`) ; seule la version active du référentiel est proposée |
+| Cible | liste chronologique en cartes (type, date, organisme, résultat, NC majeures/mineures, rapport) ; « Enregistrer un audit » → page formulaire (*Audit* · *Résultat* · *Non-conformités* · *Rapport*) ; fiche d'audit avec « Modifier » (utilise l'API existante) ; lien « dernier audit » sur l'Accueil. |
+
+### 6.16 Modèles de documents (admin)
+
+| | |
+| --- | --- |
+| Objectif | déclarer les modèles Google Docs/Sheets et leurs marqueurs |
+| Problèmes | marqueurs affichés en haut en permanence ; indicateurs saisis comme texte libre « 9, 11 » ; « Retirer » sans détail d'usage |
+| Cible | tableau (nom → Drive, type, portée en clair, indicateurs) ; « Ajouter un modèle » (drawer, indicateurs via le sélecteur multiple) ; « Marqueurs disponibles » dans un panneau d'aide repliable avec copie en un clic. |
+
+### 6.17 Prescripteurs (admin)
+
+| | |
+| --- | --- |
+| Objectif | maintenir la liste des prescripteurs proposés à l'inscription |
+| Problèmes | caché dans la page Sessions |
+| Cible | Paramètres › Prescripteurs : tableau simple (nom, actif), ajouter/renommer en ligne, désactiver avec modale. |
+
+### 6.18 Formations (admin)
+
+| | |
+| --- | --- |
+| Objectif | catalogue des formations et de leurs versions |
+| Problèmes | caché dans Sessions ; « Réviser » crée une nouvelle version sans que cela soit visible avant de cliquer |
+| Cible | page Formations : tableau (intitulé, code, durée, modalité, version, nb sessions) ; « Nouvelle formation » (drawer) ; « Réviser » ouvre le drawer avec l'avertissement « crée la version n+1 » en tête ; l'historique des versions (`GET /api/formations/:id/versions`, déjà exposé) peut s'afficher dans le drawer. |
+
+### 6.19 Google Drive / paramètres
+
+| | |
+| --- | --- |
+| Objectif | connecter le compte Drive de l'organisme |
+| Problèmes | bandeau permanent en tête de chaque écran admin |
+| Cible | Paramètres › Google Drive : état, compte, droits, dernier import du classeur, Connecter/Déconnecter (modale) ; alerte sur l'Accueil seulement si déconnecté ou en erreur. |
+
+---
+
+## 7. Proposition : détail d'une session
+
+Le détail devient une **vraie page** (`/sessions/:id`) avec un en-tête fixe et six onglets.
+
+```text
+Sessions › SESS-2026-09
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Préparation aux métiers de l'aide à domicile            [En cours]         │
+│ SESS-2026-09 · 28 sept. → 12 déc. 2026 · 8h30–12h / 13h–16h30              │
+│ Lyon 7e · Formateur : M. Durand · 210 h prévues · version 2 de la formation│
+│                                      [Générer des documents] [ … ▾ ]       │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Vue d'ensemble │ Stagiaires 8 │ Assiduité │ Évaluations │ Satisfaction │ Documents 6 │
+└────────────────────────────────────────────────────────────────────────────┘
+  ⚠ Session « planifiée » dont la date de fin est passée (le statut n'est pas modifié automatiquement)
+```
+
+**Menu « … »** (admin) : Modifier la session (drawer à sections *Dates et statut* ·
+*Organisation*), Ajouter un groupe. Contributeur : pas de menu d'administration.
+
+### 7.1 Onglets
+
+| Onglet | Contenu | Source (existante) |
+| --- | --- | --- |
+| **Vue d'ensemble** | cartes : *Stagiaires* (actifs / abandons), *Dossiers incomplets* (n → lien filtré), *Assiduité* (n sous 80 %, taux non calculés), *Évaluations* (validés / non validés), *Satisfaction* (moyenne), *Documents* (générés, externes) ; carte *Groupes* ; carte *Preuves liées* ; alertes métier | `GET /sessions/:id`, `/absences`, `/evaluations`, `/satisfactions`, `/preuves?session=` |
+| **Stagiaires** | tableau + filtres ; Ajouter ; Importer (assistant) ; drawer Dossier | `/sessions/:id`, imports existants |
+| **Assiduité** | synthèse durée/absences, tableau par stagiaire, saisie en drawer | `/sessions/:id/absences` |
+| **Évaluations** | synthèse, tableau, ajout, import | `/sessions/:id/evaluations` |
+| **Satisfaction** | moyenne, tableau, ajout | `/sessions/:id/satisfactions` |
+| **Documents** | générés + externes, génération, rattachement | `/sessions/:id` (documents), `/preuves?session=` |
+
+Le compteur d'onglet (Stagiaires 8, Documents 6) donne l'état d'un coup d'œil. Chaque
+onglet a son URL : un rechargement garde l'onglet.
+
+### 7.2 Choix et justification
+
+- **Onglets plutôt que longue page à ancres** : 6 sujets indépendants, chacun avec ses
+  propres actions ; la page ne défile plus sur 4 écrans.
+- **Drawers pour les saisies** : on garde la liste des stagiaires visible pendant la
+  saisie d'une absence ou d'un dossier — c'est ce que les panneaux dépliés essayaient de
+  faire, sans casser la liste.
+- **Vue d'ensemble = point d'entrée** : répond à « où en est cette session ? » sans rien
+  ouvrir.
+- **Aucune donnée nouvelle** : tous les compteurs se calculent à partir des 5 appels
+  que le détail fait déjà (le chargement parallèle actuel est conservé).
+- **Sur tablette/mobile** : en-tête condensé (titre + statut + menu), onglets défilants
+  horizontalement, tableaux en cartes.
+
+### 7.3 Liste des sessions (rappel)
+
+```text
+Sessions                                                     [+ Nouvelle session]
+[ À venir 2 ] [ En cours 1 ] [ Terminées 5 ] [ Toutes ]        🔍 Rechercher…
+┌──────────────────────────────────┬──────────────────────┬───────────┬──────────┬──────────┐
+│ Session                          │ Dates                │ Statut    │ Lieu     │ Inscrits │
+├──────────────────────────────────┼──────────────────────┼───────────┼──────────┼──────────┤
+│ SESS-2026-09                     │ 28 sept. → 12 déc.   │ En cours  │ Lyon 7e  │ 8        │
+│ Préparation aux métiers de l'aide│ 2026                 │           │          │          │
+└──────────────────────────────────┴──────────────────────┴───────────┴──────────┴──────────┘
+```
+
+---
+
+## 8. Proposition : veille
+
+### 8.1 Liste
+
+```text
+Veille Qualiopi                                              [+ Nouvelle veille]
+[ À analyser 3 ] [ Actions à réaliser 1 ] [ Traitées ] [ Toutes ]
+Type ▾   Rupture réglementaire ☐   🔍 Rechercher…
+┌──────────────────────────────────────────┬──────────────┬────────────┬───────────────┬────────────┐
+│ Titre                                    │ Type         │ Publiée    │ Statut        │ Action     │
+├──────────────────────────────────────────┼──────────────┼────────────┼───────────────┼────────────┤
+│ Décret n° 2026-… modifiant l'indic. 23   │ Légale       │ 12/09/2026 │ ● À analyser  │ —          │
+│ ⚑ Rupture réglementaire · Ind. 23, 24    │              │            │               │            │
+└──────────────────────────────────────────┴──────────────┴────────────┴───────────────┴────────────┘
+```
+
+- segments calculés avec les filtres **déjà supportés** par l'API (`statut`,
+  `statut_action`, `type`, `q`) ;
+- statut et action en **badges textuels** (plus de pastille « A » ambiguë) ;
+- rupture réglementaire signalée par une icône + texte ;
+- l'indicateur est toujours affiché par son **numéro** (la correspondance id → numéro
+  est disponible via `GET /api/indicateurs`, sans backend).
+
+### 8.2 Fiche (détail)
+
+```text
+Veille › Décret n° 2026-…                                    [Modifier] (admin)
+┌───────────────────────────────────────────────┬──────────────────────────────┐
+│ 1. S'INFORMER                                 │ Statut      ● À analyser     │
+│ Résumé …                                      │ Action      — Aucune         │
+│                                               │ Type        Légale           │
+│ 2. ANALYSER                                   │ Source      Légifrance ↗     │
+│ Impact …                ⚑ Rupture signalée    │ Publiée     12/09/2026       │
+│ Indicateurs concernés : [23] [24]             │ Effet       01/01/2027       │
+│                                               │ Consultée   15/09/2026       │
+│ 3. AGIR                                       │                              │
+│ Action à mener …                              │ Preuves (1)                  │
+│ Statut de l'action : À réaliser               │ • Procédure mise à jour ↗    │
+│ [Rattacher une preuve] (admin)                │   Indicateur 23              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+```
+
+### 8.3 Formulaire
+
+Page formulaire (720 px), **trois sections alignées sur le cycle de veille**, barre
+d'actions collante « Annuler · Enregistrer la veille » :
+
+| Section | Champs | Remarques |
+| --- | --- | --- |
+| **S'informer** | Titre\*, Type\*, Source, Lien, Date de publication, Date d'effet, Date de consultation, Résumé | dates en grille 3 colonnes ; lien validé visuellement |
+| **Analyser** | Statut de la veille, Analyse / impact, Rupture réglementaire, Indicateurs concernés | indicateurs via le **sélecteur multiple avec recherche**, groupé par critère |
+| **Agir** | Action à mener, Statut de l'action, Date de réalisation (si « Réalisée ») | la date n'apparaît que si utile (déjà le cas) |
+
+Le rattachement d'une preuve reste dans la fiche (section Agir) : drawer « Rattacher une
+preuve » (indicateur parmi ceux de la veille, titre, fichier Drive).
+
+Aucune règle métier ne change : les validations serveur (dates, cohérence du cycle
+d'action) continuent d'être affichées telles quelles, sous le champ concerné quand c'est
+possible.
+
+---
+
+## 9. Tableau de bord (Accueil)
+
+Question à laquelle l'Accueil doit répondre en quelques secondes : **« Est-ce que quelque
+chose nécessite mon attention ? »**
+
+### 9.1 Contenu proposé
+
+```text
+Bonjour Mme Stark                                          jeudi 24 septembre 2026
+┌─ À traiter ───────────────────────────────────────────────────────────────────┐
+│ ⚠ 2 preuves périmées · 5 bientôt à revoir            → Voir les preuves        │
+│ ● 3 veilles à analyser · 1 action à réaliser          → Voir la veille          │
+│ ⚠ Session SESS-2026-09 : 3 dossiers incomplets        → Ouvrir la session       │
+│ ⚠ Google Drive déconnecté                              → Connecter             │
+└───────────────────────────────────────────────────────────────────────────────┘
+┌─ Sessions ─────────────────────────┐ ┌─ Conformité ──────────────────────────┐
+│ En cours : SESS-2026-09 (8)        │ │ 18 / 24 indicateurs maîtrisés          │
+│ À venir (30 j) : SESS-2026-10      │ │ ███████████░░░  4 à consolider · 2 à    │
+│                → Toutes les sessions│ │ risque               → Indicateurs     │
+└────────────────────────────────────┘ └────────────────────────────────────────┘
+┌─ Dernier audit ────────────────────┐ ┌─ Dernier import du classeur (admin) ──┐
+│ Surveillance · 12/03/2026 · Maintenu│ │ 22/09/2026 · 144 preuves               │
+└────────────────────────────────────┘ └────────────────────────────────────────┘
+```
+
+La zone « À traiter » n'affiche que les lignes non nulles ; si tout va bien : « Rien
+d'urgent. » (état positif explicite).
+
+### 9.2 Faisabilité
+
+| Information | Source | Sans backend ? |
+| --- | --- | --- |
+| Sessions en cours / à venir (30 j) | `GET /api/sessions` (dates, statut, inscrits) | ✅ |
+| Incohérences statut/dates | calcul client (déjà fait dans le détail) | ✅ |
+| Preuves périmées / bientôt à revoir | `GET /api/preuves?alerte=perime` / `bientot` (compter les lignes) | ✅ |
+| Preuves à confirmer (admin) | `GET /api/preuves?a_confirmer=1` | ✅ |
+| Veilles à analyser / actions à réaliser / ruptures | `GET /api/veille?statut=a_analyser`, `?statut_action=a_realiser` | ✅ |
+| Score de conformité | `GET /api/referentiel` (`score`) | ✅ |
+| Dernier audit | `GET /api/audits` (premier élément) | ✅ |
+| Dernier import du classeur (admin) | `GET /api/import/dernier` | ✅ |
+| État du Drive (admin) | `GET /api/drive/status` | ✅ |
+| Dossiers incomplets, assiduité < 80 % | détail par session (`/sessions/:id`, `/absences`) | ⚠️ possible **pour les sessions en cours seulement** (1–3 appels) ; un agrégat serveur serait préférable → **backend plus tard** |
+| Documents obsolètes | `documentsObsoletes` n'est **pas persisté** (dette connue) | ❌ **backend plus tard** |
+| Stagiaires toutes sessions confondues | aucune route de liste transverse | ❌ **backend plus tard** |
+
+Coût : 6 à 9 requêtes légères à l'ouverture de l'Accueil, en parallèle. Acceptable à
+l'échelle de l'organisme ; si besoin plus tard, une route `GET /api/accueil` agrégée.
+
+### 9.3 Accueil contributeur
+
+Mêmes cartes **sans** les éléments d'administration (import du classeur, Drive, preuves à
+confirmer) ; la carte Sessions est mise en premier ; la veille et la conformité restent en
+lecture.
+
+---
+
+## 10. Rôles admin / contributeur
+
+Rappel : **le serveur fait foi** (`requireAuth` / `requireRedacteur` / `requireAdmin`) ;
+l'interface se contente de ne pas proposer ce qui serait refusé. Aucun droit ne change.
+
+| Écran / action | Admin | Contributeur |
+| --- | --- | --- |
+| Accueil | complet | sans éléments d'administration |
+| Sessions : liste, détail | ✓ | ✓ |
+| Créer / modifier une session, ajouter un groupe | ✓ | — |
+| Stagiaires : ajouter, importer, dossier, abandon | ✓ | ✓ |
+| Civilité rapide dans la liste | ✓ (raccourci) | via le dossier |
+| Absences, évaluations, satisfaction : saisir / importer | ✓ | ✓ |
+| Rattacher une pièce Drive à une évaluation/satisfaction | ✓ | — (recherche Drive réservée admin) |
+| Générer des documents | ✓ | ✓ |
+| Rattacher un document externe (EduSign) | ✓ | — |
+| Formations | ✓ | — (non affiché) |
+| Indicateurs | lecture + non applicable | lecture |
+| Preuves | complet | lecture |
+| Veille | complet | lecture |
+| Audits | complet | lecture |
+| Paramètres (modèles, prescripteurs, versions, Drive) | ✓ | — (groupe non affiché) |
+
+Écart historique noté au handoff (« tableau de bord visible au contributeur ») : tranché
+en L10 (lecture autorisée) ; la refonte le conserve sous le nom « Indicateurs ».
+
+---
+
+## 11. Responsive et accessibilité
+
+### 11.1 Responsive
+
+| Largeur | Comportement |
+| --- | --- |
+| **≥ 1 200 px** (ordinateur, cible principale) | barre latérale ouverte, tableaux complets, drawers de 560 px |
+| **768–1 199 px** (tablette) | barre latérale réduite à des icônes (avec libellés en infobulle et au survol), tableaux avec colonnes secondaires masquées, drawers de 480 px |
+| **< 768 px** (mobile, secondaire) | menu en tiroir (bouton ☰), tableaux transformés en **cartes empilées** (ligne principale + 2 métadonnées + statut), onglets défilants, drawers et formulaires plein écran, barre d'actions collante en bas |
+
+Points précis : la jauge de conformité reste lisible (libellés sous la barre) ; les
+aperçus d'import deviennent une liste de cartes ; aucun tableau à défilement horizontal
+sauf l'aperçu d'import détaillé (acceptable, action rare).
+
+### 11.2 Accessibilité — constats et règles
+
+| Sujet | Constat actuel | Règle cible |
+| --- | --- | --- |
+| Contraste du texte | correct (texte secondaire 5,5:1, statuts 4,7–8,7:1) | conserver ≥ 4,5:1 (jetons de la section 5) |
+| Contraste des composants | bordure de champ **1,29:1** | ≥ 3:1 (`#858F9E`, 3,3:1) |
+| Libellés | 15 champs sans libellé (9 Évaluations + 6 Satisfaction) ; `<label>` nus ailleurs | tout champ a un libellé visible associé |
+| Focus clavier | **aucun style de focus** défini (anneau du navigateur seulement, parfois peu visible) | `:focus-visible` : anneau 2 px `--focus` + décalage 2 px sur tous les éléments interactifs |
+| Zones cliquables | boutons « petit » ~28 px | ≥ 32 px en compact, 36 px par défaut, 44 px sur mobile |
+| Couleur seule | bon dans l'ensemble (texte + couleur) ; pastilles lettre « A/F/H » ambiguës | toujours un texte ou une icône avec la couleur |
+| Onglets | boutons sans rôle | `role="tablist"`, `aria-selected`, flèches clavier |
+| Accordéons | `aria-expanded` présent ✓ | conserver |
+| Tableaux | listes `<ul>` imitant des tableaux | vrais `<table>` avec `<th scope>` et légende masquée |
+| Boutons icônes | peu nombreux ; « retirer » avec `aria-label` ✓ | tout bouton icône a un `aria-label` |
+| Modales / drawers | `window.confirm` natifs | `role="dialog"`, `aria-modal`, titre associé, piège du focus, retour du focus à l'élément d'origine, Échap |
+| Erreurs | message global en haut de page | message sous le champ + `aria-invalid` + `aria-describedby` ; résumé `role="alert"` |
+| Sélection multiple | `select multiple` natif (clavier + Ctrl) | cases à cocher avec recherche |
+| Langue, titres | `lang="fr"` ✓ ; titre d'onglet fixe « Vigie Qualiopi » | `document.title` par page (« Sessions — Vigie Qualiopi ») |
+| Mouvement | aucune animation | transitions ≤ 150 ms, désactivées si `prefers-reduced-motion` |
+
+---
+
+## 12. Plan d'implémentation par phases
+
+Principe : **chaque phase est livrable seule**, testée, déployée et validée avant la
+suivante. Pas de refonte « big bang » : le shell et les composants arrivent d'abord, les
+écrans migrent un par un ; un écran non encore migré continue de fonctionner dans la
+nouvelle coque.
+
+### UX-1 — Fondations (shell, navigation, design system)
+
+- jetons CSS (section 5), thème clair fixé, styles de focus, bordures conformes ;
+- composants de base : Button, Field, Select, MultiSelect, Badge, Alert, Toast, Table,
+  Tabs, Drawer, ConfirmDialog, PageHeader, EmptyState, Skeleton ; `formatDate` unique ;
+- routeur minimal + barre latérale + en-tête de page + titres de document ;
+- les écrans existants sont **montés tels quels** dans la nouvelle coque, sous leur URL ;
+  Formations et Prescripteurs deviennent des pages (même code) ; Versions passe dans
+  Paramètres ; bandeau Drive → Paramètres › Google Drive ;
+- remplacement des 10 `window.alert/confirm` par Toast / ConfirmDialog (même logique) ;
+- **critère de fin** : toutes les fonctions actuelles atteignables par URL, retour arrière
+  fonctionnel, contributeur ne voit aucune entrée admin, aucun écran blanc.
+
+### UX-2 — Sessions et détail de session
+
+- liste en tableau + segments + recherche ; création en drawer → redirection ;
+- page de détail à 6 onglets (section 7) ; drawers Dossier, Absence, Groupe, Ajout
+  stagiaire, Génération ; assistants d'import (stagiaires, évaluations) ;
+- résultat de génération dans la page (plus d'`alert`) ;
+- **critère de fin** : parcours admin et contributeur complets sans défilement long ;
+  toutes les alertes métier conservées (voir section 13).
+
+### UX-3 — Veille
+
+- liste à segments, fiche en trois temps, formulaire en sections, sélecteur d'indicateurs,
+  rattachement de preuve en drawer, numéros d'indicateurs partout.
+
+### UX-4 — Qualité : Indicateurs, Preuves, Audits + Accueil
+
+- Indicateurs (ex-tableau de bord) ; Preuves en tableau + drawer (réduction de densité) ;
+  Audits avec fiche et modification (API existante) ;
+- **Accueil** « À traiter » (section 9, uniquement les sources ✅) — placé ici car il pointe
+  vers les écrans refondus en UX-2 à UX-4.
+
+### UX-5 — Paramètres, connexion, finitions
+
+- Modèles, Prescripteurs, Versions, Google Drive en pages de paramètres homogènes ;
+- écran de connexion ;
+- passe responsive complète (tablette, mobile) et passe accessibilité (clavier, lecteur
+  d'écran sur les parcours principaux) ;
+- décision sur le mode sombre (réintroduire ou non).
+
+**Nombre de phases recommandé : 5.** Chaque phase ≈ un lot habituel du projet
+(audit → implémentation → tests → smoke navigateur → déploiement → validation).
+
+### Tests à prévoir pendant la refonte
+
+- extraire la logique non visuelle en **fonctions pures testables** (format de dates,
+  calcul des segments de sessions, compteurs de la Vue d'ensemble, correspondance
+  indicateur id → numéro) et les couvrir par des tests `node --test` côté client ou
+  partagés ;
+- conserver la suite serveur (380 tests) inchangée à chaque phase ;
+- **smoke navigateur scripté** par phase (admin + contributeur, liste d'écrans et
+  d'actions) ; l'automatiser plus tard (Playwright) reste une option, soumise à
+  l'examen d'une nouvelle dépendance de développement.
+
+### Évolutions backend à envisager plus tard (hors refonte)
+
+1. agrégat « à traiter » par session (dossiers incomplets, assiduité faible) ;
+2. persistance de `documentsObsoletes` (dette déjà recensée) ;
+3. liste transverse des stagiaires (page « Stagiaires ») ;
+4. suppression d'une évaluation / d'une satisfaction ;
+5. modification d'un groupe.
+
+---
+
+## 13. Risques de régression à surveiller
+
+| Risque | Garde-fou |
+| --- | --- |
+| **Droits** : un bouton admin réapparaît pour le contributeur | matrice de la section 10 vérifiée au smoke de chaque phase ; le serveur refuse de toute façon (401/403), mais l'interface ne doit rien proposer d'interdit |
+| **Champs sensibles** (handicap, besoins d'adaptation) affichés hors du dossier | ne les exposer que dans la section *Accessibilité* du drawer Dossier ; jamais dans les tableaux, cartes, exports ou toasts |
+| **Régénération** : le flux 409 « déjà générés » → confirmation → `remplacer: true` | conserver exactement l'enchaînement, via ConfirmDialog |
+| **Avertissements métier** perdus en passant de `alert` à l'interface : documents peut-être obsolètes après modification de session, absences > durée prévue, marqueurs inconnus / non résolus, anciens fichiers non archivés | liste de contrôle explicite dans UX-2 ; chaque message actuel doit avoir son emplacement cible |
+| **Imports** : l'aperçu doit rester sans écriture, la confirmation doit renvoyer le **même texte** que l'aperçu | l'assistant garde le texte en mémoire comme aujourd'hui (`texteRef`) |
+| **Contraintes de saisie** : dates d'absence et d'évaluation bornées à la session (`min`/`max`), durée d'absence > 0, 29 février, formats `AAAA-MM-JJ` envoyés au serveur | l'affichage passe en JJ/MM/AAAA, **les valeurs envoyées restent ISO** |
+| **Contexte préservé** : critères dépliés et défilement du référentiel après une modification de preuve, sélection des preuves remise à zéro au rechargement | reproduire le mécanisme `rafraichir` ; tester explicitement |
+| **Routage** : collision d'une route client avec `/api` ou `/auth` ; retour OAuth `/?erreur=…` / `/?drive=ok` | préfixes interdits ; lecture du flash conservée au démarrage |
+| **Lien direct** vers une page admin ouvert par un contributeur | page « accès réservé » côté client ; 403 serveur conservé |
+| **Performance** : l'Accueil multiplie les appels ; la recherche des preuves relance le serveur à chaque frappe | appels parallèles, recherche différée (300 ms) |
+| **Taille du bundle** (252 Ko aujourd'hui) | aucune bibliothèque UI lourde ; icônes en SVG inline ou set minimal |
+| **Mode sombre** : composants nouveaux illisibles en sombre si le mode automatique reste actif | thème clair fixé pendant la refonte (section 5.1) |
+| **Absence de tests client** | fonctions pures testées + smoke scripté à chaque phase (section 12) |
+| **Principes métier** : « présent par défaut », aucun taux d'assiduité inventé (abandon, durée inconnue), statut de session jamais changé automatiquement | textes et règles d'affichage repris tels quels dans les nouveaux composants |
+
+---
+
+*Fin du document. Aucun fichier de code n'a été modifié pour produire cet audit.*

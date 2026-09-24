@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Alert, Badge, Button, Drawer, EmptyState, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
+import { useTexteUrl } from "../ui/useTexteUrl.js";
 import { FormulaireSession, SESSION_VIDE, erreursSession } from "./FormulaireSession.jsx";
 import { STATUTS_SESSION, VUES_SESSIONS, compterParVue, filtrerSessions, formaterPeriode, titreSession } from "./format.js";
 
@@ -14,7 +15,7 @@ export function SessionsListe({ admin }) {
   const naviguer = useNavigate();
   const [params, setParams] = useSearchParams();
   const vue = VUES_SESSIONS.some((v) => v.id === params.get("vue")) ? params.get("vue") : "toutes";
-  const q = params.get("q") || "";
+  const [q, setQ] = useTexteUrl("q");
   const [sessions, setSessions] = useState(null);
   const [err, setErr] = useState(null);
 
@@ -23,10 +24,14 @@ export function SessionsListe({ admin }) {
   }, []);
   useEffect(() => { charger(); }, [charger]);
 
+  // Forme fonctionnelle : part toujours des paramètres les plus récents
+  // (une recherche en cours de synchronisation n'est jamais écrasée).
   function changerFiltre(cle, valeur) {
-    const p = new URLSearchParams(params);
-    if (valeur && valeur !== "toutes") p.set(cle, valeur); else p.delete(cle);
-    setParams(p, { replace: cle === "q" });
+    setParams((courants) => {
+      const p = new URLSearchParams(courants);
+      if (valeur && valeur !== "toutes") p.set(cle, valeur); else p.delete(cle);
+      return p;
+    });
   }
 
   const [creation, setCreation] = useState(false);
@@ -71,7 +76,7 @@ export function SessionsListe({ admin }) {
               <span className="visually-hidden">Rechercher une session</span>
               <input
                 type="search" value={q} placeholder="Rechercher (référence, formation, lieu)"
-                onChange={(e) => changerFiltre("q", e.target.value)}
+                onChange={(e) => setQ(e.target.value)}
               />
             </label>
           </div>

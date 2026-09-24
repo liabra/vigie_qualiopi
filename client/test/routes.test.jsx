@@ -79,7 +79,7 @@ test("navigation par le menu puis retour arrière du navigateur", async () => {
   const veille = [...document.querySelectorAll("nav a")].find((a) => a.textContent === "Veille");
   await cliquer(veille);
   await attendre(() => window.location.pathname === "/veille");
-  await attendre(() => texte().includes("Veille Qualiopi"));
+  await attendre(() => document.querySelector("h1")?.textContent === "Veille");
   await act(async () => { window.history.back(); });
   await attendre(() => window.location.pathname === "/sessions");
   await attendre(() => texte().includes("SESS-TEST"));

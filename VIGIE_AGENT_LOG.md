@@ -2183,3 +2183,16 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
   `Evaluations.jsx` supprimés, Formations/Prescripteurs déplacés sans changement ;
 - **380/380 serveur + 41/41 client** (×2), build OK ; smoke Chrome (PG jetable) **27/27**.
   Détail : `UX_UI_AUDIT.md` § UX-2.
+
+## 2026-09-24 (suite 35) — UX-3 : refonte de la Veille
+
+- `/veille` liste à segments (À analyser / Actions à réaliser / Traitées / Toutes, mapping
+  exact documenté), `/veille/:id` fiche S'informer / Analyser / Agir, `/veille/nouvelle` et
+  `/veille/:id/modifier` en page dédiée (admin) ; sélecteur d'indicateurs à cocher par
+  critère (fin du `select multiple`) ; preuves liées affichées ;
+- aucune API, aucun droit, aucune migration ; sécurité : lien externe seulement en http(s) ;
+  formulaire : date de réalisation envoyée seulement pour une action réalisée (règle L6) ;
+- correctif : recherche contrôlée par l'URL perdant des caractères en saisie rapide
+  (hook `useTexteUrl`), appliqué à la Veille et à la liste des Sessions ;
+- **380/380 serveur + 61/61 client** (×2), build OK ; smoke Chrome (PG jetable) **28/28**.
+  Détail : `UX_UI_AUDIT.md` § UX-3.

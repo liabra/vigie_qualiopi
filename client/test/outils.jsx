@@ -153,6 +153,22 @@ export async function saisir(champ, valeur) {
   });
 }
 
+// Saisie « rapide » : chaque frappe émet un événement input avec la valeur
+// complète courante, sans attendre la resynchronisation de l'URL entre deux
+// frappes. Reproduit le bug où un champ piloté directement par l'URL perdait
+// des caractères (ex. « agefiph » → « aiph »).
+export async function saisirRapide(champ, texte) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  await act(async () => {
+    let courant = "";
+    for (const c of texte) {
+      courant += c;
+      setter.call(champ, courant);
+      champ.dispatchEvent(new window.Event("input", { bubbles: true }));
+    }
+  });
+}
+
 export const champ = (libelle) => {
   const label = [...document.querySelectorAll("label")].find((l) => l.textContent.replace(/\s*\(facultatif\)/, "").trim() === libelle);
   return label ? document.getElementById(label.htmlFor) : null;

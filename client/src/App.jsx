@@ -8,7 +8,6 @@ import Referentiel from "./Referentiel.jsx";
 import Preuves from "./Preuves.jsx";
 import Modeles from "./Modeles.jsx";
 import AuditsHistory from "./AuditsHistory.jsx";
-import Veille from "./Veille.jsx";
 import { AppShell } from "./shell/AppShell.jsx";
 import { Alert, LoadingState } from "./ui/index.js";
 import { Accueil } from "./pages/Accueil.jsx";
@@ -19,6 +18,9 @@ import { GoogleDrivePage } from "./pages/GoogleDrivePage.jsx";
 import { FormationsPage, PrescripteursPage } from "./pages/ParametresPages.jsx";
 import { SessionsListe } from "./sessions/SessionsListe.jsx";
 import { SessionDetail } from "./sessions/SessionDetail.jsx";
+import { VeilleListe } from "./veille/VeilleListe.jsx";
+import { VeilleFiche } from "./veille/VeilleFiche.jsx";
+import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -59,6 +61,13 @@ function SessionPage({ onglet, ...props }) {
   const { sessionId } = useParams();
   const id = /^\d+$/.test(sessionId) ? Number(sessionId) : sessionId;
   return <SessionDetail key={id} sessionId={id} onglet={onglet} {...props} />;
+}
+
+// /veille/:veilleId[/modifier] : même conversion que pour les sessions.
+function VeillePage({ modifier = false, admin }) {
+  const { veilleId } = useParams();
+  const id = /^\d+$/.test(veilleId) ? Number(veilleId) : veilleId;
+  return modifier ? <VeilleFormulaire key={id} veilleId={id} /> : <VeilleFiche key={id} veilleId={id} admin={admin} />;
 }
 
 const VUES_REFERENTIEL = {
@@ -139,7 +148,10 @@ export default function App() {
         <Route path="indicateurs" element={<IndicateursPage vue="referentiel" admin={isAdmin} rafraichir={version} />} />
         <Route path="indicateurs/non-applicables" element={<IndicateursPage vue="non_applicables" admin={isAdmin} rafraichir={version} />} />
         <Route path="preuves" element={<EcranExistant><Preuves admin={isAdmin} onChange={auChangement} /></EcranExistant>} />
-        <Route path="veille" element={<EcranExistant><Veille admin={isAdmin} /></EcranExistant>} />
+        <Route path="veille" element={<VeilleListe admin={isAdmin} />} />
+        <Route path="veille/nouvelle" element={admin(<VeilleFormulaire />)} />
+        <Route path="veille/:veilleId" element={<VeillePage admin={isAdmin} />} />
+        <Route path="veille/:veilleId/modifier" element={admin(<VeillePage modifier admin={isAdmin} />)} />
         <Route path="audits" element={<EcranExistant><AuditsHistory admin={isAdmin} /></EcranExistant>} />
 
         <Route path="formations" element={admin(<FormationsPage />)} />

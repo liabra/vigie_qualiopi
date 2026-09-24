@@ -993,6 +993,94 @@ d'évaluation / satisfaction ni de modification de groupe (inexistantes côté A
 civilité rapide dans la liste (admin) passe désormais par le dossier ; le résultat d'une
 génération et les bandeaux ne survivent pas à un rechargement de la page.
 
+### UX-3 — Veille (réalisé)
+
+**Architecture**
+
+```text
+/veille                   VeilleListe : segments + recherche / type / indicateur + tableau
+/veille/nouvelle          VeilleFormulaire (admin) — page dédiée, 3 sections
+/veille/:id               VeilleFiche : S'informer / Analyser / Agir + colonne de métadonnées
+                          └─ drawer « Rattacher une preuve » (admin, capacité conservée)
+/veille/:id/modifier      VeilleFormulaire (admin), prérempli
+```
+
+Fichiers : `client/src/veille/` (`VeilleListe`, `VeilleFiche`, `VeilleFormulaire`,
+`SelecteurIndicateurs`, `format.js` pur, `veille.css`). L'ancien `Veille.jsx` est supprimé.
+Aucune API, aucun droit, aucune migration ni règle métier modifiés.
+
+**Mapping des segments** (valeurs serveur inchangées)
+
+| Segment | Règle exacte |
+| --- | --- |
+| À analyser | `statut = a_analyser` |
+| Actions à réaliser | `statut_action = a_realiser`, **quel que soit le statut** (une action décidée n'est jamais masquée) |
+| Traitées | `statut ∈ {analysee, integree, sans_impact}` **et** `statut_action ≠ a_realiser` |
+| Toutes | tout |
+
+Toute entrée appartient à au moins un des trois premiers segments (vérifié sur les 12
+combinaisons) ; seule une entrée « à analyser » dont l'action est déjà « à réaliser »
+figure dans les deux premiers. Vue par défaut : Toutes (rien n'est jamais masqué au
+chargement), compteurs visibles sur chaque segment.
+
+**Liste** : filtrage client sur la liste complète déjà renvoyée par `GET /api/veille`
+(recherche sans accents sur titre / source / résumé, type, indicateur) — segment et
+filtres dans l'URL. Colonnes : veille (titre, source, drapeau « Rupture réglementaire »),
+type, date de publication, statut, action, indicateurs compacts (« Ind. 11, 23, 24 +2 »,
+liste complète dans l'étiquette accessible et la fiche). Statuts **en toutes lettres** avec
+Badge (plus de pastille « A » ambiguë) : À analyser · Analysée · Intégrée · Sans impact ;
+Aucune action · Action à réaliser · Action réalisée.
+
+**Fiche** : trois étapes numérotées. *S'informer* : source, lien externe (http(s)
+seulement, `target=_blank`, `rel="noopener noreferrer"`, annoncé « site externe »),
+résumé ; *Analyser* : bandeau rupture réglementaire, analyse d'impact (texte lisible,
+paragraphes conservés, ~70 caractères), indicateurs avec libellés ; *Agir* : statut et
+date de réalisation, action décidée mise en avant (filet d'attention si « à réaliser »),
+**preuves liées** (déjà renvoyées par `GET /api/veille/:id` : titre, numéro d'indicateur
+retrouvé via le référentiel, fichiers Drive, lien vers l'écran Preuves). Colonne de
+métadonnées courtes sur ordinateur ; en tête, en grille, sous 1 024 px.
+
+**Formulaire** (page, 720 px) : *S'informer* (titre, type, source, lien, 3 dates, résumé),
+*Analyser* (analyse d'impact, rupture réglementaire en question Oui / Non, statut de la
+veille, indicateurs), *Agir* (statut de l'action en boutons radio expliqués, action, date
+de réalisation seulement si « réalisée »). Barre d'actions collante ; erreurs serveur
+affichées **au-dessus des boutons** ; succès ⇒ retour à la fiche avec message. Mêmes champs
+qu'avant ; **une seule correction** : la date de réalisation n'est envoyée que pour une
+action réalisée (sinon `null`) — l'ancien formulaire la renvoyait toujours et se faisait
+refuser par la règle serveur L6.
+
+**Sélecteur d'indicateurs** : remplace le `select multiple` natif. Critères du référentiel
+actif (`GET /api/referentiel`) en groupes repliables avec compteur « n choisi(s) », zone de
+24 rem défilante, recherche (texte du libellé, ou **numéro exact** : « 1 » ne trouve pas le
+11), puces retirables, « Tout désélectionner », compteur annoncé (`aria-live`). Les
+indicateurs déjà liés hors référentiel actif restent visibles dans un groupe dédié (jamais
+retirés en silence). Valeur envoyée inchangée (`indicateur_ids`).
+
+**Droits** : contributeur en lecture (liste, filtres, fiche) ; ni « Nouvelle veille », ni
+« Modifier », ni « Rattacher une preuve » ; `/veille/nouvelle` et `/veille/:id/modifier` ⇒
+« Accès réservé ».
+
+**Sécurité** : l'ancienne fiche plaçait l'URL saisie directement dans `href` (une URL
+`javascript:` devenait cliquable) ; désormais seul `http(s)` produit un lien, le reste
+s'affiche en texte.
+
+**Correctif transverse** : un champ de recherche contrôlé directement par l'URL perdait des
+caractères en saisie rapide (React Router applique la mise à jour de l'URL de façon
+différée — constaté en Chrome : « agefiph » devenait « aiph »). Hook `useTexteUrl` (état
+local immédiat, URL synchronisée ensuite) appliqué à la Veille **et à la liste des Sessions
+(UX-2, même défaut)** ; les changements de vue partent désormais des paramètres les plus
+récents (une recherche en cours n'est plus écrasée).
+
+**Validation** : 380/380 serveur + **61/61 client** (×2) — dont 14 tests Veille et 7 tests
+de fonctions pures ; 4 mutations détectées. Smoke Chrome réel (PostgreSQL jetable, jeu de
+veille réaliste) **28/28**, dont saisie clavier rapide sur Veille et Sessions.
+
+**Limites** : recherche par sous-chaîne (pas de recherche par mots séparés) ; liste
+plafonnée à 500 entrées par l'API ; le lien « Voir l'écran Preuves » ouvre l'écran complet
+(pas de filtre par veille, l'écran Preuves n'étant pas encore refondu) ; « Rattacher une
+preuve » n'est proposé que si la veille a au moins un indicateur (comme avant, un
+indicateur est obligatoire).
+
 ---
 
 ## 13. Risques de régression à surveiller

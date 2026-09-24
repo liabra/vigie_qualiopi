@@ -4,7 +4,7 @@ import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { act } from "react";
-import { attendre, bouton, champ, cliquer, demonter, dialogue, monter, saisir, texte, touche } from "./outils.jsx";
+import { attendre, bouton, champ, cliquer, demonter, dialogue, monter, saisir, saisirRapide, texte, touche } from "./outils.jsx";
 
 let natifs = 0;
 beforeEach(() => {
@@ -50,6 +50,19 @@ test("liste : vues par statut et recherche, conservées dans l'URL", async () =>
   await attendre(() => texte().includes("Aucune session ne correspond à ces filtres."));
   await cliquer(bouton("Effacer les filtres"));
   await attendre(() => lignes().length === 3);
+});
+
+test("saisie rapide : aucun caractère perdu, recherche conservée au changement de vue", async () => {
+  await monter("/sessions");
+  await attendre(() => lignes().length === 3);
+  await saisirRapide(document.querySelector('input[type="search"]'), "agefiph");
+  await attendre(() => new URLSearchParams(window.location.search).get("q") === "agefiph");
+  assert.equal(document.querySelector('input[type="search"]').value, "agefiph", "aucun caractère perdu");
+  assert.equal(new URLSearchParams(window.location.search).get("q"), "agefiph");
+  await cliquer([...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith("En cours")));
+  await attendre(() => new URLSearchParams(window.location.search).get("vue") === "en_cours");
+  assert.equal(document.querySelector('input[type="search"]').value, "agefiph", "recherche conservée après changement de vue");
+  assert.equal(new URLSearchParams(window.location.search).get("q"), "agefiph", "paramètre q conservé dans l'URL");
 });
 
 test("liste vide : état vide avec action pour l'admin", async () => {

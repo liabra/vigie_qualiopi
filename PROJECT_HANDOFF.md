@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 24/09/2026 |
-| **Dernier lot validé en production** | L13 — exploitation / IaC Railway (`2eb029a` + retrait `railway.json`) |
+| **Dernier lot validé en production** | UX-5 — finalisation de l'interface : **VF principale terminée** (refonte UX-1A → UX-5) |
 | **Migration de production actuelle** | `013_evaluations_qcm.sql` (13 migrations) |
-| **Suite de tests** | **380/380** (déployés en L13) |
+| **Suite de tests** | **380/380 serveur + 111/111 client** (déployés en UX-5) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -1960,6 +1960,29 @@ seulement ; `/api/health` 200 ; `/api/me` anonyme ; redirection OAuth publique i
 - **aucune dette BLOQUANTE avant UX** ;
 - **lot L13 TERMINÉ et VALIDÉ EN PRODUCTION.**
 
+### Refonte UX/UI (UX-1A → UX-5) — VF principale terminée (24/09/2026)
+
+Détail écran par écran : `UX_UI_AUDIT.md` (§ UX-1A, UX-2, UX-3, §14 UX-4, §15 UX-5).
+
+- **UX-1A** coque et navigation (React Router, une URL par écran, design system) ;
+  **UX-2** Sessions ; **UX-3** Veille ; **UX-4** Accueil, Indicateurs, Preuves, Audits ;
+  **UX-5** connexion, Formations, Modèles, Prescripteurs, Versions du référentiel,
+  Google Drive, passe responsive / accessibilité / cohérence ;
+- **aucune API, aucun droit, aucune migration, aucune règle métier, aucune configuration
+  Railway modifiés** pendant toute la refonte (client seul) ;
+- plus **aucune boîte native** `alert` / `confirm` dans le client (ConfirmDialog, Alert) ;
+- UX-5 : commit `eea1a2c` « UX : finaliser l interface de Vigie », déploiement Railway
+  SUCCESS, `/api/health` 200, 13 migrations (001→013), aucune `014`, aucune appliquée,
+  volumes inchangés, arrêt propre de l'ancien conteneur (~4 s après SIGTERM) ;
+- tests : **380/380 serveur + 111/111 client**, 2 exécutions complètes stables, build OK ;
+  smoke Chrome (PostgreSQL jetable) **325/325** ; smoke production anonyme **89/89**
+  (connexion, liens directs, rafraîchissement, précédent/suivant, 1440 / 900 / 390 px),
+  aucune erreur console ; API métier 401 en anonyme ;
+- **backlog « Après VF » séparé** (`UX_UI_AUDIT.md` §16) : qui est connecté, durée de
+  connexion, journal d'activité, déconnexion après inactivité, sauvegarde externe
+  PostgreSQL chiffrée, dettes techniques encore pertinentes, import du contenu V10 —
+  **aucune de ces fonctions n'est commencée**.
+
 ---
 
 
@@ -2294,14 +2317,14 @@ L4) traités ; point 3 tranché en L10 (lecture autorisée au contributeur) ; po
 
 ## 14. Niveau actuel de validation
 
-Référence connue au **22/09/2026** :
+Référence connue au **24/09/2026** (fin de la VF principale, UX-5) :
 
-- `npm test` : **199/199**
+- `npm test` : **380/380 serveur + 111/111 client**
 - `npm run build` : OK
-- production Railway : OK
-- migration de production : **010**
+- production Railway : OK (déploiement UX-5 SUCCESS)
+- migration de production : **013**
 - healthcheck : OK
-- arbre Git : propre, aucun commit en attente de push au moment de cette rédaction
+- arbre Git : aucun commit en attente de push au moment de cette rédaction
 
 Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
 chantier.

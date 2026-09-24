@@ -2196,3 +2196,44 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
   (hook `useTexteUrl`), appliqué à la Veille et à la liste des Sessions ;
 - **380/380 serveur + 61/61 client** (×2), build OK ; smoke Chrome (PG jetable) **28/28**.
   Détail : `UX_UI_AUDIT.md` § UX-3.
+
+## 2026-09-24 (suite 36) — UX-4 : Accueil, Indicateurs, Preuves, Audits
+
+- Accueil à blocs, Indicateurs (détail en panneau), Preuves « par indicateur » par défaut
+  + « Toutes les preuves », lien direct `?indicateur=N`, suppression par ConfirmDialog,
+  Audits refondus ; aucune API, aucun droit, aucune migration ;
+- correctif de rendu : débordement horizontal de `/preuves` (filtre d'indicateurs trop
+  large dans une grille) ; captures incohérentes = script de capture, pas l'application ;
+- **380/380 serveur + 85/85 client** ; commit `49a4128` poussé, Railway SUCCESS, health 200,
+  migrations 001→013, volumes inchangés, arrêt propre observé. Détail : `UX_UI_AUDIT.md` §14.
+
+## 2026-09-24 (suite 37) — UX-5 : finalisation, VF principale terminée
+
+- connexion refondue (sobre, sans détail technique, états chargement / Google non
+  configuré / erreur / serveur injoignable ; retour interne uniquement, inchangé) ;
+- pages Paramètres : Formations (liste + panneau, révision = nouvelle version sans perte
+  de champ), Prescripteurs (actif / inactif, confirmation), Modèles (liste compacte,
+  détail, sélecteur d'indicateurs de la Veille réutilisé), Versions du référentiel
+  (coquille jamais activable, activation confirmée), Google Drive (état, autorisations
+  en clair, jamais de donnée OAuth brute) ;
+- dernières boîtes natives supprimées : **plus aucun `alert` / `confirm`** dans le client ;
+- corrections mineures : case « À confirmer d'abord » (Preuves mobile), libellés des
+  boutons en cours d'action (Indicateurs) ;
+- aucune API, aucun droit, aucune migration, aucune règle métier, aucune configuration
+  Railway ;
+- **380/380 serveur + 111/111 client** (×2), build OK, `git diff --check` OK ; smoke Chrome
+  (PG jetable) **325/325**, 1440 / 900 / 390 px + zoom 200 %, aucune erreur console ;
+- commit `eea1a2c` poussé (sans force) ⇒ Railway SUCCESS, `/api/health` 200, 13 migrations
+  (001→013), aucune `014`, aucune appliquée ce jour ; volumes inchangés (utilisateurs 1,
+  formations 1, sessions 1, groupes 3, inscriptions 8, absences 1, resultats_qcm 2,
+  satisfactions 2, preuves 144, veille 1, audits_history 0, modèles 2, générations 4,
+  documents 6), lus en transaction `READ ONLY` ; ancien conteneur : SIGTERM reçu par Node,
+  serveur HTTP et pool fermés ~4 s après le signal ;
+- smoke production anonyme **89/89** (14 routes, liens directs, rafraîchissement,
+  précédent/suivant, responsive), aucune erreur console ; API métier 401 ; `/api/me`
+  public sans donnée sensible ; bundle déployé identique au build local, sans boîte native.
+- backlog **« Après VF »** séparé (`UX_UI_AUDIT.md` §16) — **aucune fonction commencée**.
+
+### État
+
+**VF principale de Vigie TERMINÉE et VALIDÉE EN PRODUCTION.**

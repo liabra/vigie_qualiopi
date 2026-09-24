@@ -1104,4 +1104,97 @@ indicateur est obligatoire).
 
 ---
 
-*Fin du document. Aucun fichier de code n'a été modifié pour produire cet audit.*
+## 14. UX-4 — Accueil, Indicateurs, Preuves, Audits
+
+### 14.1 Architecture
+
+Refonte strictement frontend. Aucune API, aucune migration, aucun droit et
+aucune règle métier modifiés. Deux modules purs ajoutés (testables seuls) :
+
+- `client/src/accueil/format.js` — `construireAccueil(...)` : agrégation en
+  lecture seule des listes déjà fournies par les API existantes
+  (`/api/referentiel`, `/api/preuves`, `/api/veille`, `/api/sessions`,
+  `/api/audits`) ;
+- `client/src/preuves/format.js` — `grouperParIndicateur`, `filtrerPreuves`,
+  `filtresActifs`, libellés `SOURCES`/`ALERTES`.
+
+Composants refondus : `pages/Accueil.jsx`, `Preuves.jsx`, `AuditsHistory.jsx`,
+`Referentiel.jsx` (ajout du détail). Styles ajoutés dans `styles.css`.
+
+### 14.2 Accueil
+
+- **Admin** : blocs sobres « À traiter » (preuves à confirmer / périmées /
+  bientôt, veille avec action à réaliser), « Activité formation » (sessions en
+  cours + prochaines), « Qualité » (indicateurs au vert, preuves rattachées,
+  dernier audit) et « Raccourcis » (Sessions, Preuves, Veille, Audits).
+- **Contributeur** : sessions utiles + raccourcis en lecture (Sessions,
+  Indicateurs, Preuves, Veille, Audits). Aucune alerte ni action admin.
+- **Google Drive** : plus de gros bloc permanent ; un petit bandeau admin
+  n'apparaît que si une action est requise (non connecté, reconnexion requise,
+  erreur). La logique OAuth est inchangée.
+- Aucune nouvelle API : tout est déduit des données déjà chargées.
+
+### 14.3 Preuves — vue « par indicateur »
+
+- Deux vues : **Par indicateur** (défaut) et **Toutes les preuves**, la vue est
+  conservée dans l'URL (`?vue=toutes`).
+- Vue par indicateur : Critère → Indicateur → preuves liées. Les indicateurs
+  **sans preuve** restent visibles (« Aucune preuve rattachée ») ; les
+  indicateurs marqués non applicables sont signalés, jamais masqués.
+- Ligne compacte : titre, source (Manuelle / Import Drive / Génération),
+  statut, échéance, nombre de fichiers, actions principales. Les réglages
+  avancés (mode de fichiers, session/groupe, échéance, confirmation,
+  correction, suppression) vivent dans un **panneau latéral** (`Drawer`).
+- Création en panneau (plus de formulaire ouvert en permanence).
+- Filtres : recherche, source, statut, échéance, indicateur — dans l'URL.
+  Deep-link supporté : `/preuves?indicateur=<numero>` (utilisé depuis le détail
+  d'un indicateur).
+- Toutes les capacités existantes sont conservées : import du classeur, aperçu
+  sans écriture, sélection multiple + changement de statut en masse, recherche
+  Drive, échéances (périmée / bientôt), confirmation sans fichier.
+
+### 14.4 Indicateurs
+
+- Regroupement par critère conservé, critères repliables, recherche
+  numéro/texte.
+- Nouveau **détail en panneau** par indicateur : libellé, critère,
+  applicabilité, nombre de preuves, catégories, et lien
+  `Voir les preuves de cet indicateur` → `/preuves?indicateur=<numero>`.
+- `/indicateurs/non-applicables` reste fonctionnel, métier inchangé.
+
+### 14.5 Audits
+
+- Liste lisible (type, date, organisme, résultat, non-conformités) + bouton
+  Ouvrir.
+- **Fiche en panneau** : synthèse (date, contexte, résultat), constats
+  (non-conformités), suivi (commentaires), rapport Drive.
+- **Formulaire d'enregistrement en panneau** (plus ouvert en permanence).
+  Aucune boîte `alert`/`confirm` native dans le périmètre Audits.
+
+### 14.6 Limites backend (aucune évolution requise)
+
+- **Lien Veille → Preuves filtré** : impossible sans nouvelle API — l'API
+  `/api/preuves` n'accepte pas de filtre par `veille_id`. Le lien existant vers
+  l'écran Preuves reste global (documenté, pas de backend créé).
+- Le filtre « indicateur » de `/api/preuves` porte sur le **numéro** (pas
+  l'identifiant interne) ; le client s'appuie dessus pour les deep-links.
+- Les preuves sont chargées en une passe (≤ 1000, plafond serveur) et filtrées
+  côté client, ce qui permet la vue groupée et n'importe quelle combinaison de
+  filtres sans nouvel appel.
+
+### 14.7 Responsive
+
+- Desktop prioritaire ; mobile : critères/indicateurs en sections empilées,
+  preuves condensées, filtres empilés, aucun scroll horizontal global (vérifié
+  en 1440 / 900 / 390 px).
+
+### 14.8 Tests
+
+- Modules purs : `preuves-format.test.js`, `accueil-format.test.js`.
+- Intégration (harness node:test + jsdom existant) : `preuves.test.jsx`,
+  `audits.test.jsx`, `accueil.test.jsx`, `indicateurs.test.jsx`.
+- Serveur inchangé : 380/380 attendus.
+
+---
+
+*Fin du document.*

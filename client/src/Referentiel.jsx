@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "./api.js";
+import { Button, Drawer } from "./ui/index.js";
 
 const STATUTS = {
   maitrise: "Maîtrisé",
@@ -36,6 +38,8 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
   const [versions, setVersions] = useState(null);
   const [versionErr, setVersionErr] = useState(null);
   const [nouvelle, setNouvelle] = useState(null);
+  // Indicateur dont le détail est ouvert dans le panneau latéral.
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
@@ -340,15 +344,20 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
                         {!i.texte_source_verifie && <span className="pill warn">Provisoire</span>}
                       </div>
                     </div>
-                    {admin && (
-                      <button
-                        className="btn petit non-applicable"
-                        onClick={() => basculerNonApplicable(i)}
-                        disabled={enCours === i.id}
-                      >
-                        {enCours === i.id ? "…" : "Marquer non applicable"}
+                    <div className="ind-actions">
+                      <button className="btn petit" onClick={() => setDetail({ ...i, critereNumero: c.numero, critereLibelle: c.libelle })}>
+                        Détail
                       </button>
-                    )}
+                      {admin && (
+                        <button
+                          className="btn petit non-applicable"
+                          onClick={() => basculerNonApplicable(i)}
+                          disabled={enCours === i.id}
+                        >
+                          {enCours === i.id ? "…" : "Marquer non applicable"}
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -356,6 +365,33 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
           </article>
         );
       })}
+
+      <Drawer
+        ouvert={!!detail} titre={detail ? `Indicateur ${detail.numero}` : ""} onFermer={() => setDetail(null)}
+        description={detail ? `Critère ${detail.critereNumero} — ${detail.critereLibelle}` : undefined}
+      >
+        {detail && (
+          <div className="ind-detail">
+            <p>{detail.libelle}</p>
+            <div className="tags">
+              <span className={"pill statut-" + detail.statut}>{STATUTS[detail.statut]}</span>
+              {detail.non_applicable_force
+                ? <span className="pill statut-non_applicable">Non applicable{detail.non_applicable_motif ? ` · ${detail.non_applicable_motif}` : ""}</span>
+                : <span className="pill">Applicable</span>}
+              <span className="pill">{detail.nb_preuves} preuve(s)</span>
+              {detail.nb_a_confirmer > 0 && <span className="pill warn">{detail.nb_a_confirmer} à confirmer</span>}
+            </div>
+            {detail.categories?.length > 0 && (
+              <div className="tags">
+                {TOUTES_CATEGORIES.every((c) => detail.categories.includes(c))
+                  ? <span className="pill">Toutes catégories</span>
+                  : detail.categories.map((c) => <span key={c} className="pill" title={TITRES[c]}>{c}</span>)}
+              </div>
+            )}
+            <Button to={`/preuves?indicateur=${detail.numero}`}>Voir les preuves de cet indicateur</Button>
+          </div>
+        )}
+      </Drawer>
     </section>
   );
 }

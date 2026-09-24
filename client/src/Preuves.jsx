@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "./api.js";
 import { RechercheDrive } from "./RechercheDrive.jsx";
+import { Badge, Button, ConfirmDialog, Drawer, EmptyState } from "./ui/index.js";
+import { useTexteUrl } from "./ui/useTexteUrl.js";
+import { SOURCES, ALERTES, filtresActifs, filtrerPreuves, grouperParIndicateur } from "./preuves/format.js";
 
 const STATUTS = {
   maitrise: "Maîtrisé",
@@ -8,12 +12,39 @@ const STATUTS = {
   a_risque: "À risque",
   non_applicable: "Non applicable",
 };
+const TONS_STATUT = { maitrise: "success", a_consolider: "warning", a_risque: "error", non_applicable: "neutral" };
 
 const MODES = {
   unique: "Un seul fichier",
   multiple: "Plusieurs fichiers",
   par_stagiaire: "Un par stagiaire",
 };
+
+const TYPES_ALERTE = {
+  revision_periodique: "Révision périodique",
+  echeance_fixe: "Échéance fixe",
+};
+
+// Réglage de l'échéance d'un document permanent (CGV, habilitation,
+// contrat…) : révision périodique ou date fixe. La rupture réglementaire
+// (liée à la veille) n'a pas encore d'écran, donc pas de contrôle ici.
+const echeanceIncomplete = (p) =>
+  (p.type_alerte === "revision_periodique" && !p.periodicite_mois) ||
+  (p.type_alerte === "echeance_fixe" && !p.date_echeance);
+
+// Les indicateurs du référentiel actif, groupés par critère. Sert au
+// formulaire de création et à la correction de l'indicateur d'une preuve.
+function OptionsIndicateurs({ referentiel }) {
+  return (referentiel?.criteres || []).map((c) => (
+    <optgroup key={c.id} label={`Critère ${c.numero}`}>
+      {c.indicateurs.map((i) => (
+        <option key={i.id} value={i.id}>
+          {i.numero} · {i.libelle.length > 90 ? i.libelle.slice(0, 90) + "…" : i.libelle}
+        </option>
+      ))}
+    </optgroup>
+  ));
+}
 
 // Fichiers rattachés, écart au nombre attendu, et réglages du mode.
 function Fichiers({ p, actions, admin, sessions }) {
@@ -101,10 +132,6 @@ function Fichiers({ p, actions, admin, sessions }) {
         </div>
       )}
 
-      {/* Un seul composant de recherche, deux usages : en mode multiple il
-          ajoute une pièce, en mode « un seul fichier » il remplace la
-          pièce existante. Ce second cas n'était possible que sur une preuve
-          « à confirmer » : une preuve confirmée n'était plus réparable. */}
       {admin && (
         <RechercheDrive
           dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
@@ -119,45 +146,8 @@ function Fichiers({ p, actions, admin, sessions }) {
   );
 }
 
-// Contrôles qu'un clic sur la ligne ne doit jamais transformer en sélection :
-// liens, boutons, champs, select, et tout ce qu'ils contiennent (candidats
-// proposés, formulaire de recherche Drive…).
-const CIBLE_INTERACTIVE = "a, button, input, select, label";
-
-const TYPES_ALERTE = {
-  revision_periodique: "Révision périodique",
-  echeance_fixe: "Échéance fixe",
-};
-const ALERTE_LIBELLE = { perime: "Périmé", bientot: "Bientôt à revoir" };
-
-// Réglage de l'échéance d'un document permanent (CGV, habilitation,
-// contrat…) : révision périodique ou date fixe. La rupture réglementaire
-// (liée à la veille) n'a pas encore d'écran, donc pas de contrôle ici.
-// Type choisi mais valeur pas encore saisie : état transitoire admis par
-// la base (migration 007) et par la vue, qui ne calcule alors aucune
-// alerte. Il ne doit surtout pas passer pour un réglage terminé.
-const echeanceIncomplete = (p) =>
-  (p.type_alerte === "revision_periodique" && !p.periodicite_mois) ||
-  (p.type_alerte === "echeance_fixe" && !p.date_echeance);
-
-// Les indicateurs du référentiel actif, groupés par critère. Sert au
-// formulaire de création et à la correction de l'indicateur d'une preuve.
-function OptionsIndicateurs({ referentiel }) {
-  return (referentiel?.criteres || []).map((c) => (
-    <optgroup key={c.id} label={`Critère ${c.numero}`}>
-      {c.indicateurs.map((i) => (
-        <option key={i.id} value={i.id}>
-          {i.numero} · {i.libelle.length > 90 ? i.libelle.slice(0, 90) + "…" : i.libelle}
-        </option>
-      ))}
-    </optgroup>
-  ));
-}
-
 // Champs de l'échéance, partagés par le réglage d'une preuve existante et
-// par le formulaire de création : une seule définition, pour qu'une preuve
-// créée et une preuve corrigée se règlent exactement pareil. « Marquer
-// révisé » reste à part : c'est une action sur une preuve qui existe déjà.
+// par le formulaire de création.
 function ChampsEcheance({ typeAlerte, periodiciteMois, dateEcheance, onChamp }) {
   const incomplete = (typeAlerte === "revision_periodique" && !periodiciteMois)
     || (typeAlerte === "echeance_fixe" && !dateEcheance);
@@ -202,52 +192,47 @@ function ChampsEcheance({ typeAlerte, periodiciteMois, dateEcheance, onChamp }) 
   );
 }
 
-function Echeance({ p, actions, admin }) {
-  if (!admin && !p.type_alerte) return null;
-  const incomplete = echeanceIncomplete(p);
+// Ligne compacte d'une preuve : titre, source, statut, échéance, fichiers
+// et actions principales. Les réglages avancés vivent dans le panneau.
+function LignePreuve({ p, admin, selectionnee, onBasculerSelection, onOuvrir }) {
   return (
-    <div className="fichiers-preuve">
-      {p.alerte_statut && p.alerte_statut !== "ok" && (
-        <span className={"pill " + (p.alerte_statut === "perime" ? "off" : "warn")}>
-          {ALERTE_LIBELLE[p.alerte_statut]}
-        </span>
-      )}
-      {incomplete && <span className="pill warn">Échéance à configurer</span>}
-      {admin && (
-        <>
-          <ChampsEcheance
-            typeAlerte={p.type_alerte} periodiciteMois={p.periodicite_mois} dateEcheance={p.date_echeance}
-            onChamp={(champ, valeur) => actions.reglage(p, { [champ]: valeur })}
+    <li className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (p.incomplet ? " incomplete" : "") + (selectionnee ? " selectionnee" : "")}>
+      <div className="preuve-tete">
+        {admin && (
+          <input
+            type="checkbox" className="case-selection" checked={selectionnee}
+            onChange={() => onBasculerSelection(p.id)} aria-label={`Sélectionner « ${p.titre} »`}
           />
-          {p.type_alerte === "revision_periodique" && (
-            <div className="reglages-fichiers">
-              <span className="muted small">
-                Dernière révision : {p.date_derniere_revision ? new Date(p.date_derniere_revision).toLocaleDateString("fr-FR") : "jamais notée"}
-              </span>
-              <button className="btn petit" onClick={() => actions.reglage(p, { marquer_revise: true })}>
-                Marquer révisé aujourd'hui
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
+        )}
+        <span className="ind-num petit" title={`Indicateur ${p.indicateur} · Critère ${p.critere}`}>{p.indicateur}</span>
+        <div className="preuve-titre">
+          <strong>{p.titre}</strong>
+          <div className="preuve-meta">
+            {SOURCES[p.source] && <span className="pill">{SOURCES[p.source]}</span>}
+            {p.a_confirmer && <span className="pill off">À confirmer</span>}
+            {p.incomplet && <span className="pill warn">Incomplet</span>}
+            {p.alerte_statut && p.alerte_statut !== "ok" && (
+              <span className={"pill " + (p.alerte_statut === "perime" ? "off" : "warn")}>{ALERTES[p.alerte_statut]}</span>
+            )}
+            <span className="pill">{p.nb_fichiers} fichier(s)</span>
+          </div>
+        </div>
+        <Badge ton={TONS_STATUT[p.statut] || "neutral"}>{STATUTS[p.statut] || p.statut}</Badge>
+        <Button compact onClick={() => onOuvrir(p.id)}>Ouvrir</Button>
+      </div>
+    </li>
   );
 }
 
-function LignePreuve({ p, actions, admin, sessions, referentiel, selectionnee, onBasculerSelection }) {
-  // Correction du titre, de la description ou de l'indicateur : repliée par
-  // défaut, une ligne à la fois.
+// Panneau de détail : réglages complets d'une preuve (fichiers, échéance,
+// statut, correction, confirmation, suppression). Rien n'y est supprimé de
+// ce que l'ancienne carte affichait en permanence.
+function DetailPreuve({ p, actions, admin, sessions, referentiel, onFermer }) {
   const [edite, setEdite] = useState(false);
   const [champs, setChamps] = useState(null);
 
-  function clicLigne(e) {
-    if (!admin || e.target.closest(CIBLE_INTERACTIVE)) return;
-    onBasculerSelection(p.id);
-  }
-
   function basculerEdition() {
-    if (edite) { setEdite(false); return; }
+    if (edite) { setEdite(false); setChamps(null); return; }
     setChamps({
       titre: p.titre,
       description: p.description || "",
@@ -257,151 +242,217 @@ function LignePreuve({ p, actions, admin, sessions, referentiel, selectionnee, o
   }
 
   return (
-    <li
-      className={"preuve" + (p.a_confirmer ? " a-confirmer" : "") + (p.incomplet ? " incomplete" : "")
-        + (selectionnee ? " selectionnee" : "") + (admin ? " cliquable" : "")}
-      onClick={clicLigne}
+    <Drawer
+      ouvert={!!p} titre={p?.titre} onFermer={onFermer}
+      description={p ? `Indicateur ${p.indicateur} · Critère ${p.critere}${SOURCES[p.source] ? ` · ${SOURCES[p.source]}` : ""}` : undefined}
     >
-      <div className="preuve-tete">
-        {admin && (
-          <input
-            type="checkbox" className="case-selection" checked={selectionnee}
-            onChange={() => onBasculerSelection(p.id)} aria-label={`Sélectionner « ${p.titre} »`}
-          />
-        )}
-        <span className="ind-num petit" title={`Critère ${p.critere}`}>{p.indicateur}</span>
-        <div className="preuve-titre">
-          <strong>{p.titre}</strong>
-          {p.description && <div className="muted small">{p.description}</div>}
-          <div className="muted small">
-            {MODES[p.mode_fichiers]}
-            {p.etat_source && <> · classeur : « {p.etat_source} »</>}
-            {p.occurrences > 1 && <> · {p.occurrences} lignes</>}
-          </div>
-        </div>
-        {admin ? (
-          <select value={p.statut} onChange={(e) => actions.statut(p, e.target.value)} aria-label="Statut">
-            {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        ) : <span className={"pill statut-" + p.statut}>{STATUTS[p.statut]}</span>}
-      </div>
+      {p && (
+        <div className="zone-actions">
+          {p.description && <p className="muted">{p.description}</p>}
 
-      {/* Toute cette zone est dédiée aux actions : un clic dans un espace
-          entre deux boutons ne doit pas non plus basculer la sélection,
-          pas seulement un clic sur un contrôle précis. */}
-      <div className="zone-actions" onClick={(e) => e.stopPropagation()}>
-        <Fichiers p={p} actions={actions} admin={admin} sessions={sessions} />
-        <Echeance p={p} actions={actions} admin={admin} />
-        {admin && (
-          <div className="preuve-actions">
-            <button className="btn petit" onClick={basculerEdition}>{edite ? "Annuler" : "Modifier"}</button>
-            <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
-          </div>
-        )}
-        {admin && edite && champs && (
-          <div className="formulaire">
+          {admin && (
             <label className="champ">
-              <span className="muted small">Titre</span>
-              <input value={champs.titre} aria-label="Titre de la preuve"
-                onChange={(e) => setChamps({ ...champs, titre: e.target.value })} />
-            </label>
-            <label className="champ">
-              <span className="muted small">Description</span>
-              <textarea rows={2} value={champs.description} aria-label="Description de la preuve"
-                onChange={(e) => setChamps({ ...champs, description: e.target.value })} />
-            </label>
-            <label className="champ">
-              <span className="muted small">Indicateur</span>
-              <select value={champs.indicateur_id} aria-label="Indicateur de la preuve"
-                onChange={(e) => setChamps({ ...champs, indicateur_id: e.target.value })}>
-                <OptionsIndicateurs referentiel={referentiel} />
+              <span className="muted small">Statut</span>
+              <select value={p.statut} onChange={(e) => actions.statut(p, e.target.value)} aria-label="Statut">
+                {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </label>
-            <div className="preuve-actions">
-              <button className="btn primary petit"
-                onClick={() => actions.modifier(p, champs).then((ok) => ok && setEdite(false))}>
-                Enregistrer
-              </button>
-              <button className="btn petit" onClick={() => setEdite(false)}>Annuler</button>
-            </div>
-          </div>
-        )}
-        {admin && p.a_confirmer && (
-          <>
-            {p.mode_fichiers === "unique" && (
-              <RechercheDrive
-                candidats={p.candidats || []}
-                dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
-                surChoix={(f) => actions.lier(p, f)}
-                onErreur={actions.erreur}
+          )}
+
+          <Fichiers p={p} actions={actions} admin={admin} sessions={sessions} />
+
+          {admin ? (
+            <div className="fichiers-preuve">
+              <ChampsEcheance
+                typeAlerte={p.type_alerte} periodiciteMois={p.periodicite_mois} dateEcheance={p.date_echeance}
+                onChamp={(champ, valeur) => actions.reglage(p, { [champ]: valeur })}
               />
-            )}
-            <div className="preuve-actions">
-              <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
+              {p.type_alerte === "revision_periodique" && (
+                <div className="reglages-fichiers">
+                  <span className="muted small">
+                    Dernière révision : {p.date_derniere_revision ? new Date(p.date_derniere_revision).toLocaleDateString("fr-FR") : "jamais notée"}
+                  </span>
+                  <button className="btn petit" onClick={() => actions.reglage(p, { marquer_revise: true })}>
+                    Marquer révisé aujourd'hui
+                  </button>
+                </div>
+              )}
             </div>
-          </>
-        )}
-      </div>
-    </li>
+          ) : (
+            (p.alerte_statut && p.alerte_statut !== "ok") && (
+              <span className={"pill " + (p.alerte_statut === "perime" ? "off" : "warn")}>{ALERTES[p.alerte_statut]}</span>
+            )
+          )}
+
+          {admin && p.a_confirmer && (
+            <>
+              {p.mode_fichiers === "unique" && (
+                <RechercheDrive
+                  candidats={p.candidats || []}
+                  dejaRattaches={(p.fichiers || []).map((f) => f.drive_file_id)}
+                  surChoix={(f) => actions.lier(p, f)}
+                  onErreur={actions.erreur}
+                />
+              )}
+              <div className="preuve-actions">
+                <button className="btn petit" onClick={() => actions.confirmer(p)}>Confirmer sans fichier</button>
+              </div>
+            </>
+          )}
+
+          {admin && (
+            <>
+              {edite && champs && (
+                <div className="formulaire">
+                  <label className="champ">
+                    <span className="muted small">Titre</span>
+                    <input value={champs.titre} aria-label="Titre de la preuve"
+                      onChange={(e) => setChamps({ ...champs, titre: e.target.value })} />
+                  </label>
+                  <label className="champ">
+                    <span className="muted small">Description</span>
+                    <textarea rows={2} value={champs.description} aria-label="Description de la preuve"
+                      onChange={(e) => setChamps({ ...champs, description: e.target.value })} />
+                  </label>
+                  <label className="champ">
+                    <span className="muted small">Indicateur</span>
+                    <select value={champs.indicateur_id} aria-label="Indicateur de la preuve"
+                      onChange={(e) => setChamps({ ...champs, indicateur_id: e.target.value })}>
+                      <OptionsIndicateurs referentiel={referentiel} />
+                    </select>
+                  </label>
+                  <div className="preuve-actions">
+                    <button className="btn primary petit"
+                      onClick={() => actions.modifier(p, champs).then((ok) => ok && setEdite(false))}>
+                      Enregistrer
+                    </button>
+                    <button className="btn petit" onClick={() => setEdite(false)}>Annuler</button>
+                  </div>
+                </div>
+              )}
+              <div className="preuve-actions">
+                <button className="btn petit" onClick={basculerEdition}>{edite ? "Annuler" : "Modifier"}</button>
+                <button className="btn petit danger" onClick={() => actions.supprimer(p)}>Supprimer</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Drawer>
+  );
+}
+
+// Vue « par indicateur » : critère → indicateur → preuves liées. Les
+// indicateurs sans preuve restent visibles (« Aucune preuve rattachée »).
+function VueParIndicateur({ groupes, admin, selectionnee, onBasculerSelection, onOuvrir }) {
+  return (
+    <div className="preuves-par-indicateur">
+      {groupes.map((c) => (
+        <section key={c.id} className="card preuves-critere" aria-labelledby={`preuves-critere-${c.id}`}>
+          <h3 id={`preuves-critere-${c.id}`} className="preuves-critere__titre">
+            <span className="num">Critère {c.numero}</span>
+            <span>{c.libelle}</span>
+          </h3>
+          <ul className="preuves-indicateurs">
+            {c.indicateurs.map((i) => (
+              <li key={i.id} className="preuves-indicateur">
+                <div className="preuves-indicateur__tete">
+                  <span className="ind-num petit" title={`Indicateur ${i.numero}`}>{i.numero}</span>
+                  <span className="preuves-indicateur__libelle">Indicateur {i.numero} — {i.libelle}</span>
+                  <span className="pill">{i.preuves.length} preuve(s)</span>
+                  {i.non_applicable_force && <span className="pill statut-non_applicable">Non applicable</span>}
+                </div>
+                {i.preuves.length === 0 ? (
+                  <p className="muted small">{i.non_applicable_force ? "Non applicable" : "Aucune preuve rattachée"}</p>
+                ) : (
+                  <ul className="liste-preuves">
+                    {i.preuves.map((p) => (
+                      <LignePreuve
+                        key={p.id} p={p} admin={admin}
+                        selectionnee={selectionnee.has(p.id)} onBasculerSelection={onBasculerSelection}
+                        onOuvrir={onOuvrir}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
 export default function Preuves({ admin, onChange }) {
-  const [data, setData] = useState(null);
-  const [filtre, setFiltre] = useState({ a_confirmer: false, statut: "", q: "", alerte: "" });
+  const [params, setParams] = useSearchParams();
+  const [q, setQ] = useTexteUrl("q");
+  const vue = params.get("vue") === "toutes" ? "toutes" : "indicateurs";
+  const indicateur = params.get("indicateur") || "";
+  const aConfirmer = params.get("a_confirmer") === "1";
+  const statut = params.get("statut") || "";
+  const alerte = params.get("alerte") || "";
+  const source = params.get("source") || "";
+
+  const [preuves, setPreuves] = useState(null);
+  const [referentiel, setReferentiel] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [err, setErr] = useState(null);
   const [dernier, setDernier] = useState(null);
   const [occupe, setOccupe] = useState(null);
   const [apercu, setApercu] = useState(null);
-  // Sélection multiple : remise à zéro à chaque nouveau chargement (filtre
-  // changé, import relancé), pour ne jamais garder un id qui n'est plus
-  // affiché.
   const [selection, setSelection] = useState(() => new Set());
   const [statutMasse, setStatutMasse] = useState("maitrise");
   const [enCours, setEnCours] = useState(false);
-  const [sessions, setSessions] = useState([]);
-  // Référentiel actif : sert à choisir l'indicateur d'une preuve, à la
-  // création comme à la correction.
-  const [referentiel, setReferentiel] = useState(null);
-  // Formulaire de création manuelle : null quand il est fermé.
   const [creation, setCreation] = useState(null);
   const [creationEnCours, setCreationEnCours] = useState(false);
+  const [ouverteId, setOuverteId] = useState(null);
+  // Suppression confirmée via ConfirmDialog (plus de window.confirm).
+  const [aSupprimer, setASupprimer] = useState(null);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
 
   const charger = useCallback(async () => {
-    const p = new URLSearchParams();
-    if (filtre.a_confirmer) p.set("a_confirmer", "1");
-    if (filtre.statut) p.set("statut", filtre.statut);
-    if (filtre.alerte) p.set("alerte", filtre.alerte);
-    if (filtre.q.trim()) p.set("q", filtre.q.trim());
     try {
-      setData(await api("/api/preuves?" + p));
-      setSelection(new Set());
+      const r = await api("/api/preuves");
+      setPreuves(r.preuves);
+      setErr(null);
     } catch (e) { setErr(e.message); }
-  }, [filtre]);
+  }, []);
 
   useEffect(() => { charger(); }, [charger]);
+  useEffect(() => { api("/api/referentiel").then(setReferentiel).catch(() => {}); }, []);
+  useEffect(() => { api("/api/sessions").then((r) => setSessions(r.sessions)).catch(() => {}); }, []);
   useEffect(() => {
     if (admin) api("/api/import/dernier").then((r) => setDernier(r.import)).catch(() => {});
   }, [admin]);
-  // Sessions disponibles pour le mode « par stagiaire » : c'est leur
-  // nombre d'inscrits qui fixe le nombre de fichiers attendu.
-  useEffect(() => {
-    api("/api/sessions").then((r) => setSessions(r.sessions)).catch(() => {});
-  }, []);
-  useEffect(() => {
-    if (!admin) return;
-    api("/api/referentiel").then(setReferentiel).catch(() => {});
-  }, [admin]);
 
-  // Création manuelle : « Ajouter une preuve ».
-  function ouvrirCreation() {
-    if (creation) { setCreation(null); return; }
-    setCreation({
-      indicateur_ids: [], titre: "", description: "", statut: "a_risque",
-      mode_fichiers: "unique", type_alerte: null, periodicite_mois: null,
-      date_echeance: null, fichier: null,
+  // La sélection ne doit jamais retenir un identifiant qui n'est plus affiché.
+  const filtres = { q, statut, alerte, source, a_confirmer: aConfirmer };
+  const actifs = filtresActifs(filtres);
+  const toutes = preuves || [];
+  const filtrees = filtrerPreuves(toutes, { ...filtres, indicateur });
+  const idsAffiches = filtrees.map((p) => p.id);
+  useEffect(() => {
+    setSelection((s) => {
+      const visibles = new Set(idsAffiches);
+      const n = new Set([...s].filter((id) => visibles.has(id)));
+      return n.size === s.size ? s : n;
+    });
+  }, [idsAffiches.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function majFiltre(cle, valeur) {
+    setParams((courants) => {
+      const p = new URLSearchParams(courants);
+      if (valeur && !(cle === "vue" && valeur === "indicateurs")) p.set(cle, valeur); else p.delete(cle);
+      return p;
     });
   }
+
+  const ouvrirCreation = () => setCreation({
+    indicateur_ids: [], titre: "", description: "", statut: "a_risque",
+    mode_fichiers: "unique", type_alerte: null, periodicite_mois: null,
+    date_echeance: null, fichier: null,
+  });
 
   async function enregistrerCreation() {
     if (!creation.indicateur_ids.length) return setErr("Choisissez au moins un indicateur.");
@@ -449,16 +500,10 @@ export default function Preuves({ admin, onChange }) {
   }
 
   const majLocale = (p, champs) =>
-    setData((d) => ({ ...d, preuves: d.preuves.map((x) => (x.id === p.id ? { ...x, ...champs } : x)) }));
+    setPreuves((liste) => (liste || []).map((x) => (x.id === p.id ? { ...x, ...champs } : x)));
 
-  // Une preuve « à risque » qu'on confirme (fichier trouvé ou « sans
-  // fichier ») passe à « Maîtrisé » : c'est le serveur qui tranche
-  // (RETURNING statut), ceci n'est qu'un affichage immédiat en attendant
-  // sa réponse.
   const statutApresConfirmation = (p) => (p.statut === "a_risque" ? "maitrise" : p.statut);
 
-  // Le compte rattaché, le compte attendu et l'écart sont calculés par le
-  // serveur : on recopie sa réponse, on ne la recalcule jamais ici.
   const compteurs = (r) =>
     Object.fromEntries(
       ["statut", "statut_effectif", "mode_fichiers", "nb_fichiers", "fichiers_attendus", "incomplet",
@@ -467,12 +512,10 @@ export default function Preuves({ admin, onChange }) {
         .map((k) => [k, r[k]])
     );
 
-  // Relit une seule ligne, sans recharger la liste : la sélection en cours
-  // et la position de défilement ne bougent pas.
   async function rafraichirLigne(p) {
     try {
       const { preuve } = await api(`/api/preuves/${p.id}`);
-      setData((d) => ({ ...d, preuves: d.preuves.map((x) => (x.id === preuve.id ? preuve : x)) }));
+      setPreuves((liste) => (liste || []).map((x) => (x.id === preuve.id ? preuve : x)));
     } catch { /* la ligne restera telle quelle jusqu'au prochain chargement */ }
   }
 
@@ -494,13 +537,10 @@ export default function Preuves({ admin, onChange }) {
           body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime, confirmer: true }),
         });
         majLocale(p, compteurs(r));
-        // L'identifiant de la pièce jointe vient du serveur : on relit la
-        // ligne pour pouvoir la retirer ensuite.
         await rafraichirLigne(p);
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
-    // Ajoute une pièce à une preuve qui en accepte plusieurs.
     async ajouterFichier(p, f) {
       try {
         const r = await api(`/api/preuves/${p.id}/fichiers`, {
@@ -508,15 +548,12 @@ export default function Preuves({ admin, onChange }) {
           body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime }),
         });
         majLocale(p, {
-          fichiers: [...p.fichiers.filter((x) => x.drive_file_id !== r.fichier.drive_file_id), r.fichier],
+          fichiers: [...(p.fichiers || []).filter((x) => x.drive_file_id !== r.fichier.drive_file_id), r.fichier],
           ...compteurs(r),
         });
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
-    // Mode « un seul fichier » : le fichier choisi REMPLACE l'ancien (le
-    // serveur retire les pièces puis insère la nouvelle). Le même appel vaut
-    // pour une preuve déjà confirmée, qui n'était pas réparable à l'écran.
     async remplacerFichier(p, f) {
       try {
         const r = await api(`/api/preuves/${p.id}`, {
@@ -528,8 +565,6 @@ export default function Preuves({ admin, onChange }) {
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
-    // Titre, description, indicateur : la ligne est relue depuis le serveur,
-    // car l'indicateur affiché est son NUMÉRO, que seul le serveur connaît.
     async modifier(p, champs) {
       try {
         await api(`/api/preuves/${p.id}`, { method: "PATCH", body: JSON.stringify(champs) });
@@ -539,15 +574,13 @@ export default function Preuves({ admin, onChange }) {
       } catch (e) { setErr(e.message); return false; }
     },
     async retirerFichier(p, fichier) {
-      majLocale(p, { fichiers: p.fichiers.filter((x) => x.id !== fichier.id) });
+      majLocale(p, { fichiers: (p.fichiers || []).filter((x) => x.id !== fichier.id) });
       try {
         const r = await api(`/api/preuves/${p.id}/fichiers/${fichier.id}`, { method: "DELETE" });
         majLocale(p, compteurs(r));
       } catch (e) { setErr(e.message); await rafraichirLigne(p); }
       onChange?.();
     },
-    // Mode de fichiers, session ou groupe rattaché : le nombre attendu est
-    // recalculé par le serveur, jamais deviné ici.
     async reglage(p, champs) {
       majLocale(p, champs);
       try {
@@ -564,19 +597,27 @@ export default function Preuves({ admin, onChange }) {
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
-    async supprimer(p) {
-      if (!window.confirm(`Supprimer la preuve « ${p.titre} » ?`)) return;
-      setData((d) => ({ ...d, preuves: d.preuves.filter((x) => x.id !== p.id) }));
-      setSelection((s) => { if (!s.has(p.id)) return s; const n = new Set(s); n.delete(p.id); return n; });
-      try {
-        await api(`/api/preuves/${p.id}`, { method: "DELETE" });
-        // Relecture : le total et les compteurs du tableau de bord viennent
-        // du serveur. En cas d'échec, la ligne supprimée réapparaît.
-        await charger();
-      } catch (e) { setErr(e.message); await charger(); }
-      onChange?.();
+    supprimer(p) {
+      setASupprimer(p);
     },
   };
+
+  // Confirmation explicite : le panneau demande, ConfirmDialog valide.
+  async function confirmerSuppression() {
+    const p = aSupprimer;
+    if (!p) return;
+    setSuppressionEnCours(true);
+    setPreuves((liste) => (liste || []).filter((x) => x.id !== p.id));
+    setSelection((s) => { if (!s.has(p.id)) return s; const n = new Set(s); n.delete(p.id); return n; });
+    setOuverteId((id) => (id === p.id ? null : id));
+    setASupprimer(null);
+    try {
+      await api(`/api/preuves/${p.id}`, { method: "DELETE" });
+      await charger();
+    } catch (e) { setErr(e.message); await charger(); }
+    finally { setSuppressionEnCours(false); }
+    onChange?.();
+  }
 
   function basculerSelection(id) {
     setSelection((s) => {
@@ -586,16 +627,15 @@ export default function Preuves({ admin, onChange }) {
     });
   }
 
-  const idsAffiches = data?.preuves.map((p) => p.id) || [];
   const toutSelectionne = idsAffiches.length > 0 && idsAffiches.every((id) => selection.has(id));
   const basculerTout = () => setSelection(toutSelectionne ? new Set() : new Set(idsAffiches));
 
   async function appliquerStatutMasse() {
     if (!selection.size || enCours) return;
     const ids = [...selection];
-    const idsSet = selection;
+    const idsSet = new Set(ids);
     setEnCours(true);
-    setData((d) => ({ ...d, preuves: d.preuves.map((x) => (idsSet.has(x.id) ? { ...x, statut: statutMasse } : x)) }));
+    setPreuves((liste) => (liste || []).map((x) => (idsSet.has(x.id) ? { ...x, statut: statutMasse } : x)));
     try {
       await api("/api/preuves", { method: "PATCH", body: JSON.stringify({ ids, statut: statutMasse }) });
       setSelection(new Set());
@@ -604,8 +644,27 @@ export default function Preuves({ admin, onChange }) {
     onChange?.();
   }
 
-  const aConfirmer = data?.preuves.filter((p) => p.a_confirmer).length || 0;
-  const perimees = data?.preuves.filter((p) => p.alerte_statut === "perime").length || 0;
+  const groupes = grouperParIndicateur(referentiel, toutes);
+  const groupesVisibles = actifs
+    ? groupes
+      .map((c) => ({
+        ...c,
+        indicateurs: c.indicateurs
+          .map((i) => ({ ...i, preuves: filtrerPreuves(i.preuves, filtres) }))
+          .filter((i) => i.preuves.length > 0),
+      }))
+      .filter((c) => c.indicateurs.length > 0)
+    : groupes;
+  const groupesFinaux = indicateur
+    ? groupesVisibles
+      .map((c) => ({ ...c, indicateurs: c.indicateurs.filter((i) => String(i.numero) === String(indicateur)) }))
+      .filter((c) => c.indicateurs.length > 0)
+    : groupesVisibles;
+
+  const ouverte = (toutes.find((p) => p.id === ouverteId)) || null;
+  const aConfirmerTotal = toutes.filter((p) => p.a_confirmer).length;
+  const perimees = toutes.filter((p) => p.alerte_statut === "perime").length;
+  const total = toutes.length;
 
   return (
     <section className="preuves">
@@ -613,16 +672,14 @@ export default function Preuves({ admin, onChange }) {
         <div>
           <h1>Preuves</h1>
           <p className="muted">
-            {data ? `${data.total} preuve(s)` : "Chargement…"}
-            {aConfirmer > 0 && <span className="text-erreur"> · {aConfirmer} à confirmer</span>}
+            {preuves ? `${total} preuve(s)` : "Chargement…"}
+            {aConfirmerTotal > 0 && <span className="text-erreur"> · {aConfirmerTotal} à confirmer</span>}
             {perimees > 0 && <span className="text-erreur"> · {perimees} périmée(s)</span>}
           </p>
         </div>
         {admin && (
           <div className="import-actions">
-            <button className="btn" onClick={ouvrirCreation} disabled={!!occupe}>
-              {creation ? "Fermer" : "Ajouter une preuve"}
-            </button>
+            <button className="btn" onClick={ouvrirCreation} disabled={!!occupe}>Ajouter une preuve</button>
             <button className="btn" onClick={() => lancerImport(true)} disabled={!!occupe}>
               {occupe === "apercu" ? "Lecture…" : "Aperçu du classeur"}
             </button>
@@ -634,6 +691,46 @@ export default function Preuves({ admin, onChange }) {
       </div>
 
       {err && <p className="flash erreur">{err}</p>}
+
+      <div className="preuves-vues" role="group" aria-label="Mode d'affichage des preuves">
+        <button type="button" aria-pressed={vue === "indicateurs"} className={"preuves-vue" + (vue === "indicateurs" ? " preuves-vue--active" : "")} onClick={() => majFiltre("vue", "indicateurs")}>
+          Par indicateur
+        </button>
+        <button type="button" aria-pressed={vue === "toutes"} className={"preuves-vue" + (vue === "toutes" ? " preuves-vue--active" : "")} onClick={() => majFiltre("vue", "toutes")}>
+          Toutes les preuves
+        </button>
+      </div>
+
+      <div className="filtres">
+        <input className="search" type="search" placeholder="Rechercher un document" aria-label="Rechercher une preuve"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+        <select value={source} onChange={(e) => majFiltre("source", e.target.value)} aria-label="Filtrer par source">
+          <option value="">Toutes les sources</option>
+          {Object.entries(SOURCES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={statut} onChange={(e) => majFiltre("statut", e.target.value)} aria-label="Filtrer par statut">
+          <option value="">Tous les statuts</option>
+          {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={alerte} onChange={(e) => majFiltre("alerte", e.target.value)} aria-label="Filtrer par échéance">
+          <option value="">Toutes les échéances</option>
+          <option value="perime">Périmées</option>
+          <option value="bientot">Bientôt à revoir</option>
+        </select>
+        <select value={indicateur} onChange={(e) => majFiltre("indicateur", e.target.value)} aria-label="Filtrer par indicateur">
+          <option value="">Tous les indicateurs</option>
+          {(referentiel?.criteres || []).flatMap((c) => c.indicateurs).map((i) => (
+            <option key={i.id} value={i.numero}>Indicateur {i.numero} — {i.libelle}</option>
+          ))}
+        </select>
+        <label className="champ case"><input type="checkbox" checked={aConfirmer}
+          onChange={(e) => majFiltre("a_confirmer", e.target.checked ? "1" : "")} /> À confirmer d'abord</label>
+        {(actifs || indicateur) && (
+          <button className="btn petit" onClick={() => setParams(new URLSearchParams(vue === "toutes" ? { vue: "toutes" } : {}))}>
+            Effacer les filtres
+          </button>
+        )}
+      </div>
 
       {apercu && (
         <div className="card apercu">
@@ -654,135 +751,156 @@ export default function Preuves({ admin, onChange }) {
         </p>
       )}
 
-      {admin && creation && (
-        <div className="card formulaire">
-          <strong>Nouvelle preuve</strong>
-          <p className="muted small">
-            Un document qui existe déjà sur le Drive : export EduSign, convention, habilitation,
-            justificatif… En choisissant plusieurs indicateurs, une preuve distincte est créée pour
-            chacun, toutes pointant sur le <strong>même fichier</strong>.
-          </p>
-          <label className="champ">
-            <span className="muted small">Indicateur(s) — un par preuve à créer</span>
-            <select
-              multiple size={8} aria-label="Indicateurs de la nouvelle preuve"
-              value={creation.indicateur_ids}
-              onChange={(e) => setCreation({ ...creation, indicateur_ids: [...e.target.selectedOptions].map((o) => o.value) })}
-            >
-              <OptionsIndicateurs referentiel={referentiel} />
-            </select>
-          </label>
-          <label className="champ">
-            <span className="muted small">Titre</span>
-            <input value={creation.titre} aria-label="Titre de la nouvelle preuve"
-              onChange={(e) => setCreation({ ...creation, titre: e.target.value })} />
-          </label>
-          <label className="champ">
-            <span className="muted small">Description (facultatif)</span>
-            <textarea rows={2} value={creation.description} aria-label="Description de la nouvelle preuve"
-              onChange={(e) => setCreation({ ...creation, description: e.target.value })} />
-          </label>
-          <div className="reglages-fichiers">
-            <label>
-              <span className="muted small">Statut</span>
-              <select value={creation.statut} aria-label="Statut de la nouvelle preuve"
-                onChange={(e) => setCreation({ ...creation, statut: e.target.value })}>
+      {preuves && preuves.length === 0 && (
+        <EmptyState titre="Aucune preuve">
+          {admin ? "Ajoutez une preuve, ou lancez l'import du classeur pour peupler le tableau de bord." : "Aucune preuve n'est rattachée pour l'instant."}
+        </EmptyState>
+      )}
+
+      {preuves && preuves.length > 0 && (
+        <>
+          {admin && vue === "toutes" && (
+            <div className="selection-entete">
+              <label>
+                <input type="checkbox" checked={toutSelectionne} onChange={basculerTout} aria-label="Tout sélectionner" />
+                Tout sélectionner ({idsAffiches.length})
+              </label>
+            </div>
+          )}
+
+          {admin && selection.size > 0 && (
+            <div className="barre-selection">
+              <span>{selection.size} preuve(s) sélectionnée(s)</span>
+              <select value={statutMasse} onChange={(e) => setStatutMasse(e.target.value)} aria-label="Nouveau statut pour la sélection">
                 {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </label>
-            <label>
-              <span className="muted small">Fichiers attendus</span>
-              <select value={creation.mode_fichiers} aria-label="Mode de fichiers de la nouvelle preuve"
-                onChange={(e) => setCreation({ ...creation, mode_fichiers: e.target.value })}>
-                {Object.entries(MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              <button className="btn primary petit" onClick={appliquerStatutMasse} disabled={enCours}>
+                {enCours ? "Application…" : "Changer le statut de la sélection"}
+              </button>
+              <button className="btn petit" onClick={() => setSelection(new Set())}>Désélectionner</button>
+            </div>
+          )}
+
+          {vue === "indicateurs" ? (
+            groupesFinaux.length === 0 ? (
+              <EmptyState titre="Aucun indicateur ne correspond." />
+            ) : (
+              <VueParIndicateur
+                groupes={groupesFinaux} admin={admin}
+                selectionnee={selection} onBasculerSelection={basculerSelection} onOuvrir={setOuverteId}
+              />
+            )
+          ) : (
+            filtrees.length === 0 ? (
+              <EmptyState titre="Aucune preuve ne correspond à ces filtres." />
+            ) : (
+              <ul className="liste-preuves">
+                {filtrees.map((p) => (
+                  <LignePreuve
+                    key={p.id} p={p} admin={admin}
+                    selectionnee={selection.has(p.id)} onBasculerSelection={basculerSelection}
+                    onOuvrir={setOuverteId}
+                  />
+                ))}
+              </ul>
+            )
+          )}
+        </>
+      )}
+
+      <DetailPreuve
+        p={ouverte} actions={actions} admin={admin} sessions={sessions}
+        referentiel={referentiel} onFermer={() => setOuverteId(null)}
+      />
+
+      <Drawer
+        ouvert={!!creation} titre="Nouvelle preuve" onFermer={() => setCreation(null)} taille="large"
+        description="Un document qui existe déjà sur le Drive : export EduSign, convention, habilitation, justificatif…"
+        pied={
+          <div className="preuve-actions">
+            <Button onClick={() => setCreation(null)}>Annuler</Button>
+            <Button variante="primary" onClick={enregistrerCreation} disabled={creationEnCours}>
+              {creationEnCours ? "Création…" : "Enregistrer la preuve"}
+            </Button>
+          </div>
+        }
+      >
+        {creation && (
+          <div className="zone-actions">
+            <label className="champ">
+              <span className="muted small">Indicateur(s) — un par preuve à créer</span>
+              <select
+                multiple size={8} aria-label="Indicateurs de la nouvelle preuve"
+                value={creation.indicateur_ids}
+                onChange={(e) => setCreation({ ...creation, indicateur_ids: [...e.target.selectedOptions].map((o) => o.value) })}
+              >
+                <OptionsIndicateurs referentiel={referentiel} />
               </select>
             </label>
-          </div>
-          <ChampsEcheance
-            typeAlerte={creation.type_alerte} periodiciteMois={creation.periodicite_mois}
-            dateEcheance={creation.date_echeance}
-            onChamp={(champ, valeur) => setCreation({ ...creation, [champ]: valeur })}
-          />
-          <div className="rattachement">
-            <span className="muted small">
-              {creation.fichier
-                ? `Fichier choisi : ${creation.fichier.nom}`
-                : "Aucun fichier choisi — facultatif : la preuve pourra être rattachée ensuite."}
-            </span>
-            <RechercheDrive
-              dejaRattaches={creation.fichier ? [creation.fichier.id] : []}
-              placeholder="Rechercher un fichier existant sur le Drive"
-              surChoix={(f) => setCreation({ ...creation, fichier: f })}
-              onErreur={setErr}
+            <label className="champ">
+              <span className="muted small">Titre</span>
+              <input value={creation.titre} aria-label="Titre de la nouvelle preuve"
+                onChange={(e) => setCreation({ ...creation, titre: e.target.value })} />
+            </label>
+            <label className="champ">
+              <span className="muted small">Description (facultatif)</span>
+              <textarea rows={2} value={creation.description} aria-label="Description de la nouvelle preuve"
+                onChange={(e) => setCreation({ ...creation, description: e.target.value })} />
+            </label>
+            <div className="reglages-fichiers">
+              <label>
+                <span className="muted small">Statut</span>
+                <select value={creation.statut} aria-label="Statut de la nouvelle preuve"
+                  onChange={(e) => setCreation({ ...creation, statut: e.target.value })}>
+                  {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="muted small">Fichiers attendus</span>
+                <select value={creation.mode_fichiers} aria-label="Mode de fichiers de la nouvelle preuve"
+                  onChange={(e) => setCreation({ ...creation, mode_fichiers: e.target.value })}>
+                  {Object.entries(MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+            </div>
+            <ChampsEcheance
+              typeAlerte={creation.type_alerte} periodiciteMois={creation.periodicite_mois}
+              dateEcheance={creation.date_echeance}
+              onChamp={(champ, valeur) => setCreation({ ...creation, [champ]: valeur })}
             />
-            {creation.fichier && (
-              <button className="btn petit" onClick={() => setCreation({ ...creation, fichier: null })}>
-                Retirer ce fichier
-              </button>
-            )}
+            <div className="rattachement">
+              <span className="muted small">
+                {creation.fichier
+                  ? `Fichier choisi : ${creation.fichier.nom}`
+                  : "Aucun fichier choisi — facultatif : la preuve pourra être rattachée ensuite."}
+              </span>
+              <RechercheDrive
+                dejaRattaches={creation.fichier ? [creation.fichier.id] : []}
+                placeholder="Rechercher un fichier existant sur le Drive"
+                surChoix={(f) => setCreation({ ...creation, fichier: f })}
+                onErreur={setErr}
+              />
+              {creation.fichier && (
+                <button className="btn petit" onClick={() => setCreation({ ...creation, fichier: null })}>
+                  Retirer ce fichier
+                </button>
+              )}
+            </div>
           </div>
-          <div className="preuve-actions">
-            <button className="btn primary" onClick={enregistrerCreation} disabled={creationEnCours}>
-              {creationEnCours ? "Création…" : "Enregistrer la preuve"}
-            </button>
-            <button className="btn" onClick={() => setCreation(null)}>Annuler</button>
-          </div>
-        </div>
-      )}
+        )}
+      </Drawer>
 
-      <div className="filtres">
-        <label><input type="checkbox" checked={filtre.a_confirmer}
-          onChange={(e) => setFiltre({ ...filtre, a_confirmer: e.target.checked })} /> À confirmer d'abord</label>
-        <select value={filtre.statut} onChange={(e) => setFiltre({ ...filtre, statut: e.target.value })} aria-label="Filtrer par statut">
-          <option value="">Tous les statuts</option>
-          {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <select value={filtre.alerte} onChange={(e) => setFiltre({ ...filtre, alerte: e.target.value })} aria-label="Filtrer par échéance">
-          <option value="">Toutes les échéances</option>
-          <option value="perime">Périmées</option>
-          <option value="bientot">Bientôt à revoir</option>
-        </select>
-        <input className="search" type="search" placeholder="Rechercher un document"
-          value={filtre.q} onChange={(e) => setFiltre({ ...filtre, q: e.target.value })} />
-      </div>
-
-      {data && data.preuves.length === 0 && (
-        <p className="muted">
-          Aucune preuve. {admin && "Ajoutez une preuve, ou lancez l'import du classeur pour peupler le tableau de bord."}
-        </p>
-      )}
-
-      {admin && data && data.preuves.length > 0 && (
-        <div className="selection-entete">
-          <label>
-            <input type="checkbox" checked={toutSelectionne} onChange={basculerTout} aria-label="Tout sélectionner" />
-            Tout sélectionner ({idsAffiches.length})
-          </label>
-        </div>
-      )}
-
-      {admin && selection.size > 0 && (
-        <div className="barre-selection">
-          <span>{selection.size} preuve(s) sélectionnée(s)</span>
-          <select value={statutMasse} onChange={(e) => setStatutMasse(e.target.value)} aria-label="Nouveau statut pour la sélection">
-            {Object.entries(STATUTS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <button className="btn primary petit" onClick={appliquerStatutMasse} disabled={enCours}>
-            {enCours ? "Application…" : "Changer le statut de la sélection"}
-          </button>
-          <button className="btn petit" onClick={() => setSelection(new Set())}>Désélectionner</button>
-        </div>
-      )}
-
-      <ul className="liste-preuves">
-        {data?.preuves.map((p) => (
-          <LignePreuve
-            key={p.id} p={p} actions={actions} admin={admin} sessions={sessions}
-            referentiel={referentiel}
-            selectionnee={selection.has(p.id)} onBasculerSelection={basculerSelection}
-          />
-        ))}
-      </ul>
+      <ConfirmDialog
+        ouvert={!!aSupprimer}
+        titre="Supprimer la preuve"
+        libelleConfirmer="Supprimer la preuve"
+        ton="danger"
+        enCours={suppressionEnCours}
+        onConfirmer={confirmerSuppression}
+        onAnnuler={() => setASupprimer(null)}
+      >
+        {aSupprimer ? `Supprimer la preuve « ${aSupprimer.titre} » ?` : ""}
+      </ConfirmDialog>
     </section>
   );
 }

@@ -277,3 +277,68 @@ p { margin: 0; }
 .veille-ligne .titre { font-weight: 600; text-align: left; padding: 0; }
 .check { display: flex; align-items: center; gap: .45rem; }
 .actions { display: flex; gap: .5rem; align-items: center; }
+
+/* ── UX-4 : Accueil ─────────────────────────────────────────── */
+.accueil-entete { display: flex; justify-content: space-between; align-items: end; gap: 1rem; flex-wrap: wrap; }
+.accueil-bloc { display: grid; gap: .5rem; }
+.accueil-bloc__titre { font-size: .95rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: .25rem 0 0; }
+.accueil-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.accueil-item {
+  display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+  padding: .6rem .8rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); text-decoration: none;
+}
+.accueil-item:hover { border-color: var(--primary); }
+.accueil-item__libelle { min-width: 0; overflow-wrap: anywhere; }
+.accueil-raccourcis { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* ── UX-4 : Preuves — vues et groupement par indicateur ─────── */
+.preuves-vues { display: flex; gap: .25rem; }
+.preuves-vue {
+  padding: .4rem .8rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+}
+.preuves-vue--active { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+.preuves-par-indicateur { display: grid; gap: 1rem; }
+.preuves-critere { overflow: clip; }
+.preuves-critere__titre {
+  display: flex; gap: .6rem; align-items: baseline; margin: 0;
+  padding: .75rem 1rem; font-size: 1rem; border-bottom: 1px solid var(--border);
+}
+.preuves-critere__titre .num { font-size: .9rem; }
+.preuves-indicateurs { list-style: none; margin: 0; padding: 0; }
+.preuves-indicateur { padding: .75rem 1rem; }
+.preuves-indicateur + .preuves-indicateur { border-top: 1px dashed var(--border); }
+.preuves-indicateur__tete { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: .4rem; }
+.preuves-indicateur__libelle { font-weight: 600; }
+.preuve-meta { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .3rem; }
+.preuve-tete .ui-btn { margin-left: auto; }
+/* Le filtre par indicateur liste les libellés complets (jusqu'à ~320
+   caractères) : un <select> prend la largeur de sa plus longue option, et
+   l'écran — élément d'une grille (.ecran-existant) sans min-width: 0 —
+   s'élargissait jusqu'à ~2 200 px. On borne l'écran à sa colonne, puis le
+   select à son conteneur (options complètes toujours visibles à l'ouverture). */
+.preuves { min-width: 0; }
+.preuves .filtres select { max-width: 100%; min-width: 0; }
+
+/* ── UX-4 : Indicateurs — actions et détail ─────────────────── */
+.ind-actions { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: end; }
+.ind-detail { display: grid; gap: .6rem; }
+.ind-detail p { margin: 0; }
+.ind-detail .ui-btn { justify-self: start; }
+
+/* ── UX-4 : Audits ──────────────────────────────────────────── */
+.audit-pied { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.audit-pied .ui-btn { margin-left: auto; }
+.audit-detail { display: grid; gap: 1rem; }
+.audit-detail__titre { margin: 0 0 .4rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.audit-detail__grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem; margin: 0; }
+.audit-detail__grille div { display: grid; gap: .1rem; }
+.audit-detail__grille dt { font-size: .8rem; color: var(--muted); }
+.audit-detail__grille dd { margin: 0; }
+
+@media (max-width: 560px) {
+  .ind-actions { justify-content: start; }
+  .preuves-vues { width: 100%; }
+  .preuves-vue { flex: 1; }
+}

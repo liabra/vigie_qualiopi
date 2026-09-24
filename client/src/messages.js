@@ -1,6 +1,6 @@
 // Codes renvoyés par le serveur dans ?erreur=… après un passage chez Google.
 export const ERREURS = {
-  google_non_configure: "Google OAuth n'est pas configuré sur le serveur.",
+  google_non_configure: "La connexion Google n'est pas encore disponible.",
   non_autorise: "Ce compte Google n'est pas autorisé à accéder à Vigie Qualiopi.",
   compte_desactive: "Ce compte a été désactivé.",
   compte_google_different: "Cette adresse est liée à un autre compte Google.",

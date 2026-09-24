@@ -53,10 +53,6 @@ p { margin: 0; }
 .pill.off { background: var(--err-bg); color: var(--err); }
 .pill.warn { background: var(--warn-bg); color: var(--warn); }
 
-.login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
-.login-card { padding: 2rem; max-width: 380px; width: 100%; display: grid; gap: 1rem; text-align: center; }
-
-.drive { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .9rem 1rem; flex-wrap: wrap; }
 
 .ref-head { display: flex; justify-content: space-between; align-items: end; gap: 1rem; flex-wrap: wrap; }
 .search {
@@ -207,6 +203,10 @@ p { margin: 0; }
 .formulaire.ligne { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); align-items: end; }
 .champ { display: grid; gap: .2rem; }
 .champ.case { display: flex; align-items: center; gap: .4rem; }
+/* La case à cocher ne prend pas la largeur de .champ input : sinon, dans une
+   barre de filtres étroite, le libellé se cassait mot par mot (UX-5). */
+.champ.case input { width: auto; flex: none; }
+.champ.case { flex: none; white-space: nowrap; }
 .champ input, .champ select, .champ textarea {
   padding: .4rem .55rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text); font: inherit; width: 100%;

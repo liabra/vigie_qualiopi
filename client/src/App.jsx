@@ -6,16 +6,18 @@ import { cheminRetourValide } from "./navigation.js";
 import Login from "./Login.jsx";
 import Referentiel from "./Referentiel.jsx";
 import Preuves from "./Preuves.jsx";
-import Modeles from "./Modeles.jsx";
 import AuditsHistory from "./AuditsHistory.jsx";
 import { AppShell } from "./shell/AppShell.jsx";
-import { Alert, LoadingState } from "./ui/index.js";
+import { Alert, Button, LoadingState } from "./ui/index.js";
 import { Accueil } from "./pages/Accueil.jsx";
 import { EcranExistant } from "./pages/EcranExistant.jsx";
 import { PageIntrouvable } from "./pages/PageIntrouvable.jsx";
 import { RequireAdmin } from "./pages/AccesReserve.jsx";
-import { GoogleDrivePage } from "./pages/GoogleDrivePage.jsx";
-import { FormationsPage, PrescripteursPage } from "./pages/ParametresPages.jsx";
+import { FormationsPage } from "./parametres/Formations.jsx";
+import { PrescripteursPage } from "./parametres/Prescripteurs.jsx";
+import { ModelesPage } from "./parametres/Modeles.jsx";
+import { VersionsPage } from "./parametres/Versions.jsx";
+import { GoogleDrivePage } from "./parametres/GoogleDrive.jsx";
 import { SessionsListe } from "./sessions/SessionsListe.jsx";
 import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
@@ -116,11 +118,16 @@ export default function App() {
   if (error) {
     return (
       <main className="ecran-plein">
-        <Alert ton="error" titre="Serveur injoignable">{error}</Alert>
+        <div className="login-carte">
+          <Alert ton="error" titre="Vigie est momentanément injoignable.">
+            Vérifiez votre connexion, puis réessayez dans un instant.
+          </Alert>
+          <Button variante="primary" onClick={() => window.location.reload()}>Réessayer</Button>
+        </div>
       </main>
     );
   }
-  if (!me) return <LoadingState plein />;
+  if (!me) return <LoadingState plein texte="Chargement de Vigie…" />;
   if (!me.user) return <Login flash={flash} googleConfigured={me.googleConfigured} />;
 
   const user = me.user;
@@ -155,9 +162,9 @@ export default function App() {
         <Route path="audits" element={<EcranExistant><AuditsHistory admin={isAdmin} /></EcranExistant>} />
 
         <Route path="formations" element={admin(<FormationsPage />)} />
-        <Route path="modeles" element={admin(<EcranExistant><Modeles admin={isAdmin} /></EcranExistant>)} />
+        <Route path="modeles" element={admin(<ModelesPage />)} />
         <Route path="prescripteurs" element={admin(<PrescripteursPage />)} />
-        <Route path="versions" element={admin(<IndicateursPage vue="versions" admin={isAdmin} rafraichir={version} />)} />
+        <Route path="versions" element={admin(<VersionsPage onChange={auChangement} />)} />
         <Route path="parametres/google" element={admin(<GoogleDrivePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />

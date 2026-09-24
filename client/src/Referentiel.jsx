@@ -18,7 +18,8 @@ const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'appre
 // tableau de bord relit ses données, sans jamais être remonté — les
 // critères dépliés et la position de défilement restent en place.
 // `vue` / `surVue` : vue pilotée par l'URL (/indicateurs,
-// /indicateurs/non-applicables, /versions). Sans eux, état local.
+// /indicateurs/non-applicables). « versions » mène à /versions (page
+// Paramètres dédiée, UX-5). Sans eux, état local.
 export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, surVue }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -33,59 +34,12 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
   const [vueLocale, setVueLocale] = useState("referentiel");
   const vue = vueImposee ?? vueLocale;
   const setVue = surVue ?? setVueLocale;
-  // Gestion des VERSIONS du référentiel (admin) : coexistence de plusieurs
-  // versions, activation explicite, préparation d'une future coquille.
-  const [versions, setVersions] = useState(null);
-  const [versionErr, setVersionErr] = useState(null);
-  const [nouvelle, setNouvelle] = useState(null);
   // Indicateur dont le détail est ouvert dans le panneau latéral.
   const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
   }, [rafraichir]);
-
-  // Les versions se chargent à l'arrivée sur leur vue — y compris par un
-  // lien direct ou un rechargement de /versions.
-  useEffect(() => {
-    if (vue === "versions") chargerVersions();
-    else setVersions(null);
-  }, [vue]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function chargerVersions() {
-    try {
-      setVersions(await api("/api/referentiel/versions"));
-      setVersionErr(null);
-    } catch (e) {
-      setVersionErr(e.message);
-    }
-  }
-
-  async function activerVersion(id) {
-    setVersionErr(null);
-    try {
-      const r = await api(`/api/referentiel/versions/${id}/activer`, { method: "POST" });
-      setVersions(await api("/api/referentiel/versions"));
-      if (r.avertissement) setVersionErr(r.avertissement);
-      setData(await api("/api/referentiel"));
-    } catch (e) {
-      setVersionErr(e.message);
-    }
-  }
-
-  async function creerVersion() {
-    if (!nouvelle?.code?.trim() || !nouvelle?.libelle?.trim()) {
-      return setVersionErr("Code et libellé sont obligatoires.");
-    }
-    setVersionErr(null);
-    try {
-      await api("/api/referentiel/versions", { method: "POST", body: JSON.stringify(nouvelle) });
-      setNouvelle(null);
-      setVersions(await api("/api/referentiel/versions"));
-    } catch (e) {
-      setVersionErr(e.message);
-    }
-  }
 
   // Marque ou réactive un indicateur, indépendamment de ses preuves. La
   // réactivation peut faire réapparaître n'importe quel statut selon les
@@ -178,84 +132,13 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
                     <button
                       className="btn petit" onClick={() => basculerNonApplicable(i)} disabled={enCours === i.id}
                     >
-                      {enCours === i.id ? "…" : "Réactiver"}
+                      {enCours === i.id ? "Réactivation…" : "Réactiver"}
                     </button>
                   )}
                 </li>
               ))}
             </ol>
           )}
-      </section>
-    );
-  }
-
-  if (vue === "versions") {
-    return (
-      <section>
-        <div className="ref-head">
-          <div>
-            <h1>Versions du référentiel</h1>
-            <p className="muted">Plusieurs versions coexistent : une active, des futures, des historiques.</p>
-          </div>
-          <button className="btn petit" onClick={() => setVue("referentiel")}>← Retour au référentiel</button>
-        </div>
-        {versionErr && <p className="flash erreur">{versionErr}</p>}
-        {!versions && <p className="muted">Chargement des versions…</p>}
-        {versions && (
-          <ol className="indicateurs">
-            {versions.versions.map((v) => (
-              <li key={v.id}>
-                <span className={"ind-num " + (v.type === "active" ? "statut-maitrise" : v.type === "future" ? "statut-a_consolider" : "statut-a_risque")}>
-                  {v.type === "active" ? "A" : v.type === "future" ? "F" : "H"}
-                </span>
-                <div>
-                  <p><strong>{v.code}</strong> — {v.libelle}</p>
-                  <div className="tags">
-                    <span className="pill">{v.type}</span>
-                    {v.date_application && <span className="pill">Application : {String(v.date_application).slice(0, 10)}</span>}
-                    {v.note && <span className="pill">{v.note}</span>}
-                  </div>
-                </div>
-                {admin && !v.est_active && (
-                  <button className="btn petit" onClick={() => activerVersion(v.id)}>Activer</button>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-        {admin && !nouvelle && (
-          <button className="btn" onClick={() => setNouvelle({ code: "", libelle: "", date_publication: "", date_application: "", source: "", note: "" })}>
-            Préparer une nouvelle version
-          </button>
-        )}
-        {admin && nouvelle && (
-          <article className="card formulaire">
-            <h2>Nouvelle version (coquille)</h2>
-            <p className="muted small">Seules les métadonnées sont créées ici : le contenu officiel des critères et indicateurs viendra d'un import ultérieur.</p>
-            <label>Code
-              <input value={nouvelle.code} onChange={(e) => setNouvelle({ ...nouvelle, code: e.target.value })} placeholder="V10" />
-            </label>
-            <label>Libellé
-              <input value={nouvelle.libelle} onChange={(e) => setNouvelle({ ...nouvelle, libelle: e.target.value })} />
-            </label>
-            <label>Date de publication
-              <input type="date" value={nouvelle.date_publication} onChange={(e) => setNouvelle({ ...nouvelle, date_publication: e.target.value })} />
-            </label>
-            <label>Date d'application
-              <input type="date" value={nouvelle.date_application} onChange={(e) => setNouvelle({ ...nouvelle, date_application: e.target.value })} />
-            </label>
-            <label>Source
-              <input value={nouvelle.source} onChange={(e) => setNouvelle({ ...nouvelle, source: e.target.value })} />
-            </label>
-            <label>Note
-              <input value={nouvelle.note} onChange={(e) => setNouvelle({ ...nouvelle, note: e.target.value })} />
-            </label>
-            <div className="actions">
-              <button className="btn" onClick={creerVersion}>Créer</button>
-              <button className="link" onClick={() => setNouvelle(null)}>Annuler</button>
-            </div>
-          </article>
-        )}
       </section>
     );
   }
@@ -354,7 +237,7 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
                           onClick={() => basculerNonApplicable(i)}
                           disabled={enCours === i.id}
                         >
-                          {enCours === i.id ? "…" : "Marquer non applicable"}
+                          {enCours === i.id ? "Enregistrement…" : "Marquer non applicable"}
                         </button>
                       )}
                     </div>

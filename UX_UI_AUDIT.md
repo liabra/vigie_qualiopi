@@ -1195,6 +1195,131 @@ Composants refondus : `pages/Accueil.jsx`, `Preuves.jsx`, `AuditsHistory.jsx`,
   `audits.test.jsx`, `accueil.test.jsx`, `indicateurs.test.jsx`.
 - Serveur inchangé : 380/380 attendus.
 
+## 15. UX-5 — Finalisation
+
+Dernière phase UX principale : écrans restants, nettoyage des boîtes natives,
+passe responsive / accessibilité / cohérence. **Aucun changement** d'API, de
+droit, de migration, de règle métier ni de configuration Railway.
+
+### 15.1 Écrans finalisés
+
+Nouveau dossier `client/src/parametres/` (+ `parametres.css`, jetons seulement) ;
+anciens `Modeles.jsx`, `DriveStatus.jsx`, `FormationsPrescripteurs.jsx`,
+`pages/ParametresPages.jsx`, `pages/GoogleDrivePage.jsx` supprimés.
+
+- **Connexion** (`Login.jsx`) : carte sobre « Vigie Qualiopi », phrase d'accroche,
+  bouton « Se connecter avec Google » (« Connexion… » au départ, réactivé au retour
+  arrière), « Accès réservé aux utilisateurs autorisés. ». États : chargement
+  (« Chargement de Vigie… »), Google non configuré (message simple, sans « OAuth »),
+  erreur de retour Google (message de `messages.js`, code inconnu ⇒ message
+  générique, jamais le code brut), serveur injoignable (sans détail technique,
+  bouton Réessayer). Retour à la page demandée inchangé (`cheminRetourValide` :
+  chemin interne uniquement).
+- **Formations** : liste d'abord (intitulé, code, version courante et nombre de
+  versions, durée par défaut, modalité, tarif HT, sessions, « Inactive » si
+  désactivée) ; création et révision dans un panneau (Identité / Paramètres) ; la
+  révision annonce « Enregistrer créera la version N+1 » et renvoie toute la
+  version courante (objectifs, public… non affichés) pour n'en rien perdre. Le
+  tarif HT, déjà accepté par l'API, devient saisissable.
+- **Prescripteurs** : tableau nom / code / statut (badge Actif / Inactif + ligne
+  estompée) ; création et renommage dans un panneau étroit (le code ne change
+  jamais) ; désactivation par ConfirmDialog, réactivation directe.
+- **Modèles de documents** : liste compacte (nom + description, usage, indicateurs,
+  lien Drive + type de fichier) ; détail en panneau (libellés des indicateurs) ;
+  marqueurs reconnus dans un panneau dédié ; création en panneau large avec le
+  **sélecteur d'indicateurs de la Veille réutilisé tel quel** (identifiants
+  convertis en numéros pour l'API) ; retrait par ConfirmDialog. Lien Drive rendu
+  seulement s'il est http(s).
+- **Versions du référentiel** : page propre (la vue « versions » de
+  `Referentiel.jsx`, devenue inaccessible, est retirée ; le bouton « Versions »
+  d'Indicateurs mène toujours à `/versions`). Version active en premier (filet +
+  badge), autres versions en cartes : type (Active / Future / Historique), dates
+  de publication et d'application, source, note, **nombre de critères et
+  d'indicateurs** (lu via `GET /api/referentiel/versions/:id`, lecture seule). Une
+  coquille (0 critère ou 0 indicateur) **n'offre aucun bouton d'activation**
+  (« Activation impossible tant que le contenu n'est pas importé. ») ; le serveur
+  la refuse de toute façon (409). Activation par ConfirmDialog explicite
+  (« V10 remplacera V9… »), avertissement serveur relayé ; préparation d'une
+  coquille en panneau.
+- **Google Drive** : carte « État de la connexion » (Connecté / Non connecté /
+  Connecté mais ne répond pas), compte connecté ou compte attendu de l'organisme,
+  autorisations en clair (lecture, création de documents, classeur). **Jamais** de
+  portée OAuth, de jeton ni de message d'erreur Google brut. Reconnexion proposée
+  si une autorisation manque ; déconnexion par ConfirmDialog.
+
+### 15.2 Boîtes natives
+
+`window.alert` / `window.confirm` / `prompt` : **il n'en reste aucune** dans
+`client/src` (les 3 dernières — Drive, prescripteurs, modèles — sont remplacées
+par ConfirmDialog). Les deux seules mentions restantes sont des commentaires.
+Un test échoue si une boîte native est appelée sur les pages Paramètres.
+
+### 15.3 Corrections globales mineures
+
+- Preuves (mobile) : « À confirmer d'abord » ne se casse plus mot par mot (la case
+  prenait la largeur de `.champ input`) — CSS seul, règle métier inchangée.
+- Indicateurs : pendant une bascule, les boutons affichent « Réactivation… » /
+  « Enregistrement… » au lieu d'un « … » sans nom accessible.
+
+### 15.4 Responsive, zoom, accessibilité
+
+- Smoke Chrome (PostgreSQL jetable + vrai serveur) sur les 19 écrans admin et 7
+  écrans contributeur, en 1440 / 900 / 390 px : aucun défilement horizontal
+  global, aucun contrôle hors écran (les onglets de session défilent dans leur
+  propre barre, comme prévu en UX-2), aucune erreur console.
+- Zoom 200 % (1440 px ⇒ 720 px CSS, densité 2) : Accueil, Sessions, Preuves,
+  Veille, Formations, Connexion utilisables.
+- Tableaux Paramètres : `.sess-table` (cartes empilées sous 768 px) ; panneaux
+  plein écran sous 768 px, pied d'actions visible.
+- Clavier : « Aller au contenu » premier arrêt ; dialogues `role="dialog"` /
+  `alertdialog`, piège du focus, Échap, retour du focus au déclencheur (vérifiés
+  en navigateur réel) ; focus initial sur « Annuler » dans les confirmations.
+- Formulaires : libellés visibles (`Field`), erreurs reliées (`aria-invalid`,
+  `aria-describedby`), champs facultatifs signalés ; statuts toujours avec un
+  libellé (badges), jamais la couleur seule ; un H1 par page, H2 de section.
+
+### 15.5 Limites
+
+- Les écrans UX-4 (Indicateurs, Preuves, Audits) gardent une partie des classes
+  du prototype (`btn`, `pill`, `flash`) : validés tels quels, non refaits.
+- Création de preuve : le `<select multiple>` natif des indicateurs subsiste
+  (écran validé) ; le sélecteur de la Veille pourrait le remplacer plus tard.
+- Pas de modification d'un modèle (l'API ne sait que créer / retirer) ni
+  d'historique des versions d'une formation à l'écran (l'API existe, non exposée).
+- Le compte des critères d'une version coûte une requête par version (quelques
+  versions au plus).
+- Mode sombre : toujours retiré (thème clair uniquement), décision reportée.
+- Contrôle d'accessibilité manuel et scripté, sans audit WCAG exhaustif.
+
+### 15.6 Tests
+
+- `client/test/parametres.test.jsx` (26 tests) : connexion (rendu, Google non
+  configuré, erreur connue / inconnue, serveur injoignable sans fuite, retour
+  externe ignoré), droits contributeur sur les 5 pages (sans appel API),
+  formations, prescripteurs, modèles, versions, Google Drive, confirmations
+  (Échap, focus), absence de boîte native.
+- Serveur inchangé.
+
+## 16. Après VF — backlog
+
+Idées déjà identifiées, **non commencées** :
+
+1. savoir qui est connecté (sessions actives visibles par l'administrateur) ;
+2. durée de connexion / historique des connexions (`derniere_connexion` existe déjà) ;
+3. historique des modifications / journal d'activité (qui a changé quoi, quand) ;
+4. déconnexion automatique après inactivité ;
+5. sauvegarde externe PostgreSQL chiffrée (`pg_dump` planifié hors Railway —
+   dette n° 2 de `PROJECT_HANDOFF.md`) ;
+6. dettes techniques encore pertinentes (`PROJECT_HANDOFF.md`, « Dettes
+   consolidées ») : `NODE_ENV` implicite (n° 4), devDependencies en image et
+   `npm install` (n° 5), Vite 5 (n° 6), `@googleapis/drive` 8 (n° 7), marqueurs
+   non relus dans les Sheets (n° 8), `documentsObsoletes` non persisté (n° 9),
+   smoke navigateur non automatisé (n° 15) ;
+7. finitions UX notées en §15.5 (classes du prototype sur les écrans UX-4,
+   sélecteur d'indicateurs dans la création de preuve, mode sombre) ;
+8. import du contenu **V10** du référentiel (coquille prête, application au
+   01/11/2026).
+
 ---
 
 *Fin du document.*

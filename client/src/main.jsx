@@ -8,6 +8,7 @@ import "./shell.css";
 import "./ui.css";
 import "./sessions/sessions.css";
 import "./veille/veille.css";
+import "./parametres/parametres.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

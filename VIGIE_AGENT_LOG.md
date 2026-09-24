@@ -2083,3 +2083,52 @@ corrigée (dates).
 
 **L13 TERMINÉ (local).** Aucune migration. Rien poussé. Changements Railway recommandés
 en attente de validation humaine (aucun effectué).
+
+## 2026-09-24 (suite 31) — L13 : validation production et migration IaC (clôture)
+
+### Push et déploiement du code
+
+- pré-push : 380/380, build OK, `git diff --check` propre, 0 `ECONNREFUSED`, aucun PG
+  résiduel ; `origin/main` = `964743f` (ancêtre) ; push **sans `--force`** :
+  `964743f..2eb029a` (`10201fb` doc L12 + `2eb029a` L13) ;
+- déploiement `7a4d6ed5` → **SUCCESS** ; logs : « Migrations : base déjà à jour. »,
+  « Vigie Qualiopi en ligne sur le port 8080 (Node v22.23.2) » ;
+- lecture seule : `/api/health` 200 ; **13 migrations (001→013)**, aucune `014`, aucune
+  appliquée ce jour ; volumes inchangés (utilisateurs 1, formations 1, sessions 1,
+  groupes 3, inscriptions 8, absences 1, resultats_qcm 2, satisfactions 2, preuves 144,
+  veille 1, modèles 2, générations 4, documents 6).
+
+### Migration Config as Code → IaC
+
+- SDK `railway` 3.11.0 isolé dans `.railway/package.json` (la CLI l'exige ; l'installation
+  npm de prod n'est pas touchée) ;
+- plan épinglé depuis le commit : `0 to add, 2 to change, 0 to destroy`,
+  `destructive: false`, uniquement `service.vigie_qualiopi` (build/start/healthcheck/
+  timeout/restart/drainingSeconds) ; Postgres, variables, source, domaine, replicas non
+  touchés ;
+- `railway config apply --plan … --yes` (sans `--confirm-destructive`) ⇒ appliqué ;
+  redéploiement `9cba70c3` SUCCESS ;
+- vérifié après apply : GitHub `liabra/vigie_qualiopi`/`main`, 7 variables (noms),
+  1 replica, domaine inchangé, healthcheck `/api/health` 120 s, retries 5,
+  `drainingSeconds` 15, Postgres-Vlqb et volume intacts ;
+- `restartPolicyType` : ON_FAILURE = défaut Railway stocké `null` ⇒ dérive perpétuelle ;
+  retiré de `railway.ts` (politique effective inchangée) ⇒ plan « already up to date » ;
+- `railway.json` retiré du dépôt (plus de double source de vérité).
+
+### Constat arrêt propre en production
+
+Le redéploiement de l'apply a envoyé SIGTERM à l'ancien conteneur (arrêt ~17 s après,
+draining effectif) mais Node n'a pas journalisé « Signal SIGTERM reçu » : npm (PID 1)
+rapporte `signal SIGTERM` sur `sh -c npm start -w server`. Non reproduit en local (bash et
+dash, npm 10.9.8). Pas de régression. Remède recommandé, non appliqué :
+`startCommand: "node server/src/index.js"` dans l'IaC.
+
+### Sauvegardes
+
+Dashboard : « No Backups », backups/PITR réservés au plan Pro ⇒ aucune sauvegarde
+automatique sur le plan actuel ; dette ASSUMÉE ; procédure `pg_dump`/`pg_restore`
+conservée ; sauvegarde externe chiffrée recommandée à terme.
+
+### État
+
+**L13 VALIDÉ EN PRODUCTION — lot TERMINÉ.** Aucune dette BLOQUANTE avant l'UX/UI.

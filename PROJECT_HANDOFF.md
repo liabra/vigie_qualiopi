@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 24/09/2026 |
-| **Dernier lot validé en production** | L12 — imports / classeurs (`964743f`) |
+| **Dernier lot validé en production** | L13 — exploitation / IaC Railway (`2eb029a` + retrait `railway.json`) |
 | **Migration de production actuelle** | `013_evaluations_qcm.sql` (13 migrations) |
-| **Suite de tests** | **380/380** en local après L13 (366 au déploiement L12) |
+| **Suite de tests** | **380/380** (déployés en L13) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -1530,7 +1530,7 @@ runtime). **Aucun upload binaire** : pas de multer, pas de disque, pas de xlsx/x
 
 ---
 
-## 7 quaterdecies. Lot L13 — infra / maintenance / exploitation — TERMINÉ (local)
+## 7 quaterdecies. Lot L13 — infra / maintenance / exploitation — TERMINÉ (déployé)
 
 Dernier lot structurel avant le chantier UX/UI. Audit de l'exploitation Railway en **lecture
 seule** côté production, corrections **locales** ciblées, **aucune migration**, **aucune
@@ -1646,6 +1646,26 @@ git push main (liabra/vigie_qualiopi)
   `apply` épinglé (`plan --out` puis `apply --plan`) seulement si identique → vérifications
   → retrait de `railway.json`.
 
+**Migration APPLIQUÉE (24/09/2026)** :
+
+- plan épinglé depuis le commit `2eb029a` : `0/2/0`, `destructive: false`, 2 changements
+  `severity: safe`, `declared: [service.vigie_qualiopi]`, partial `vigie_qualiopi` ;
+- `railway config apply --plan … --yes` (sans `--confirm-destructive`) ⇒ « Applied pinned
+  Railway configuration. » ; effet : un redéploiement du service (`9cba70c3`, SUCCESS) ;
+- état constaté après apply : source `liabra/vigie_qualiopi` / `main` ; builder RAILPACK ;
+  `npm run build` ; `npm start` ; `/api/health` timeout 120 ; `restartPolicyMaxRetries` 5 ;
+  **`drainingSeconds` 15** ; 1 replica europe-west4 ; domaine
+  `vigiequaliopi-production.up.railway.app` inchangé ; 7 variables présentes (noms) ;
+  Postgres-Vlqb et son volume intacts (dernier déploiement Postgres : 15/09) ;
+- **`restartPolicyType`** : ON_FAILURE est le **défaut Railway**, stocké comme `null` ; le
+  déclarer laissait une dérive perpétuelle (`plan` jamais vide, redéploiement à chaque
+  apply). Retiré de `railway.ts` (commenté) : la politique effective reste ON_FAILURE ×5 ;
+  `railway config plan` ⇒ **« already up to date »** ;
+- **`railway.json` retiré du dépôt** : Railway applique désormais la configuration du
+  service gérée par l'IaC (aucun réglage « Config File » sur le service) ; plus de double
+  source de vérité. Toute modification de configuration passe désormais par
+  `.railway/railway.ts` → `railway config plan` → `railway config apply`.
+
 ### Node / npm
 
 - prod : Node **22.23.2** (engines `>=22.23.1 <23`), npm **10.9.8** (livré avec Node) ;
@@ -1717,6 +1737,17 @@ uniquement). Aujourd'hui : **1 replica**.
 `closeIdleConnections()` (keep-alive inactifs) → `closePool()` → `exit(0)` ; délai de
 sécurité **10 s** ⇒ `closeAllConnections()` + `exit(1)`. Vérifié : npm relaie bien
 SIGTERM jusqu'à Node (pas besoin de changer `startCommand`).
+**Constat en production (redéploiement déclenché par l'apply IaC)** : Railway envoie
+SIGTERM (10:13:34), le conteneur s'arrête ~17 s plus tard (`drainingSeconds` 15 effectif),
+mais **Node ne journalise pas « Signal SIGTERM reçu »** : npm (PID 1) rapporte
+`command sh -c npm start -w server … signal SIGTERM`. Le signal n'atteint donc pas
+l'application à travers la chaîne `npm start` → `npm start -w server` → `node`, alors qu'il
+l'atteint en local (bash comme dash, npm 10.9.8) — différence propre au conteneur (PID 1 /
+enveloppe Railpack), non observable sans accès au conteneur. Pas de régression (arrêt
+brutal comme avant L13). Remède recommandé, **non appliqué** (nouvelle mutation de
+configuration) : `deploy.startCommand: "node server/src/index.js"` dans l'IaC (Node reçoit
+directement SIGTERM), puis plan/apply et vérification sur le déploiement suivant.
+
 **Limite Railway** : par défaut l'ancien déploiement reçoit SIGKILL **0 s** après SIGTERM.
 Deux représentations de 15 s : (A) réglage de déploiement `drainingSeconds: 15`
 (`deploy.drainingSeconds` dans `railway.json` aujourd'hui, `deploy: { drainingSeconds }`
@@ -1806,9 +1837,9 @@ ancienne peut pointer vers des fichiers depuis supprimés ou déplacés.
 
 | # | Dette | Classement |
 | --- | --- | --- |
-| 1 | Config as Code `railway.json` coupée le **01/12/2026** (healthcheck + restart perdus) | migration IaC préparée (plan 0/2/0) — état final après apply ci-dessous |
+| 1 | Config as Code `railway.json` coupée le **01/12/2026** | **RÉSOLUE** — IaC `.railway/railway.ts` appliquée, `railway.json` retiré |
 | 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | ASSUMÉE / DOCUMENTÉE — pas disponible sur le plan actuel ; stratégie externe chiffrée à définir |
-| 3 | Délai SIGTERM → SIGKILL à 0 s par défaut (arrêt propre coupé) | traité par `drainingSeconds: 15` dans l'IaC |
+| 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production (drainingSeconds 15 appliqué) | À TRAITER PLUS TARD — `startCommand: "node server/src/index.js"` dans l'IaC, à valider |
 | 4 | `NODE_ENV=production` fourni implicitement par Railpack (un changement de builder désactiverait `Secure` et l'exigence de SESSION_SECRET) | À TRAITER PLUS TARD (optionnel, risque faible analysé ; volontairement non activé en L13) |
 | 5 | devDependencies dans l'image prod (`RAILPACK_PRUNE_DEPS` non activé volontairement) ; `npm install` au lieu de `npm ci` | À TRAITER PLUS TARD (optionnel) |
 | 6 | Vite 5 (failles serveur de dev) | À TRAITER PLUS TARD (chantier UX) |
@@ -1896,13 +1927,16 @@ seulement ; `/api/health` 200 ; `/api/me` anonyme ; redirection OAuth publique i
 ### État
 
 - **aucune migration SQL** ;
-- commit : « Maintenance : fiabiliser l exploitation Railway » (NON poussé) ;
-- **changements Railway nécessaires, en attente de décision humaine** : migration Config
-  as Code avant le 01/12/2026 (fichier corrigé, plan `0/2/0`) incluant `drainingSeconds: 15` ;
-  vérification des backups (dashboard : Postgres-Vlqb → Backups → une sauvegarde
-  quotidienne existe-t-elle ?) ; recommandés, risque faible : `NODE_ENV=production`
-  explicite, `RAILPACK_PRUNE_DEPS=true` ;
-- **lot L13 TERMINÉ (local)**.
+- commits poussés : `10201fb` (doc L12), `2eb029a` — « Maintenance : fiabiliser l
+  exploitation Railway », puis « Maintenance : retirer railway.json apres migration IaC » ;
+- déploiements Railway SUCCESS (`7a4d6ed5` code L13, `9cba70c3` après apply IaC) ;
+  `/api/health` 200 ; migrations **13 (001→013)**, aucune `014`, aucune rejouée ; volumes
+  inchangés ; logs : « Migrations : base déjà à jour. », aucune erreur applicative ;
+- migration Config as Code → IaC **appliquée** (`drainingSeconds` 15 inclus) ; sauvegardes
+  Railway indisponibles sur le plan actuel (dette assumée) ; `NODE_ENV` explicite et
+  `RAILPACK_PRUNE_DEPS` volontairement non activés (optionnels, risque faible) ;
+- **aucune dette BLOQUANTE avant UX** ;
+- **lot L13 TERMINÉ et VALIDÉ EN PRODUCTION.**
 
 ---
 
@@ -2210,11 +2244,10 @@ Ne pas sur-concevoir maintenant.
    - les tests automatisés sont verts.
 
 5. Configuration Railway :
-   - `railway.json` à migrer avant le **01/12/2026** — audité en L13 (§7 quaterdecies),
-     migration = action humaine sur la production, non faite.
+   - **résolu en L13** : IaC `.railway/railway.ts` appliquée, `railway.json` retiré.
 
 État au 24/09/2026 (L13) : points 1 (IDs invalides ⇒ 400, L8) et 2 (session modifiable,
-L4) traités ; point 3 tranché en L10 (lecture autorisée au contributeur) ; point 5 ouvert.
+L4) traités ; point 3 tranché en L10 (lecture autorisée au contributeur) ; point 5 résolu (L13).
 
 6. README historique :
    - certaines sections peuvent être périmées ;

@@ -18,7 +18,9 @@ export default defineRailway((ctx) => {
       startCommand: "npm start",
       healthcheckPath: "/api/health",
       healthcheckTimeout: 120,
-      restartPolicyType: "ON_FAILURE",
+      // Politique ON_FAILURE = défaut Railway, stocké comme null : la déclarer
+      // produirait une dérive perpétuelle (plan jamais vide, redéploiement à
+      // chaque apply). Seul le nombre d'essais est donc géré ici.
       restartPolicyMaxRetries: 5,
       // SIGTERM → SIGKILL : laisse l'arrêt propre (server/src/arret.js, 10 s) se terminer.
       drainingSeconds: 15,

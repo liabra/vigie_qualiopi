@@ -27,7 +27,8 @@ server/
   src/routes/           auth.js (OAuth), api.js (referentiel, preuves, import, drive)
   db/migrations/        NNN_*.sql, appliqués une fois chacun (schema_migrations)
   seed/                 referentiel_qualiopi_v9_indicateurs.json (guide V9)
-railway.json            build, démarrage, healthcheck /api/health
+.railway/railway.ts     config Railway (IaC) : build, démarrage, healthcheck /api/health,
+                        restart, drainingSeconds — appliquée par `railway config plan/apply`
 ```
 
 ## Démarrer en local

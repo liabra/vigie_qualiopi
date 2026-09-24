@@ -937,6 +937,62 @@ de `/sessions/:id`, précédent/suivant, URL inconnue, clavier, tablette (900 px
 **Reste à faire en UX-1** (UX-1B) : remplacer les `window.alert/confirm` par des
 composants, champs de formulaire accessibles communs, format de date unique.
 
+### UX-2 — Sessions (réalisé)
+
+**Architecture finale**
+
+```text
+/sessions                     SessionsListe : en-tête + vues + recherche + tableau
+                              └─ drawer « Nouvelle session » (admin) → /sessions/:id
+/sessions/:id                 SessionDetail : fil d'Ariane, en-tête, onglets
+  (Vue d'ensemble)            └─ drawer « Modifier la session » (admin)
+/sessions/:id/stagiaires      groupes + stagiaires ; drawers groupe, ajout, import CSV, dossier (large)
+/sessions/:id/assiduite       synthèse + tableau par stagiaire (absences dépliables) ; drawer absence
+/sessions/:id/evaluations     synthèse + tableau ; drawers évaluation et import CSV
+/sessions/:id/satisfaction    synthèse + tableau ; drawer recueil
+/sessions/:id/documents       générés par Vigie (drawer génération) + externes / EduSign (drawer admin)
+```
+
+Fichiers : `client/src/sessions/` (`SessionsListe`, `SessionDetail`, `FormulaireSession`,
+`VueEnsemble`, `OngletStagiaires`, `OngletAssiduite`, `OngletEvaluations`,
+`OngletSatisfaction`, `OngletDocuments`, `format.js` pur, `sessions.css`). L'ancien
+`Sessions.jsx` (1 187 lignes) et `Evaluations.jsx` sont supprimés ; Formations et
+Prescripteurs (Paramètres) vivent dans `FormationsPrescripteurs.jsx`, code inchangé.
+
+**Décisions**
+
+| Sujet | Décision |
+| --- | --- |
+| Chargement | le détail charge en parallèle session, absences, preuves de la session, évaluations et satisfactions (5 appels existants), partagés par les onglets ; modèles, prescripteurs, indicateurs une fois |
+| Vues de la liste | fondées sur le **statut déclaré** (À venir = planifiée, En cours, Terminées, Annulées, Toutes) — jamais déduites des dates (règle L4) ; vue et recherche dans l'URL (`?vue=…&q=…`) |
+| Recherche | référence, formation, lieu, sans accents ni casse. **Le formateur n'est pas cherchable** : `GET /api/sessions` ne le renvoie pas (évolution backend d'une ligne, non faite) |
+| Formulaires | `FormSection` + `Field` : libellé visible, « (facultatif) », aide et erreur liées au champ ; mêmes champs et mêmes contrôles qu'avant |
+| Dossier stagiaire | **drawer large** (48 rem) : Identité, Contact, Entreprise et financement, Inscription, **Accessibilité (confidentiel)** en dernier ; un seul bouton, qui n'envoie que la partie modifiée (fiche et/ou inscription, deux appels comme avant) ; le tableau n'affiche jamais handicap ni besoins d'adaptation |
+| Abandon | action « Abandon… » par ligne + `ConfirmDialog` (focus initial sur Annuler) |
+| Alertes métier | `documentsObsoletes` et absences au-delà de la durée → **bandeaux d'avertissement dans la page** après modification ; succès → bandeau discret fermable ; erreurs → dans le drawer, au plus près de l'action |
+| Génération | drawer ; bouton désactivé pendant l'appel (+ garde serveur) ; 409 « déjà générés » → `ConfirmDialog` → `remplacer: true` ; résultat détaillé dans le drawer (documents, remplacés, preuves, marqueurs inconnus / non résolus, détection indisponible, fichiers ni Doc ni Sheet, anciens non archivés) ; une génération déjà en cours reste une erreur |
+| Natifs | **tous** les `window.alert/confirm` de Sessions remplacés (3 alert, 3 confirm) ; ceux des autres écrans restent (hors périmètre) |
+| Onglets | liens de navigation (`aria-current="page"`), défilement horizontal interne sous 768 px, compteurs (stagiaires actifs, résultats, réponses, documents) |
+| Responsive | tableaux → cartes empilées sous 768 px (libellé de colonne affiché au-dessus de chaque valeur) ; drawers plein écran sous 768 px, boutons du pied pleine largeur ; métadonnées de session en 2 colonnes sur mobile |
+
+**Composants ajoutés** (`client/src/ui/`) : `Drawer` (portail, `role="dialog"`,
+`aria-modal`, Échap, piège du Tab, retour du focus, blocage du défilement, non fermable
+pendant une opération), `ConfirmDialog` (`role="alertdialog"`), mécanique commune
+`dialogue.js` (pile : une confirmation ouverte depuis un drawer se ferme seule), `Tabs`,
+`Field` / `Checkbox` / `FormSection`. Styles : `ui.css`, `sessions/sessions.css` (jetons
+uniquement).
+
+**Validation** : 380/380 serveur + **41/41 client** (×2) — dont 17 tests Sessions et 6
+tests de fonctions pures ; 4 mutations volontaires détectées. Smoke Chrome réel
+(PostgreSQL jetable, jeu de données réaliste) **27/27** : admin, contributeur (absence et
+recueil à froid réellement enregistrés, génération sans Drive → erreur lisible), mobile
+390 px, aucune erreur console, aucune boîte native.
+
+**Limites** : formateur non cherchable (voir ci-dessus) ; pas de suppression
+d'évaluation / satisfaction ni de modification de groupe (inexistantes côté API) ; la
+civilité rapide dans la liste (admin) passe désormais par le dossier ; le résultat d'une
+génération et les bandeaux ne survivent pas à un rechargement de la page.
+
 ---
 
 ## 13. Risques de régression à surveiller

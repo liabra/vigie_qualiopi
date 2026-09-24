@@ -1,0 +1,106 @@
+/* ─────────────────────────────────────────────────────────────
+   Composants UX-2 : champs, sections de formulaire, onglets,
+   panneau latéral (Drawer), boîte de confirmation. Jetons seulement.
+   ───────────────────────────────────────────────────────────── */
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── Champs ───────────────────────────────────────────────── */
+.ui-form { display: grid; gap: var(--space-5); }
+.ui-form-lecture { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: var(--space-5); }
+.ui-form-section { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ui-form-section__titre {
+  padding: 0; margin-bottom: var(--space-3);
+  font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); color: var(--color-text);
+}
+.ui-form-grille { display: grid; gap: var(--space-4); align-items: start; }
+.ui-form-grille--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ui-form-grille--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ui-form-grille--1 { grid-template-columns: minmax(0, 1fr); }
+.ui-field--large { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .ui-form-grille--2, .ui-form-grille--3 { grid-template-columns: minmax(0, 1fr); }
+}
+.ui-field { display: grid; gap: var(--space-1); min-width: 0; }
+.ui-field__label { font-size: 0.875rem; font-weight: var(--font-weight-medium); color: var(--color-text); }
+.ui-field__facultatif { font-weight: var(--font-weight-regular); color: var(--color-text-secondary); }
+.ui-field__aide { margin: 0; font-size: var(--font-size-small); line-height: var(--line-height-small); color: var(--color-text-secondary); }
+.ui-field__erreur { margin: 0; font-size: var(--font-size-small); line-height: var(--line-height-small); color: var(--color-error); font-weight: var(--font-weight-medium); }
+.ui-field input:not([type="checkbox"]):not([type="file"]), .ui-field select, .ui-field textarea,
+.sess-recherche input {
+  width: 100%; min-height: 2.375rem; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-input); border-radius: var(--radius-sm);
+  background: var(--color-surface); color: var(--color-text); font: inherit;
+}
+.ui-field input[type="file"] { font: inherit; }
+.ui-field textarea { resize: vertical; min-height: 5rem; }
+.ui-field [aria-invalid="true"] { border-color: var(--color-error); }
+.ui-field input:disabled, .ui-field select:disabled, .ui-field textarea:disabled { background: var(--color-surface-2); color: var(--color-text-secondary); }
+.ui-case { display: inline-flex; align-items: flex-start; gap: var(--space-2); min-height: 2.375rem; padding-top: var(--space-2); cursor: pointer; }
+.ui-case input { width: 1.125rem; height: 1.125rem; margin: 0.125rem 0 0; accent-color: var(--color-primary); }
+.ui-case__aide { display: block; }
+
+/* ── Onglets de navigation ────────────────────────────────── */
+.ui-onglets { border-bottom: 1px solid var(--color-border); overflow-x: auto; scrollbar-width: thin; }
+.ui-onglets ul { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-1); min-width: max-content; }
+.ui-onglets__lien {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 2.75rem;
+  padding: 0 var(--space-3); border-bottom: 3px solid transparent; margin-bottom: -1px;
+  color: var(--color-text-secondary); text-decoration: none; font-weight: var(--font-weight-medium); white-space: nowrap;
+}
+.ui-onglets__lien:hover { color: var(--color-text); background: var(--color-surface-2); }
+/* Onglet courant : filet ET couleur ET graisse. */
+.ui-onglets__lien--actif { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: var(--font-weight-semibold); }
+.ui-onglets__compteur {
+  min-width: 1.5rem; padding: 0 var(--space-2); border-radius: var(--radius-pill);
+  background: var(--color-surface-2); color: var(--color-text-secondary); font-size: 0.75rem; line-height: 1.25rem; text-align: center;
+}
+.ui-onglets__lien--actif .ui-onglets__compteur { background: var(--color-primary-soft); color: var(--color-primary); }
+
+/* ── Panneau latéral ──────────────────────────────────────── */
+.ui-drawer-racine, .ui-modale-racine { position: fixed; inset: 0; z-index: 80; }
+.ui-drawer-voile { position: absolute; inset: 0; background: rgba(17, 24, 39, 0.45); }
+.ui-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(34rem, 100%);
+  display: flex; flex-direction: column; background: var(--color-surface); box-shadow: var(--shadow-float);
+}
+.ui-drawer:focus { outline: none; }
+.ui-drawer--etroit { width: min(26rem, 100%); }
+.ui-drawer--large { width: min(48rem, 100%); }
+.ui-drawer__tete {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--color-border);
+}
+.ui-drawer__titre { margin: 0; font-size: var(--font-size-section-title); line-height: var(--line-height-section-title); font-weight: var(--font-weight-semibold); }
+.ui-drawer__description { margin-top: var(--space-1); color: var(--color-text-secondary); font-size: var(--font-size-small); line-height: var(--line-height-small); }
+.ui-drawer__corps { flex: 1; overflow-y: auto; padding: var(--space-5); }
+.ui-drawer__corps > form, .ui-drawer__corps > .ui-form { display: grid; gap: var(--space-5); }
+.ui-drawer__pied {
+  display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border); background: var(--color-surface);
+}
+.ui-icone-btn {
+  flex: none; display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-text); cursor: pointer;
+}
+.ui-icone-btn:hover:not(:disabled) { background: var(--color-surface-2); }
+.ui-icone-btn:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 767px) {
+  .ui-drawer, .ui-drawer--etroit, .ui-drawer--large { width: 100%; }
+  .ui-drawer__tete, .ui-drawer__corps { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .ui-drawer__pied { padding: var(--space-3) var(--space-4); }
+  .ui-drawer__pied .ui-btn { flex: 1; }
+}
+
+/* ── Confirmation ─────────────────────────────────────────── */
+.ui-modale-racine { display: grid; place-items: center; padding: var(--space-4); z-index: 90; }
+.ui-modale {
+  position: relative; width: min(28rem, 100%); display: grid; gap: var(--space-3);
+  padding: var(--space-5); background: var(--color-surface); border-radius: var(--radius-md); box-shadow: var(--shadow-float);
+}
+.ui-modale:focus { outline: none; }
+.ui-modale__titre { margin: 0; font-size: var(--font-size-section-title); line-height: var(--line-height-section-title); font-weight: var(--font-weight-semibold); }
+.ui-modale__texte { display: grid; gap: var(--space-2); color: var(--color-text); }
+.ui-modale__actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }

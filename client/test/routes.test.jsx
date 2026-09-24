@@ -24,15 +24,16 @@ test("/sessions affiche la liste des sessions", async () => {
 
 test("lien direct /sessions/1 : la session s'ouvre (pas de retour au référentiel)", async () => {
   await monter("/sessions/1");
-  await attendre(() => texte().includes("Formation test · SESS-TEST"));
+  await attendre(() => document.querySelector("h1")?.textContent === "Formation test");
   assert.equal(window.location.pathname, "/sessions/1");
-  assert.ok(texte().includes("Toutes les sessions"));
+  assert.ok(texte().includes("SESS-TEST"));
+  assert.ok(document.querySelector('nav[aria-label="Fil d\'Ariane"] a[href="/sessions"]'), "retour à la liste par le fil d'Ariane");
   assert.ok(!texte().includes("Référentiel V9"));
 });
 
 test("sous-page de session /sessions/1/assiduite : même session affichée", async () => {
   await monter("/sessions/1/assiduite");
-  await attendre(() => texte().includes("Formation test · SESS-TEST"));
+  await attendre(() => document.querySelector("h1")?.textContent === "Formation test");
 });
 
 test("session inexistante ou identifiant invalide : état « Session introuvable »", async () => {
@@ -91,7 +92,7 @@ test("ouvrir une session depuis la liste change l'URL", async () => {
   await attendre(() => texte().includes("SESS-TEST"));
   await cliquer(document.querySelector('a[href="/sessions/1"]'));
   await attendre(() => window.location.pathname === "/sessions/1");
-  await attendre(() => texte().includes("Formation test · SESS-TEST"));
+  await attendre(() => document.querySelector("h1")?.textContent === "Formation test");
 });
 
 test("/versions (admin) : les versions se chargent par lien direct", async () => {

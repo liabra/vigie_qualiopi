@@ -6,7 +6,6 @@ import { cheminRetourValide } from "./navigation.js";
 import Login from "./Login.jsx";
 import Referentiel from "./Referentiel.jsx";
 import Preuves from "./Preuves.jsx";
-import Sessions from "./Sessions.jsx";
 import Modeles from "./Modeles.jsx";
 import AuditsHistory from "./AuditsHistory.jsx";
 import Veille from "./Veille.jsx";
@@ -18,6 +17,8 @@ import { PageIntrouvable } from "./pages/PageIntrouvable.jsx";
 import { RequireAdmin } from "./pages/AccesReserve.jsx";
 import { GoogleDrivePage } from "./pages/GoogleDrivePage.jsx";
 import { FormationsPage, PrescripteursPage } from "./pages/ParametresPages.jsx";
+import { SessionsListe } from "./sessions/SessionsListe.jsx";
+import { SessionDetail } from "./sessions/SessionDetail.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -51,13 +52,13 @@ function RedirectionAccueil() {
   return <Navigate to={cheminRetourValide(retour) ? retour : "/accueil"} replace />;
 }
 
-// /sessions/:sessionId… : identifiant numérique converti ; toute autre valeur
-// est transmise telle quelle, le serveur répond 400 et l'écran affiche
-// « Session introuvable ».
-function SessionsPage(props) {
+// /sessions/:sessionId[/onglet] : identifiant numérique converti ; toute
+// autre valeur est transmise telle quelle, le serveur répond 400 et la page
+// affiche « Session introuvable ».
+function SessionPage({ onglet, ...props }) {
   const { sessionId } = useParams();
-  const id = sessionId && /^\d+$/.test(sessionId) ? Number(sessionId) : sessionId || null;
-  return <EcranExistant><Sessions {...props} sessionId={id} /></EcranExistant>;
+  const id = /^\d+$/.test(sessionId) ? Number(sessionId) : sessionId;
+  return <SessionDetail key={id} sessionId={id} onglet={onglet} {...props} />;
 }
 
 const VUES_REFERENTIEL = {
@@ -119,7 +120,7 @@ export default function App() {
   const peutSaisir = isAdmin || user.role === "contributeur";
   const auChangement = () => setVersion((v) => v + 1);
   const admin = (el) => <RequireAdmin user={user}>{el}</RequireAdmin>;
-  const session = <SessionsPage admin={isAdmin} peutSaisir={peutSaisir} onChange={auChangement} />;
+  const session = (onglet) => <SessionPage onglet={onglet} admin={isAdmin} peutSaisir={peutSaisir} onChange={auChangement} />;
 
   return (
     <Routes>
@@ -127,14 +128,13 @@ export default function App() {
         <Route index element={<RedirectionAccueil />} />
         <Route path="accueil" element={<Accueil user={user} />} />
 
-        <Route path="sessions" element={session} />
-        <Route path="sessions/:sessionId" element={session} />
-        {/* Sous-pages d'une session : même écran en UX-1A, découpées en UX-2. */}
-        <Route path="sessions/:sessionId/stagiaires" element={session} />
-        <Route path="sessions/:sessionId/assiduite" element={session} />
-        <Route path="sessions/:sessionId/evaluations" element={session} />
-        <Route path="sessions/:sessionId/satisfaction" element={session} />
-        <Route path="sessions/:sessionId/documents" element={session} />
+        <Route path="sessions" element={<SessionsListe admin={isAdmin} />} />
+        <Route path="sessions/:sessionId" element={session("apercu")} />
+        <Route path="sessions/:sessionId/stagiaires" element={session("stagiaires")} />
+        <Route path="sessions/:sessionId/assiduite" element={session("assiduite")} />
+        <Route path="sessions/:sessionId/evaluations" element={session("evaluations")} />
+        <Route path="sessions/:sessionId/satisfaction" element={session("satisfaction")} />
+        <Route path="sessions/:sessionId/documents" element={session("documents")} />
 
         <Route path="indicateurs" element={<IndicateursPage vue="referentiel" admin={isAdmin} rafraichir={version} />} />
         <Route path="indicateurs/non-applicables" element={<IndicateursPage vue="non_applicables" admin={isAdmin} rafraichir={version} />} />

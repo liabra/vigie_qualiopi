@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { Formations, GestionPrescripteurs } from "../Sessions.jsx";
+import { Formations, GestionPrescripteurs } from "../FormationsPrescripteurs.jsx";
 import { Alert, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "./titre.js";
 

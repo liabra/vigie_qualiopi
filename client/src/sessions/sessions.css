@@ -1,0 +1,131 @@
+/* ─────────────────────────────────────────────────────────────
+   Sessions (UX-2) : liste, en-tête de détail, cartes, tableaux.
+   Tableaux → cartes empilées sous 768 px (pas de défilement horizontal).
+   ───────────────────────────────────────────────────────────── */
+.sess-secondaire { display: block; color: var(--color-text-secondary); font-size: var(--font-size-small); line-height: var(--line-height-small); }
+span.sess-secondaire:not(:first-child) { margin-top: 2px; }
+p.sess-secondaire { display: block; }
+.sess-actions { display: inline-flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.sess-badges { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ── Liste ────────────────────────────────────────────────── */
+.sess-liste { display: grid; gap: var(--space-4); }
+.sess-filtres { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.sess-vues {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px;
+  background: var(--color-surface-2); border-radius: var(--radius-sm);
+}
+.sess-vue {
+  display: inline-flex; align-items: center; gap: var(--space-2); min-height: 2.25rem; padding: 0 var(--space-3);
+  border: 1px solid transparent; border-radius: calc(var(--radius-sm) - 2px); background: transparent;
+  color: var(--color-text-secondary); font: inherit; font-weight: var(--font-weight-medium); cursor: pointer;
+}
+.sess-vue:hover { color: var(--color-text); }
+/* Vue active : fond, bordure ET couleur (aria-pressed pour les lecteurs d'écran). */
+.sess-vue--active { background: var(--color-surface); border-color: var(--color-border-input); color: var(--color-text); }
+.sess-vue__compteur { font-size: 0.75rem; color: var(--color-text-secondary); }
+.sess-recherche { flex: 1 1 18rem; max-width: 24rem; }
+
+/* ── Tableaux ─────────────────────────────────────────────── */
+.sess-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+}
+.sess-table th {
+  text-align: left; font-size: var(--font-size-small); font-weight: var(--font-weight-semibold); color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4); background: var(--color-surface-2); border-bottom: 1px solid var(--color-border);
+}
+.sess-table th:first-child { border-top-left-radius: var(--radius-md); }
+.sess-table th:last-child { border-top-right-radius: var(--radius-md); }
+.sess-table td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.sess-table tbody tr:last-child td { border-bottom: 0; }
+.sess-table tbody tr:hover td { background: var(--color-background); }
+.sess-table__principal { font-weight: var(--font-weight-medium); }
+.sess-table__principal a { color: var(--color-primary); }
+.sess-table__actions { text-align: right; white-space: nowrap; }
+.sess-table__actions > * + * { margin-left: var(--space-2); }
+.sess-table__texte { max-width: 22rem; }
+.sess-table__ligne--estompee td { color: var(--color-text-secondary); }
+.sess-table__detail td { background: var(--color-surface-2); }
+.sess-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  .sess-table, .sess-table tbody, .sess-table tr, .sess-table td { display: block; width: 100%; }
+  .sess-table { border: 0; background: transparent; }
+  .sess-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .sess-table tbody { display: grid; gap: var(--space-3); }
+  .sess-table tr { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+  .sess-table td { padding: var(--space-1) 0; border: 0; text-align: left; }
+  .sess-table td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 0.75rem; color: var(--color-text-secondary);
+  }
+  .sess-table td.sess-table__principal::before { display: none; }
+  .sess-table__actions { text-align: left; white-space: normal; padding-top: var(--space-2) !important; }
+  .sess-table__actions > * + * { margin-left: 0; }
+  .sess-table__actions { display: flex !important; flex-wrap: wrap; gap: var(--space-2); }
+  .sess-table__detail { background: var(--color-surface-2) !important; }
+  .sess-num { text-align: left; }
+}
+
+/* ── Détail ───────────────────────────────────────────────── */
+.sess-detail { display: grid; gap: var(--space-4); min-width: 0; }
+.sess-entete {
+  display: grid; gap: var(--space-3); padding: var(--space-4) var(--space-5);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+}
+.sess-entete__ligne { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.sess-entete__ref { font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
+.sess-meta { margin: 0; display: grid; gap: var(--space-3) var(--space-5); grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+.sess-meta dt { font-size: var(--font-size-small); color: var(--color-text-secondary); }
+.sess-meta dd { margin: 0; font-weight: var(--font-weight-medium); }
+.sess-meta dd .sess-secondaire { display: inline; font-weight: var(--font-weight-regular); }
+.sess-onglet { min-width: 0; }
+@media (max-width: 767px) {
+  .sess-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .sess-entete { padding: var(--space-4); }
+}
+
+/* ── Vue d'ensemble ───────────────────────────────────────── */
+.sess-cartes { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+.sess-carte {
+  display: grid; gap: var(--space-3); align-content: start; padding: var(--space-4) var(--space-5);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+}
+.sess-carte__titre { margin: 0; font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); }
+.sess-carte__corps dl { margin: 0; display: grid; gap: var(--space-2); }
+.sess-ligne { display: flex; justify-content: space-between; gap: var(--space-3); }
+.sess-ligne dt { color: var(--color-text-secondary); }
+.sess-ligne dd { margin: 0; font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; text-align: right; }
+.sess-ligne--attention dd { color: var(--color-warning); }
+.sess-ligne--attention dd::before { content: "! "; }
+.sess-carte__lien { color: var(--color-primary); font-size: var(--font-size-small); font-weight: var(--font-weight-medium); }
+.sess-puces { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); }
+
+/* ── Sections d'onglet ────────────────────────────────────── */
+.sess-sections { display: grid; gap: var(--space-6); }
+.sess-section { display: grid; gap: var(--space-3); min-width: 0; }
+.sess-section__tete { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; }
+.sess-section__titre { margin: 0; font-size: var(--font-size-section-title); line-height: var(--line-height-section-title); font-weight: var(--font-weight-semibold); }
+.sess-barre { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.sess-barre__champ { min-width: 14rem; }
+.sess-groupes { list-style: none; margin: 0; padding: 0; display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.sess-groupe {
+  display: grid; gap: 2px; padding: var(--space-3) var(--space-4); min-width: 12rem;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+}
+.sess-chiffres {
+  margin: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  padding: var(--space-4) var(--space-5); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+}
+.sess-chiffres dt { font-size: var(--font-size-small); color: var(--color-text-secondary); }
+.sess-chiffres dd { margin: 0; font-size: 1.0625rem; font-weight: var(--font-weight-semibold); font-variant-numeric: tabular-nums; }
+.sess-chiffres dd .sess-secondaire { display: inline; font-size: var(--font-size-small); font-weight: var(--font-weight-regular); }
+.sess-absences { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.sess-absences li { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.sess-absences__motif { flex: 1 1 10rem; }
+.sess-apercu { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.sess-apercu li {
+  display: flex; align-items: center; gap: var(--space-2) var(--space-3); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+}
+.sess-liens { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }

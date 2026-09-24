@@ -4,3 +4,7 @@ export { Alert } from "./Alert.jsx";
 export { EmptyState } from "./EmptyState.jsx";
 export { LoadingState } from "./LoadingState.jsx";
 export { PageHeader } from "./PageHeader.jsx";
+export { Drawer } from "./Drawer.jsx";
+export { ConfirmDialog } from "./ConfirmDialog.jsx";
+export { Tabs } from "./Tabs.jsx";
+export { Field, Checkbox, FormSection } from "./Field.jsx";

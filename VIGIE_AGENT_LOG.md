@@ -2171,3 +2171,15 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
   introuvable gérée ; Formations et Prescripteurs sur leurs pages ; aucun backend modifié ;
 - **380/380 serveur + 19/19 client** (×2), build OK, `git diff --check` OK ; smoke Chrome réel
   (PostgreSQL jetable) **43/43**. Détail : `UX_UI_AUDIT.md` § UX-1A.
+
+## 2026-09-24 (suite 34) — UX-2 : refonte de Sessions
+
+- `/sessions` = liste (vues par statut déclaré, recherche, états vides, création en drawer) ;
+  `/sessions/:id` = détail avec en-tête et 6 onglets à URL propre (vue d'ensemble, stagiaires,
+  assiduité, évaluations, satisfaction, documents) ; drawers pour toutes les saisies ;
+- aucune API, aucun droit, aucune migration, aucune règle métier modifiés ; les 6
+  `window.alert/confirm` de Sessions remplacés par bandeaux / `ConfirmDialog` ;
+- composants `Drawer`, `ConfirmDialog`, `Tabs`, `Field` ; ancien `Sessions.jsx` et
+  `Evaluations.jsx` supprimés, Formations/Prescripteurs déplacés sans changement ;
+- **380/380 serveur + 41/41 client** (×2), build OK ; smoke Chrome (PG jetable) **27/27**.
+  Détail : `UX_UI_AUDIT.md` § UX-2.

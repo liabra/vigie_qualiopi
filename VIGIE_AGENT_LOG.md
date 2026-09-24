@@ -1972,3 +1972,32 @@ courante 013, volumes inchangés, aucun classeur de test téléversé.
 
 **L12 TERMINÉ (local).** Aucune migration — 366/366 × 2 — build OK — `git diff --check`
 OK. **Push et déploiement Railway en attente de validation humaine.**
+
+## 2026-09-24 (suite 29) — L12 : validation production (clôture)
+
+### Push et déploiement
+
+- pré-push : 366/366, build OK, `git diff --check` propre, 0 `ECONNREFUSED`, aucun PG jetable
+  résiduel ; `origin/main` = `590a2d3` (ancêtre de HEAD) ; seuls `8341a04` + `964743f` à pousser ;
+- push **sans `--force`** : `590a2d3..964743f main -> main` ;
+- déploiement Railway `99691cc2` (commitHash `964743fc…`) → **SUCCESS** ;
+- **aucune migration nouvelle** : courante **013_evaluations_qcm.sql**.
+
+### Contrôles production lecture seule (aucune écriture)
+
+- `/api/health` 200 ; migrations : **exactement 13 (001→013)**, aucune `014`, aucune rejouée ;
+- code déployé : 413 `entity.too.large` + message global ; `lireOnglet` contrôle
+  `gridProperties` (≤ 20 000 lignes, ≤ 500 colonnes) **AVANT** `values.get` ;
+  `FORMATTED_VALUE` et fusions conservés ; aucun upload binaire / multer / fichier temporaire ;
+- routes d'import anonymes ⇒ 401 (6/6) ; contrôle admin `GET /api/import/dernier` non rejoué
+  après déploiement (signature d'un cookie avec le secret prod refusée par le garde-fou de
+  l'agent) — couvert par les tests ;
+- **aucun import de test en production** ;
+- volumes inchangés (utilisateurs 1, formations 1, sessions 1, groupes 3, inscriptions 8,
+  absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1, modèles 2,
+  générations 4, documents 6), lus en transaction `READ ONLY` ;
+- logs : démarrage normal, aucune erreur ; seul `npm warn ... --omit=dev` (bénin).
+
+### État
+
+**L12 VALIDÉ EN PRODUCTION — lot TERMINÉ.**

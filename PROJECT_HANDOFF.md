@@ -1405,7 +1405,7 @@ PostgreSQL jetable, smoke test navigateur, contrôles de production lecture seul
 
 ---
 
-## 7 terdecies. Lot L12 — robustesse des imports / classeurs — TERMINÉ (local)
+## 7 terdecies. Lot L12 — robustesse des imports / classeurs — TERMINÉ (déployé)
 
 Objectif : fiabiliser les entrées venant de fichiers externes, SANS refonte UX, SANS
 nouvelle fonction métier, SANS migration présumée. Résultat : **audit complet + deux
@@ -1497,11 +1497,36 @@ runtime). **Aucun upload binaire** : pas de multer, pas de disque, pas de xlsx/x
    n'est pas couverte par cette borne (risque résiduel minime) ;
 3. pas d'antivirus, pas de validation binaire xlsx/xls/ods (hors périmètre, aucun upload).
 
+### Production — TERMINÉ
+
+- pré-push : **366/366**, build client OK, `git diff --check` OK, 0 `ECONNREFUSED`, aucun
+  PostgreSQL jetable résiduel ; `origin/main` = `590a2d3` (ancêtre de HEAD), seuls
+  `8341a04` + `964743f` à pousser ;
+- push **sans `--force`** : `590a2d3..964743f main -> main` ;
+- déploiement Railway `99691cc2` (commitHash `964743fc…`) → **SUCCESS**, `/api/health` **200** ;
+- migrations : **exactement 13 (001→013)**, courante **013_evaluations_qcm.sql**, aucune
+  `014`, aucune rejouée (dernière appliquée le 23/09) — **aucune migration nouvelle** ;
+- code déployé vérifié : `entity.too.large` ⇒ 413 + message global ; `lireOnglet` :
+  `spreadsheets.get` (propriétés / `gridProperties` / `merges`) → contrôle
+  `rowCount ≤ 20 000` et `columnCount ≤ 500` → refus → **seulement ensuite** `values.get` ;
+  `FORMATTED_VALUE` et fusions conservés ; aucun multer / upload binaire / fichier temporaire ;
+- routes d'import anonymes ⇒ **401** (les 6 : classeur, dernier, stagiaires import(-apercu),
+  évaluations import(-apercu)) ; le contrôle admin `GET /api/import/dernier` n'a PAS été
+  rejoué après déploiement (il exigeait de signer un cookie avec le secret de production,
+  refusé par le garde-fou de l'agent) — couvert par les tests automatisés ;
+- **aucun import de test en production**, aucun fichier téléversé ;
+- volumes production inchangés (utilisateurs 1, formations 1, sessions 1, groupes 3,
+  inscriptions 8, absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1,
+  modèles 2, générations 4, documents 6) — lecture en transaction `READ ONLY` ;
+- logs : démarrage normal, aucun crash / TypeError / ReferenceError / `ECONNREFUSED` /
+  erreur de migration / erreur Google / erreur PostgreSQL ; seul `npm warn config
+  production Use --omit=dev` (bénin, connu).
+
 ### État
 
 - **aucune migration** ;
-- commit : « Imports : fiabiliser les fichiers et classeurs » (NON poussé) ;
-- **lot L12 TERMINÉ (local), push/déploiement en attente de validation humaine.**
+- commit poussé : `964743f` — « Imports : fiabiliser les fichiers et classeurs » ;
+- **lot L12 TERMINÉ et VALIDÉ EN PRODUCTION.**
 
 ---
 

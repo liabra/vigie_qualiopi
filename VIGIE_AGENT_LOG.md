@@ -2143,3 +2143,14 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
 - test « processus réel » aligné sur la commande de production (cwd racine) ; message
   d'arrêt explicite « serveur HTTP fermé, pool PostgreSQL fermé » ;
 - **380/380** × 2, build OK, `git diff --check` OK.
+- plan épinglé `0 / 1 / 0` (`deploy.startCommand` seul, `destructive: false`) appliqué ⇒
+  déploiement `831ed880` SUCCESS, démarrage direct Node (plus aucune ligne npm) ; `/api/health`
+  200 ; 13 migrations (001→013), aucune `014` ; volumes inchangés ; plan « already up to date » ;
+- push `85e2c33..bb09f7c` (sans `--force`) ⇒ déploiement `d790c869` SUCCESS ; le conteneur
+  remplacé journalise **« Signal SIGTERM reçu : arrêt en cours… »** puis **« Arrêt propre
+  terminé. »** ~3 s après SIGTERM (serveur HTTP et pool fermés, `exit(0)`), plus de
+  `npm error signal SIGTERM` ⇒ dette « SIGTERM qui n'atteint pas Node » **RÉSOLUE**.
+
+### État
+
+**L13 TERMINÉ et VALIDÉ EN PRODUCTION.** Aucune dette BLOQUANTE avant l'UX/UI.

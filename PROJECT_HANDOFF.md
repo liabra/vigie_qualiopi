@@ -1548,7 +1548,9 @@ git push main (liabra/vigie_qualiopi)
 → `npm run build` (railway.json buildCommand) ⇒ `vite build` ⇒ client/dist
 → image finale : /app complet (node_modules non élagués)
 → `npm start` (railway.json startCommand) ⇒ `npm start -w server` ⇒ `node src/index.js`
-   (NODE_ENV=production posé par Railpack au runtime ; SIGTERM bien relayé par npm)
+   (NODE_ENV=production posé par Railpack au runtime)
+   [état initial L13 — désormais `node server/src/index.js` via `.railway/railway.ts` :
+   npm ne relayait PAS SIGTERM en production, voir « Arrêt propre »]
 → checkConfig → migrate() (verrou consultatif) → seedIfEmpty() → listen(PORT=8080)
 → healthcheck Railway GET /api/health (timeout 120 s, uniquement au déploiement)
 → bascule du trafic ; l'ancien déploiement reçoit SIGTERM
@@ -1735,8 +1737,8 @@ uniquement). Aujourd'hui : **1 replica**.
 `server/src/arret.js` : sur SIGTERM/SIGINT (une seule fois) → log du signal →
 `server.close()` (nouvelles connexions refusées, requêtes en cours terminées) +
 `closeIdleConnections()` (keep-alive inactifs) → `closePool()` → `exit(0)` ; délai de
-sécurité **10 s** ⇒ `closeAllConnections()` + `exit(1)`. Vérifié : npm relaie bien
-SIGTERM jusqu'à Node (pas besoin de changer `startCommand`).
+sécurité **10 s** ⇒ `closeAllConnections()` + `exit(1)`. Vérifié en LOCAL : npm relaie SIGTERM jusqu'à Node —
+**faux en production** (voir constat ci-dessous), d'où `startCommand` direct Node.
 **Constat en production (redéploiement déclenché par l'apply IaC)** : Railway envoie
 SIGTERM (10:13:34), le conteneur s'arrête ~17 s plus tard (`drainingSeconds` 15 effectif),
 mais **Node ne journalise pas « Signal SIGTERM reçu »** : npm (PID 1) rapporte
@@ -1757,6 +1759,16 @@ résout tous ses fichiers (migrations, seed, `client/dist`) via `import.meta.url
 indépendant du répertoire courant. Le test « processus réel » (`transversal.test.js`) lance
 désormais exactement `node server/src/index.js` depuis la racine. Le message final d'arrêt
 précise « serveur HTTP fermé, pool PostgreSQL fermé » (émis seulement après les deux).
+
+**Validé en production** : plan épinglé `0 / 1 / 0` (`deploy.startCommand` seul,
+`destructive: false`) appliqué ⇒ déploiement `831ed880` SUCCESS, démarrage sans aucune
+couche npm (« Migrations : base déjà à jour. », « en ligne … Node v22.23.2 ») ; puis le push
+de `bb09f7c` l'a remplacé : `11:08:54` « sending signal SIGTERM to container » →
+`11:08:57` **« Signal SIGTERM reçu : arrêt en cours (nouvelles connexions refusées). »** →
+**« Arrêt propre terminé. »** (émis seulement après `server.close()` + `closePool()`, puis
+`exit(0)`) ; plus aucune ligne `npm error signal SIGTERM` ; le processus sort ~3 s après
+SIGTERM, bien avant la fin des 15 s de `drainingSeconds` (« Stopping Container » = fin de
+fenêtre Railway).
 
 **Limite Railway** : par défaut l'ancien déploiement reçoit SIGKILL **0 s** après SIGTERM.
 Deux représentations de 15 s : (A) réglage de déploiement `drainingSeconds: 15`
@@ -1849,7 +1861,7 @@ ancienne peut pointer vers des fichiers depuis supprimés ou déplacés.
 | --- | --- | --- |
 | 1 | Config as Code `railway.json` coupée le **01/12/2026** | **RÉSOLUE** — IaC `.railway/railway.ts` appliquée, `railway.json` retiré |
 | 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | ASSUMÉE / DOCUMENTÉE — pas disponible sur le plan actuel ; stratégie externe chiffrée à définir |
-| 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production (drainingSeconds 15 appliqué) | correction appliquée (`startCommand: "node server/src/index.js"`) — validation en production ci-dessous |
+| 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production | **RÉSOLUE** — `startCommand: "node server/src/index.js"`, arrêt propre observé en production |
 | 4 | `NODE_ENV=production` fourni implicitement par Railpack (un changement de builder désactiverait `Secure` et l'exigence de SESSION_SECRET) | À TRAITER PLUS TARD (optionnel, risque faible analysé ; volontairement non activé en L13) |
 | 5 | devDependencies dans l'image prod (`RAILPACK_PRUNE_DEPS` non activé volontairement) ; `npm install` au lieu de `npm ci` | À TRAITER PLUS TARD (optionnel) |
 | 6 | Vite 5 (failles serveur de dev) | À TRAITER PLUS TARD (chantier UX) |

@@ -2154,3 +2154,20 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
 ### État
 
 **L13 TERMINÉ et VALIDÉ EN PRODUCTION.** Aucune dette BLOQUANTE avant l'UX/UI.
+
+## 2026-09-24 (suite 33) — UX-1A : navigation et coque applicative
+
+- audit UX/UI commité (`UX_UI_AUDIT.md`) ; décision : **React Router** (pas de routeur maison) ;
+- `react-router-dom` 7.18.4 (client) ; tests client `node:test` + jsdom 27.4.0 + esbuild
+  0.21.5 (déjà présent via Vite) — Vitest écarté (vulnérabilité critique sur la branche
+  compatible Vite 5) ; `npm audit` : aucune vulnérabilité nouvelle (6 préexistantes) ;
+- une URL par écran (`/accueil`, `/sessions/:id[/…]`, `/indicateurs`, `/preuves`, `/veille`,
+  `/audits`, admin : `/formations`, `/modeles`, `/prescripteurs`, `/versions`,
+  `/parametres/google`), page introuvable, accès réservé, retour après connexion (chemin
+  interne uniquement) ; barre latérale filtrée par rôle, tiroir sous 1 024 px ;
+- jetons du design system (`tokens.css`), anciennes variables raccordées, mode sombre
+  automatique retiré ; focus visible global ;
+- écrans existants montés tels quels ; Sessions : détail sur sa propre URL, session
+  introuvable gérée ; Formations et Prescripteurs sur leurs pages ; aucun backend modifié ;
+- **380/380 serveur + 19/19 client** (×2), build OK, `git diff --check` OK ; smoke Chrome réel
+  (PostgreSQL jetable) **43/43**. Détail : `UX_UI_AUDIT.md` § UX-1A.

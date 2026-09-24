@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "./api.js";
+import { Button, EmptyState, LoadingState } from "./ui/index.js";
 import { messageDepassementDuree } from "./messages.js";
 import { RechercheDrive } from "./RechercheDrive.jsx";
 import Evaluations from "./Evaluations.jsx";
@@ -55,7 +57,7 @@ function Champ({ label, ...props }) {
 }
 
 // ── Formations ───────────────────────────────────────────────
-function Formations({ formations, onChange, erreur }) {
+export function Formations({ formations, onChange, erreur, ouvert }) {
   const [form, setForm] = useState({ intitule: "", code_interne: "", duree_heures_defaut: "", modalite: "presentiel" });
   const [edite, setEdite] = useState(null);
 
@@ -97,7 +99,7 @@ function Formations({ formations, onChange, erreur }) {
 
   return (
     // Sans formation, rien d'autre n'est possible : le bloc s'ouvre seul.
-    <Bloc titre={`Formations (${formations.length})`} ouvertParDefaut={formations.length === 0}>
+    <Bloc titre={`Formations (${formations.length})`} ouvertParDefaut={ouvert ?? formations.length === 0}>
       <ul className="liste-simple">
         {formations.map((f) => (
           <li key={f.id}>
@@ -485,6 +487,8 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
   const [externes, setExternes] = useState([]);
   const [indicateurs, setIndicateurs] = useState([]);
   const [rattachement, setRattachement] = useState({ type: "", titre: "", indicateur_id: "", fichier: null });
+  // Identifiant invalide (400) ou session inexistante (404) : état dédié.
+  const [introuvable, setIntrouvable] = useState(false);
 
   const charger = useCallback(async () => {
     try {
@@ -498,7 +502,11 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
       setAbs(absences);
       setExternes((preuves.preuves || []).filter((p) => p.source !== "generation"));
       setIndicateurs(indics.indicateurs || []);
-    } catch (e) { erreur(e.message); }
+      setIntrouvable(false);
+    } catch (e) {
+      if (e.status === 404 || e.status === 400) setIntrouvable(true);
+      else erreur(e.message);
+    }
   }, [sessionId, erreur]);
   useEffect(() => { charger(); }, [charger]);
   const idSession = d?.session?.id;
@@ -513,7 +521,17 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
     }
   }, [idSession]);
 
-  if (!d) return <p className="muted">Chargement de la session…</p>;
+  if (introuvable) {
+    return (
+      <EmptyState
+        titre="Session introuvable"
+        action={<Button variante="primary" to="/sessions">Voir toutes les sessions</Button>}
+      >
+        Cette session n'existe pas ou n'existe plus. Vérifiez le lien utilisé.
+      </EmptyState>
+    );
+  }
+  if (!d) return <LoadingState texte="Chargement de la session…" />;
 
   // Corriger une session (admin). La modification ne touche jamais les
   // documents déjà générés : s'ils existent et qu'un champ imprimé change,
@@ -1001,7 +1019,7 @@ function DetailSession({ sessionId, modeles, prescripteurs, onChange, erreur, ad
 // Petite liste configurable : afficher, ajouter, renommer, désactiver.
 // La désactivation ne touche pas les inscriptions passées ; un prescripteur
 // inactif n'est plus proposé aux nouvelles inscriptions.
-function GestionPrescripteurs({ prescripteurs, onChange, erreur }) {
+export function GestionPrescripteurs({ prescripteurs, onChange, erreur, ouvert = false }) {
   const [nom, setNom] = useState("");
   const [edite, setEdite] = useState(null);
 
@@ -1043,7 +1061,7 @@ function GestionPrescripteurs({ prescripteurs, onChange, erreur }) {
   }
 
   return (
-    <Bloc titre={`Prescripteurs (${prescripteurs.length})`}>
+    <Bloc titre={`Prescripteurs (${prescripteurs.length})`} ouvertParDefaut={ouvert}>
       <ul className="liste-simple">
         {prescripteurs.map((p) => (
           <li key={p.id} className={p.actif ? "" : "abandonne"}>
@@ -1084,13 +1102,15 @@ function GestionPrescripteurs({ prescripteurs, onChange, erreur }) {
 }
 
 // ── Écran ────────────────────────────────────────────────────
-export default function Sessions({ admin, peutSaisir, onChange }) {
+// La session affichée vient de l'URL (/sessions/:sessionId) : retour arrière,
+// rechargement et lien direct fonctionnent. Sans identifiant : la liste.
+export default function Sessions({ admin, peutSaisir, onChange, sessionId = null }) {
+  const naviguer = useNavigate();
   const [formations, setFormations] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [modeles, setModeles] = useState([]);
   const [prescripteurs, setPrescripteurs] = useState([]);
   const [err, setErr] = useState(null);
-  const [choisie, setChoisie] = useState(null);
   const [form, setForm] = useState({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "", horaire: "" });
 
   const charger = useCallback(async () => {
@@ -1117,7 +1137,7 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
       setForm({ formation_id: "", reference: "", date_debut: "", date_fin: "", lieu: "", formateur: "", duree_heures_reelle: "", horaire: "" });
       setErr(null);
       await charger();
-      setChoisie(r.session.id);
+      naviguer(`/sessions/${r.session.id}`);
     } catch (e) { setErr(e.message); }
   }
 
@@ -1125,19 +1145,31 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
     return <p className="muted">Vous n'avez pas accès à la saisie des sessions.</p>;
   }
 
+  // Détail d'une session : page à part entière (le découpage en onglets
+  // viendra en UX-2). Formations et prescripteurs ont leur propre page.
+  if (sessionId) {
+    return (
+      <section className="sessions">
+        <p><Button variante="ghost" compact to="/sessions">← Toutes les sessions</Button></p>
+        {err && <p className="flash erreur sticky">{err}</p>}
+        <DetailSession
+          key={sessionId}
+          sessionId={sessionId} modeles={modeles} prescripteurs={prescripteurs} onChange={charger} erreur={setErr}
+          admin={admin} peutSaisir={peutSaisir}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="sessions">
       <h1>Sessions</h1>
       {err && <p className="flash erreur sticky">{err}</p>}
 
-      {admin && <Formations formations={formations} onChange={charger} erreur={setErr} />}
-
-      {admin && <GestionPrescripteurs prescripteurs={prescripteurs} onChange={charger} erreur={setErr} />}
-
       <Bloc titre={`Sessions (${sessions.length})`} ouvertParDefaut>
         <ul className="liste-simple">
           {sessions.map((s) => (
-            <li key={s.id} className={choisie === s.id ? "actif" : ""}>
+            <li key={s.id}>
               <div>
                 <strong>{s.reference || s.formation}</strong>
                 <div className="muted small">
@@ -1146,9 +1178,9 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
                   {s.horaire && <> · {s.horaire}</>}{s.lieu && <> · {s.lieu}</>} · {s.nb_inscrits} inscrit(s)
                 </div>
               </div>
-              <button className="btn petit" onClick={() => setChoisie(choisie === s.id ? null : s.id)}>
-                {choisie === s.id ? "Fermer" : "Ouvrir"}
-              </button>
+              <Button compact to={`/sessions/${s.id}`} aria-label={`Ouvrir la session ${s.reference || s.formation}`}>
+                Ouvrir
+              </Button>
             </li>
           ))}
           {sessions.length === 0 && <li className="muted">Aucune session.</li>}
@@ -1175,13 +1207,6 @@ export default function Sessions({ admin, peutSaisir, onChange }) {
         </div>
         )}
       </Bloc>
-
-      {choisie && (
-        <DetailSession
-          sessionId={choisie} modeles={modeles} prescripteurs={prescripteurs} onChange={charger} erreur={setErr}
-          admin={admin} peutSaisir={peutSaisir}
-        />
-      )}
     </section>
   );
 }

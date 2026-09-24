@@ -13,6 +13,7 @@
     "start": "npm start -w server",
     "db:migrate": "npm run db:migrate -w server",
     "db:seed": "npm run db:seed -w server",
-    "test": "npm test -w server"
+    "test": "npm test -w server && npm test -w client",
+    "test:client": "npm test -w client"
   }
 }

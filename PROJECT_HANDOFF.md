@@ -64,14 +64,14 @@ L'application remplace progressivement l'ancien fonctionnement fondé sur Google
 
 | Couche | Choix |
 | --- | --- |
-| Client | React 18 + Vite 5, `client/` |
+| Client | React 18 + Vite 5, `client/` ; **React Router 7** (une URL par écran, UX-1A) ; coque `client/src/shell/`, composants `client/src/ui/`, jetons `client/src/tokens.css` |
 | Serveur | Node 22.x, Express 4, ES modules, `server/` |
 | Base | PostgreSQL Railway |
 | Migrations | `server/db/migrations/NNN_*.sql`, appliquées au démarrage |
 | Google | OAuth, Drive API, Sheets API, Docs API |
 | Déploiement | Railway, auto-deploy depuis `main` |
 | Healthcheck | `/api/health` |
-| Tests | `node --test` via `npm test` |
+| Tests | `node --test` via `npm test` : serveur **puis** client (`client/test/`, jsdom + chargeur JSX esbuild) ; `npm run test:client` seul |
 | Monorepo | npm workspaces |
 
 ### Variables d'environnement

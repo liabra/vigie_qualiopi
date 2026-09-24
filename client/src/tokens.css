@@ -1,0 +1,83 @@
+/* ─────────────────────────────────────────────────────────────
+   Jetons du design system Vigie (UX-1A) — voir UX_UI_AUDIT.md §5.
+   Contrastes vérifiés (WCAG) : texte ≥ 4,5:1, bordures de champ et
+   anneau de focus ≥ 3:1. Thème CLAIR uniquement pendant la refonte :
+   le mode sombre automatique est retiré (décision de l'audit).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* Fonds et surfaces */
+  --color-background: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F2F4F7;
+
+  /* Texte */
+  --color-text: #111827;            /* 16,5:1 sur le fond */
+  --color-text-secondary: #4B5563;  /* 7,6:1 sur blanc */
+
+  /* Bordures */
+  --color-border: #E3E7ED;          /* séparateurs, cartes (décoratif) */
+  --color-border-input: #858F9E;    /* champs : 3,3:1 sur blanc */
+
+  /* Marque */
+  --color-primary: #1F4E79;         /* 8,7:1 sur blanc */
+  --color-primary-hover: #173D61;
+  --color-primary-soft: #EEF4FA;    /* texte primaire dessus : 7,8:1 */
+  --color-on-primary: #FFFFFF;
+
+  /* Focus */
+  --color-focus: #2563EB;           /* 5,2:1 sur blanc */
+
+  /* Statuts : texte foncé sur fond clair, toujours avec un libellé */
+  --color-success: #067647;  --color-success-bg: #ECFDF3;  /* 5,4:1 */
+  --color-warning: #93370D;  --color-warning-bg: #FFFAEB;  /* 7,2:1 */
+  --color-error:   #B42318;  --color-error-bg:   #FEF3F2;  /* 6,1:1 */
+  --color-info:    #1D4ED8;  --color-info-bg:    #EAF1FD;  /* 5,9:1 */
+  --color-neutral: #475467;  --color-neutral-bg: #F2F4F7;  /* 7,0:1 */
+
+  /* Typographie : police système */
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-size-page-title: 1.5rem;     /* 24 px */
+  --line-height-page-title: 2rem;
+  --font-size-section-title: 1.125rem; /* 18 px */
+  --line-height-section-title: 1.625rem;
+  --font-size-body: 0.9375rem;        /* 15 px */
+  --line-height-body: 1.4667;
+  --font-size-small: 0.8125rem;       /* 13 px */
+  --line-height-small: 1.125rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Espacements (grille de 4 px) */
+  --space-1: 0.25rem;  /* 4 */
+  --space-2: 0.5rem;   /* 8 */
+  --space-3: 0.75rem;  /* 12 */
+  --space-4: 1rem;     /* 16 */
+  --space-5: 1.5rem;   /* 24 */
+  --space-6: 2rem;     /* 32 */
+  --space-7: 3rem;     /* 48 */
+
+  /* Rayons, ombre, tailles */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+  --shadow-float: 0 4px 16px rgba(17, 24, 39, 0.12);
+  --container-max: 1200px;
+  --container-form: 720px;
+  --sidebar-width: 15rem;           /* 240 px */
+  --control-height: 2.25rem;        /* 36 px */
+  --control-height-compact: 2rem;   /* 32 px */
+  --transition: 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --transition: 0ms linear; }
+}
+
+/* Focus visible sur TOUT élément interactif, y compris les écrans existants. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}

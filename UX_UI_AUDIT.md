@@ -174,9 +174,9 @@ Classés par impact sur l'usage quotidien.
 
 ### 3.3 Routage (URL)
 
-Routeur **minimal maison** (API History, ~60 lignes) plutôt qu'une dépendance : le besoin
-est simple et `SECURITY.md` demande d'examiner toute dépendance nouvelle. `react-router`
-reste une alternative acceptable si la décision est prise en connaissance de cause.
+**Décision (validée avant UX-1A) : React Router** (`react-router-dom`, version stable),
+plutôt qu'un routeur maison — une dépendance éprouvée plutôt qu'un système d'historique
+à maintenir. Les routes réellement créées sont listées en [UX-1A](#ux-1a--shell-et-routing-réalisé).
 
 | URL | Écran |
 | --- | --- |
@@ -821,7 +821,7 @@ nouvelle coque.
 - jetons CSS (section 5), thème clair fixé, styles de focus, bordures conformes ;
 - composants de base : Button, Field, Select, MultiSelect, Badge, Alert, Toast, Table,
   Tabs, Drawer, ConfirmDialog, PageHeader, EmptyState, Skeleton ; `formatDate` unique ;
-- routeur minimal + barre latérale + en-tête de page + titres de document ;
+- React Router + barre latérale + en-tête de page + titres de document ;
 - les écrans existants sont **montés tels quels** dans la nouvelle coque, sous leur URL ;
   Formations et Prescripteurs deviennent des pages (même code) ; Versions passe dans
   Paramètres ; bandeau Drive → Paramètres › Google Drive ;
@@ -879,6 +879,63 @@ nouvelle coque.
 3. liste transverse des stagiaires (page « Stagiaires ») ;
 4. suppression d'une évaluation / d'une satisfaction ;
 5. modification d'un groupe.
+
+### UX-1A — Shell et routing (réalisé)
+
+Première tranche d'UX-1 : la **coque** et la **navigation** autour des écrans
+existants, sans les réécrire.
+
+**Décisions prises**
+
+| Sujet | Décision |
+| --- | --- |
+| Routeur | `react-router-dom` **7.18.4** (stable, compatible React 18, Node ≥ 20 ; 0 vulnérabilité) — `BrowserRouter` ; le serveur sert déjà `index.html` pour toute URL hors `/api` et `/auth` |
+| Tests client | `node:test` (déjà utilisé côté serveur) + **jsdom 27.4.0** + chargeur JSX via **esbuild 0.21.5** (la version déjà utilisée par Vite, dédupliquée). **Vitest écarté** : la branche compatible Vite 5 (2.x) porte une vulnérabilité critique non corrigée, le correctif (Vitest 5) exige Vite ≥ 6.4 |
+| Thème | mode sombre automatique **retiré** ; thème clair fixé (`color-scheme: light`) |
+| Anciennes variables CSS | `--bg`, `--text`, `--primary`, `--ok`… **raccordées aux nouveaux jetons** : les écrans non refondus adoptent la palette sans être réécrits |
+| Titres | les écrans existants gardent leur propre `<h1>` ; la coque n'ajoute qu'un **fil d'Ariane** au-dessus (pas de double titre). Les nouvelles pages utilisent `PageHeader` complet |
+| Retour après connexion | la page demandée avant la connexion Google est mémorisée (`sessionStorage`) et rouverte après — **chemin interne uniquement** (jamais `//…`, `https:`, `/api`, `/auth`) |
+| Session | `/sessions/:id` affiche **uniquement** le détail (+ « ← Toutes les sessions »), plus sous la liste ; les sous-pages (`/stagiaires`, `/assiduite`, `/evaluations`, `/satisfaction`, `/documents`) affichent le même détail jusqu'à UX-2 |
+| Formations, Prescripteurs | sortis de la page Sessions vers leurs propres pages (même code) |
+| Drive | bandeau permanent retiré ; état visible sur l'Accueil (admin) et dans Paramètres › Google Drive |
+
+**Routes**
+
+| URL | Écran | Accès |
+| --- | --- | --- |
+| `/` | redirection vers `/accueil` (ou la page mémorisée avant connexion) | connecté |
+| `/accueil` | Accueil (squelette : raccourcis selon les droits) | tous |
+| `/sessions`, `/sessions/:sessionId` | liste / détail de session | tous |
+| `/sessions/:sessionId/stagiaires` · `assiduite` · `evaluations` · `satisfaction` · `documents` | détail (découpage en UX-2) | tous |
+| `/indicateurs`, `/indicateurs/non-applicables` | ex-« Tableau de bord » (référentiel) | tous |
+| `/preuves`, `/veille`, `/audits` | écrans existants | tous |
+| `/formations` | catalogue des formations | admin |
+| `/modeles`, `/prescripteurs`, `/versions`, `/parametres/google` | paramètres | admin |
+| toute autre adresse | « Page introuvable » (dans la coque) | tous |
+
+Écart assumé par rapport au nom des routes : `/indicateurs/non-applicables` ajoutée
+(vue existante du référentiel, désormais adressable). Les routes admin gardent les noms
+demandés (`/modeles`, `/prescripteurs`, `/versions`, `/parametres/google`).
+
+**Coque** : barre latérale fixe (240 px) ≥ 1 024 px ; en dessous, barre supérieure avec
+bouton « Ouvrir le menu » et tiroir (Échap et le voile referment, le focus revient au
+bouton, le tiroir fermé sort de l'ordre de tabulation) ; lien d'évitement « Aller au
+contenu » ; entrée active signalée par `aria-current`, un filet et la graisse ; titre de
+l'onglet du navigateur par page. Un contributeur ne voit **aucune** entrée
+d'administration ; une URL réservée lui affiche « Accès réservé » (le serveur refuse de
+toute façon).
+
+**Composants créés** : `AppShell`, `Sidebar`, `PageHeader`, `Button`, `Badge`, `Alert`,
+`EmptyState`, `LoadingState` (pas de `Card` : non nécessaire à ce stade). Drawer, Modal et
+Tabs viendront avec les écrans qui les utiliseront.
+
+**Validation** : 380/380 serveur + 19/19 client (×2), build OK ; smoke navigateur réel
+(Chrome, PostgreSQL jetable, vrai serveur) **43/43** — admin, contributeur, rafraîchissement
+de `/sessions/:id`, précédent/suivant, URL inconnue, clavier, tablette (900 px) et mobile
+(390 px) sans défilement horizontal, aucune erreur console.
+
+**Reste à faire en UX-1** (UX-1B) : remplacer les `window.alert/confirm` par des
+composants, champs de formulaire accessibles communs, format de date unique.
 
 ---
 

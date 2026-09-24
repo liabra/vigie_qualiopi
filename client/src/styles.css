@@ -1,33 +1,21 @@
+/* Variables historiques des écrans existants, désormais raccordées aux
+   jetons du design system (tokens.css). Les écrans non encore refondus
+   gardent leurs classes mais adoptent la nouvelle palette. */
 :root {
-  --bg: #f5f7fa;
-  --surface: #ffffff;
-  --text: #1b2430;
-  --muted: #5d6b7a;
-  --border: #dde3ea;
-  --primary: #1f4e79;
-  --primary-text: #ffffff;
-  --accent-bg: #e8f0f8;
-  --ok: #1d7a46;
-  --ok-bg: #e3f4ea;
-  --warn: #8a5a00;
-  --warn-bg: #fdf1d8;
-  --err: #b42318;
-  --err-bg: #fdeceb;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #11161c; --surface: #1a2129; --text: #e6ebf0; --muted: #9aa7b4; --border: #2c3642;
-    --primary: #5b9bd5; --primary-text: #0b1118; --accent-bg: #1f2c3a;
-    --ok: #6fcf97; --ok-bg: #16301f; --warn: #f2c14e; --warn-bg: #3a2e12; --err: #f28b82; --err-bg: #3a1a18;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #11161c; --surface: #1a2129; --text: #e6ebf0; --muted: #9aa7b4; --border: #2c3642;
-  --primary: #5b9bd5; --primary-text: #0b1118; --accent-bg: #1f2c3a;
-  --ok: #6fcf97; --ok-bg: #16301f; --warn: #f2c14e; --warn-bg: #3a2e12; --err: #f28b82; --err-bg: #3a1a18;
-  color-scheme: dark;
+  --bg: var(--color-background);
+  --surface: var(--color-surface);
+  --text: var(--color-text);
+  --muted: var(--color-text-secondary);
+  --border: var(--color-border);
+  --primary: var(--color-primary);
+  --primary-text: var(--color-on-primary);
+  --accent-bg: var(--color-primary-soft);
+  --ok: var(--color-success);
+  --ok-bg: var(--color-success-bg);
+  --warn: var(--color-warning);
+  --warn-bg: var(--color-warning-bg);
+  --err: var(--color-error);
+  --err-bg: var(--color-error-bg);
 }
 * { box-sizing: border-box; }
 /* Réserve la place de la barre de défilement en permanence : sans cela,
@@ -36,7 +24,7 @@
 html { scrollbar-gutter: stable; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-family); font-size: var(--font-size-body); line-height: var(--line-height-body);
 }
 h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
 p { margin: 0; }
@@ -44,14 +32,6 @@ p { margin: 0; }
 .small { font-size: .85rem; }
 .text-erreur { color: var(--err); }
 
-.topbar {
-  display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
-  padding: .75rem 16px; background: var(--surface); border-bottom: 1px solid var(--border);
-}
-.brand { font-weight: 700; color: var(--primary); }
-.who { display: flex; align-items: center; gap: .6rem; font-size: .9rem; }
-.role { font-size: .75rem; padding: .1rem .5rem; border-radius: 99px; background: var(--accent-bg); }
-.page { max-width: 920px; margin: 0 auto; padding: 1.25rem 16px 3rem; display: grid; gap: 1rem; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
 .btn {
@@ -152,12 +132,6 @@ p { margin: 0; }
 .part.statut-a_risque { background: var(--st-risque); }
 .part.statut-non_applicable { background: var(--st-na); }
 
-.onglets { display: flex; gap: .5rem; }
-.onglets button {
-  padding: .5rem 1rem; border: 1px solid var(--border); border-radius: 8px 8px 0 0;
-  background: var(--surface); color: var(--muted); font: inherit; cursor: pointer;
-}
-.onglets button.actif { color: var(--primary); border-bottom-color: var(--surface); font-weight: 600; }
 
 .import-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 .apercu { padding: .9rem 1rem; display: grid; gap: .3rem; }

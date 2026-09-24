@@ -15,7 +15,9 @@ const TITRES = { OF: "Organisme de formation", CFA: "Centre de formation d'appre
 // `rafraichir` change quand une preuve a été modifiée ailleurs : le
 // tableau de bord relit ses données, sans jamais être remonté — les
 // critères dépliés et la position de défilement restent en place.
-export default function Referentiel({ admin, rafraichir = 0 }) {
+// `vue` / `surVue` : vue pilotée par l'URL (/indicateurs,
+// /indicateurs/non-applicables, /versions). Sans eux, état local.
+export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, surVue }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [open, setOpen] = useState(() => new Set([1]));
@@ -26,7 +28,9 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
   // Écran séparé listant les indicateurs marqués non applicables : ils
   // n'apparaissent plus dans le référentiel courant, seul cet écran
   // permet de les retrouver pour les réactiver.
-  const [vue, setVue] = useState("referentiel");
+  const [vueLocale, setVueLocale] = useState("referentiel");
+  const vue = vueImposee ?? vueLocale;
+  const setVue = surVue ?? setVueLocale;
   // Gestion des VERSIONS du référentiel (admin) : coexistence de plusieurs
   // versions, activation explicite, préparation d'une future coquille.
   const [versions, setVersions] = useState(null);
@@ -36,6 +40,13 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
   useEffect(() => {
     api("/api/referentiel").then(setData).catch((e) => setErr(e.message));
   }, [rafraichir]);
+
+  // Les versions se chargent à l'arrivée sur leur vue — y compris par un
+  // lien direct ou un rechargement de /versions.
+  useEffect(() => {
+    if (vue === "versions") chargerVersions();
+    else setVersions(null);
+  }, [vue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function chargerVersions() {
     try {
@@ -182,7 +193,7 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
             <h1>Versions du référentiel</h1>
             <p className="muted">Plusieurs versions coexistent : une active, des futures, des historiques.</p>
           </div>
-          <button className="btn petit" onClick={() => { setVue("referentiel"); setVersions(null); }}>← Retour au référentiel</button>
+          <button className="btn petit" onClick={() => setVue("referentiel")}>← Retour au référentiel</button>
         </div>
         {versionErr && <p className="flash erreur">{versionErr}</p>}
         {!versions && <p className="muted">Chargement des versions…</p>}
@@ -261,7 +272,7 @@ export default function Referentiel({ admin, rafraichir = 0 }) {
           value={q} onChange={(e) => setQ(e.target.value)} aria-label="Rechercher un indicateur"
         />
         {admin && (
-          <button className="btn petit" onClick={() => { setVue("versions"); chargerVersions(); }}>
+          <button className="btn petit" onClick={() => setVue("versions")}>
             Versions
           </button>
         )}

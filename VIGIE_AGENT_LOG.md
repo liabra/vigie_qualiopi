@@ -1910,3 +1910,65 @@ production conforme. **Push et déploiement Railway en attente de validation hum
 ### État
 
 **L11 VALIDÉ EN PRODUCTION — lot TERMINÉ.**
+
+## 2026-09-24 (suite 28) — L12 : robustesse des imports / classeurs
+
+### Cadre
+
+Aucune refonte UX, aucune nouvelle fonction métier, aucune migration présumée. Audit
+complet des entrées de fichiers externes, corrections ciblées uniquement.
+
+### Cartographie (bilan)
+
+- **classeur** : `POST /api/import/classeur` (admin) — lit un Google Sheets sur Drive
+  (pas d'upload), parseur `classeur.js`, preview `apercu=true`, transaction, tables
+  `imports_drive`/`preuves`/`preuve_fichiers` ;
+- **stagiaires CSV** : `POST /api/sessions/:id/stagiaires/import[-apercu]` (redacteur),
+  parseur pur `csvStagiaires.js`, preview + confirmation transactionnelle ;
+- **résultats CSV** : `POST /api/sessions/:id/evaluations/import[-apercu]` (redacteur),
+  parseur `parserCsv` + `evaluations.js`, preview + confirmation transactionnelle ;
+- aucun upload binaire (pas de multer/disque/xlsx/xls/ods), fichier lu en mémoire côté
+  client et envoyé en texte JSON (`express.json` 1 Mo).
+
+### Déjà robuste (aucun changement)
+
+BOM, séparateur détecté, guillemets, U+FFFD refusé, en-têtes normalisés + mapping fermé
+(colonne inconnue signalée, doublon refusé), colonnes obligatoires, email/booléens/dates
+stricts, prescripteur/groupe rapprochés ; classeur par intitulé (fusions, indicateurs,
+statuts, bruit) ; indicateurs résolus dans la version ACTIVE (L6) ; doublons/réimport
+déterministes (index partiel + upsert, `validee_le` jamais écrasé, `ON CONFLICT DO
+NOTHING`) ; transactions + rollback ; `FORMATTED_VALUE` (jamais de formule exécutée) ;
+aucun export CSV/Excel (pas de vecteur d'injection) ; nom de fichier jamais utilisé ;
+aucun fichier temporaire ; aucune PII en log ; droits admin/redacteur respectés.
+
+### Corrections (3)
+
+1. `app.js` : corps trop volumineux ⇒ **413** « Corps de requête trop volumineux : la
+   limite est de 1 Mo. » (au lieu d'un 400 « JSON mal formé » trompeur ; message global) ;
+2. `google.js` : `lireOnglet` refuse `rowCount > 20 000` ou `columnCount > 500` sur les
+   MÉTADONNÉES (`gridProperties`, déjà chargées sans les cellules) **AVANT** `values.get` —
+   une feuille énorme n'est plus téléchargée ;
+3. `classeur.js` : `extrairePreuves` refuse en plus une grille de plus de **20 000 lignes**
+   ou **500 colonnes** (défense en profondeur).
+
+### Tests
+
+- `idsErreurs.test.js` (+1) : 413 corps > 1 Mo, message global, anonyme, sans fuite ;
+- `classeur.test.js` (+1) : grille démesurée refusée, borne non arbitraire ;
+- `lireOnglet.test.js` (nouveau, +5) : refus AVANT `values.get` (> 20 000 lignes /
+  > 500 colonnes), bornes exactes acceptées, feuille valide lue avec ses fusions,
+  sélection d'onglet ;
+- `transversal.test.js` (+1) : import stagiaires sur PG jetable — valide, réimport
+  déterministe, invalide sans écriture, application utilisable après erreur ;
+- suite complète **366/366**, 2 exécutions consécutives stables, 0 `ECONNREFUSED`,
+  aucun PG jetable résiduel, aucun fichier temporaire.
+
+### Production lecture seule (aucune écriture, L12 non déployé)
+
+Routes d'import protégées (anonyme 401), admin `/api/import/dernier` 200, migration
+courante 013, volumes inchangés, aucun classeur de test téléversé.
+
+### État
+
+**L12 TERMINÉ (local).** Aucune migration — 366/366 × 2 — build OK — `git diff --check`
+OK. **Push et déploiement Railway en attente de validation humaine.**

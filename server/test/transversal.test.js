@@ -388,3 +388,62 @@ test("un import d'évaluations invalide n'écrit rien (rollback)", async () => {
     "SELECT count(*)::int AS n FROM resultats_qcm e JOIN inscriptions i ON i.id = e.inscription_id WHERE i.session_id = $1", [sessionId]);
   assert.equal(n, 0, "aucune évaluation écrite");
 });
+
+// ── Import CSV stagiaires : valide → réimport → invalide ─────
+
+test("import stagiaires : valide, réimport déterministe, invalide sans écriture", async () => {
+  const A = adminId;
+  const formations = await api("GET", "/api/formations", null, A);
+  const formationId = formations.corps.formations[0].id;
+  const s = await api("POST", "/api/sessions", {
+    formation_id: formationId, date_debut: "2026-01-05", date_fin: "2026-03-05", reference: "SESS-CSV",
+  }, A);
+  assert.equal(s.statut, 201);
+  const sessionId = s.corps.session.id;
+
+  // 1. état initial
+  const avant = await pool.query(
+    "SELECT count(*)::int AS n FROM inscriptions WHERE session_id = $1", [sessionId]);
+  assert.equal(avant.rows[0].n, 0);
+
+  // 2. aperçu d'un fichier valide (2 nouveaux stagiaires) — aucune écriture.
+  const csv = "nom;prenom;email\nMartin;Lucie;lucie@exemple.fr\nBernard;Hugo;hugo@exemple.fr";
+  const apercu = await api("POST", `/api/sessions/${sessionId}/stagiaires/import-apercu`, { texte: csv }, A);
+  assert.equal(apercu.statut, 200);
+  assert.equal(apercu.corps.resume.nouveaux, 2);
+  assert.ok(apercu.corps.lignes.every((l) => l.statut === "pret"));
+
+  // 3. confirmation : 2 créés, 2 inscrits.
+  const conf = await api("POST", `/api/sessions/${sessionId}/stagiaires/import`, { texte: csv }, A);
+  assert.equal(conf.statut, 200);
+  assert.equal(conf.corps.bilan.crees, 2);
+  assert.equal(conf.corps.bilan.inscrits, 2);
+
+  // 4. contrôle des données créées
+  const { rows: [{ n: nIns }] } = await pool.query(
+    "SELECT count(*)::int AS n FROM inscriptions WHERE session_id = $1", [sessionId]);
+  assert.equal(nIns, 2);
+
+  // 5. réimport du même fichier : rien de nouveau (déterministe).
+  const re = await api("POST", `/api/sessions/${sessionId}/stagiaires/import`, { texte: csv }, A);
+  assert.equal(re.statut, 200);
+  assert.equal(re.corps.bilan.crees, 0);
+  assert.equal(re.corps.bilan.inscrits, 0);
+  assert.equal(re.corps.bilan.dejaInscrits, 2, "les deux déjà inscrits, pas de doublon");
+  const { rows: [{ n: nRe }] } = await pool.query(
+    "SELECT count(*)::int AS n FROM inscriptions WHERE session_id = $1", [sessionId]);
+  assert.equal(nRe, 2, "toujours 2 inscriptions");
+
+  // 6. fichier invalide (colonne obligatoire absente) : 400, base inchangée.
+  const mauvais = "nom;email\nMartin;x@exemple.fr";
+  const inv = await api("POST", `/api/sessions/${sessionId}/stagiaires/import`, { texte: mauvais }, A);
+  assert.equal(inv.statut, 400);
+  assert.match(inv.corps.error, /obligatoires/);
+  const { rows: [{ n: nApres }] } = await pool.query(
+    "SELECT count(*)::int AS n FROM inscriptions WHERE session_id = $1", [sessionId]);
+  assert.equal(nApres, 2, "base inchangée après le fichier invalide");
+
+  // 7. l'application reste utilisable après l'erreur.
+  const encore = await api("GET", `/api/sessions/${sessionId}`, null, A);
+  assert.equal(encore.statut, 200);
+});

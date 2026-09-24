@@ -56,6 +56,13 @@ export function createApp() {
       console.error(`[SQL ${err.code}] ${err.message}`);
       return res.status(sql.statut).json({ error: sql.message });
     }
+    // Corps trop volumineux (express.json, limite 1 Mo). Le middleware est
+    // GLOBAL : le message vise tout corps JSON, pas seulement un fichier CSV
+    // importé. 413 explicite plutôt qu'un 400 trompeur — l'utilisateur sait
+    // ainsi que c'est la TAILLE qui pose problème, pas le contenu.
+    if (err.type === "entity.too.large" || err.status === 413) {
+      return res.status(413).json({ error: "Corps de requête trop volumineux : la limite est de 1 Mo." });
+    }
     // JSON mal formé (body-parser) ou autre erreur d'appel connue.
     if (err.type === "entity.parse.failed" || (err.status && err.status < 500)) {
       return res.status(400).json({ error: "Requête invalide : corps ou JSON mal formé." });

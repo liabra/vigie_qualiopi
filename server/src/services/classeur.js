@@ -136,10 +136,24 @@ const BRUIT = [
 ];
 export const estBruit = (v) => { const t = (v || "").trim(); return !t || BRUIT.some((r) => r.test(t)); };
 
+// Bornes de raison : un classeur de suivi tient en quelques centaines de
+// lignes sur une douzaine de colonnes. Au-delà, on refuse plutôt que de
+// traiter (et potentiellement d'écrire) une feuille accidentellement énorme.
+// Les bornes sont volontairement très généreuses pour ne jamais gêner un
+// usage réel.
+export const MAX_LIGNES = 20000;
+export const MAX_COLONNES = 500;
+
 // Grille → preuves. Une preuve par couple (indicateur, document) : les
 // cellules fusionnées répètent le même document sur plusieurs lignes, on
 // les regroupe en comptant les occurrences plutôt que de créer des doublons.
 export function extrairePreuves(grille, { fusions = null } = {}) {
+  if (!Array.isArray(grille) || grille.length > MAX_LIGNES) {
+    return { erreur: `Classeur trop volumineux : plus de ${MAX_LIGNES} lignes.`, entetes: [] };
+  }
+  if (grille.some((r) => Array.isArray(r) && r.length > MAX_COLONNES)) {
+    return { erreur: `Classeur trop volumineux : plus de ${MAX_COLONNES} colonnes sur une ligne.`, entetes: [] };
+  }
   const propagee = propagerFusions(grille, fusions);
   const entete = trouverEnTetes(propagee);
   if (entete.ligne < 0) {

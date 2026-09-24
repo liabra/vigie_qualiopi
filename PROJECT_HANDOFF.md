@@ -1405,6 +1405,106 @@ PostgreSQL jetable, smoke test navigateur, contrôles de production lecture seul
 
 ---
 
+## 7 terdecies. Lot L12 — robustesse des imports / classeurs — TERMINÉ (local)
+
+Objectif : fiabiliser les entrées venant de fichiers externes, SANS refonte UX, SANS
+nouvelle fonction métier, SANS migration présumée. Résultat : **audit complet + deux
+corrections ciblées** ; les imports CSV L3/L7 étaient déjà robustes et n'ont pas été
+réécrits.
+
+### Cartographie des imports
+
+| Import | Route | Rôle | Fichier | Parseur | Preview | Transaction | Tables |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Classeur de suivi | `POST /api/import/classeur` | admin | Google Sheets sur Drive (`fichierId`) — **pas d'upload** | `classeur.js` (grille de chaînes, fusions, en-têtes par intitulé) | oui (`apercu=true`) | oui | `imports_drive`, `preuves`, `preuve_fichiers` |
+| Stagiaires CSV | `POST /api/sessions/:id/stagiaires/import[-apercu]` | redacteur | texte CSV (`{texte}` JSON) | `csvStagiaires.js` (pur, sans E/S) | oui (aperçu séparé) | oui | `stagiaires`, `inscriptions` |
+| Résultats CSV | `POST /api/sessions/:id/evaluations/import[-apercu]` | redacteur | texte CSV (`{texte}` JSON) | `parserCsv` + `evaluations.js` | oui (aperçu séparé) | oui | `resultats_qcm` |
+
+Aucun autre import structuré. Le référentiel est semé par `seed.js` (script CLI, hors
+runtime). **Aucun upload binaire** : pas de multer, pas de disque, pas de xlsx/xls/ods.
+
+### Audit (ce qui était DÉJÀ robuste — aucun changement)
+
+- **CSV** : BOM, séparateur détecté (point-virgule prioritaire), guillemets, U+FFFD ⇒
+  refus « encodage », en-têtes normalisés (casse/accents/ponctuation), mapping FERMÉ
+  (colonne inconnue signalée, jamais devinée, doublon de colonne refusé comme ambigu),
+  colonnes obligatoires vérifiées, email normalisé+validé, booléens stricts, dates
+  strictes, prescripteur/groupe rapprochés des tables (inconnu/inactif ⇒ invalide) ;
+- **classeur** : lecture par intitulé (pas par position), en-têtes après lignes de
+  légende, cellules fusionnées propagées, indicateur 1..32, statut dérivé de la colonne
+  d'état, bruit écarté, une preuve par couple (indicateur, document) ;
+- **indicateurs** : résolution par numéro dans la VERSION ACTIVE (L6) ; hors référentiel
+  actif ⇒ ignoré avec motif explicite, jamais rattaché au mauvais indicateur ;
+- **doublons/réimport** : classeur idempotent par index partiel `(indicateur_id,
+  md5(lower(titre))) WHERE source='import_drive'` (upsert), rattachement validé à la main
+  (`validee_le`) jamais écrasé ; CSV stagiaires `ON CONFLICT DO NOTHING` + détection
+  « déjà inscrit » ; CSV résultats : doublon exact signalé, jamais fusionné ;
+- **transaction/rollback** : les trois imports écrivent dans une transaction unique ;
+  échec en cours ⇒ rollback intégral ; validation de toutes les lignes avant écriture ;
+- **types de cellule / formules** : le classeur est lu en `FORMATTED_VALUE` (valeur
+  affichée, jamais la formule brute) ; aucune formule n'est « exécutée » côté serveur ;
+  les CSV sont du texte pur, aucun risque « 00123 → 123 » silencieux ;
+- **injection CSV/Excel** : aucun export CSV/Excel produit par Vigie ⇒ aucun vecteur ;
+- **MIME/extension** : le serveur ne voit ni extension ni Content-Type — le client lit le
+  fichier en texte et n'envoie que son contenu ; c'est le parseur qui valide le fond ;
+- **nom de fichier** : jamais envoyé ni utilisé côté serveur (contenu en mémoire) ;
+- **fichiers temporaires** : aucun (mémoire uniquement) ; **PII/logs** : aucune ligne,
+  aucun email/téléphone/handicap/adaptation journalisé ; erreurs ⇒ message lisible +
+  contexte technique non sensible ; **droits** : admin (classeur), redacteur (CSV), aucun
+  import ne crée de formation/référentiel ni n'injecte de champ protégé (listes blanches).
+
+### Corrections apportées (3, ciblées)
+
+1. **Corps trop volumineux ⇒ 413 explicite** (`app.js`) : `express.json({limit:"1mb"})`
+   rejetait un CSV trop gros en 400 « corps ou JSON mal formé » (trompeur). Désormais
+   `entity.too.large`/413 ⇒ « Corps de requête trop volumineux : la limite est de 1 Mo. »
+   (message GLOBAL, pas spécifique aux fichiers) — jamais 500, jamais de détail interne ;
+2. **Borne de lecture EN AMONT** (`google.js`) : `lireOnglet` récupère déjà les
+   métadonnées (`spreadsheets.get`, champs `gridProperties` + `merges`, SANS les cellules).
+   Il refuse désormais `rowCount > 20 000` ou `columnCount > 500` AVANT l'appel
+   `values.get` — une feuille énorme n'est donc plus téléchargée ;
+3. **Borne de traitement** (`classeur.js`) : `extrairePreuves` refuse en plus une grille
+   de plus de **20 000 lignes** ou **500 colonnes** (défense en profondeur sur les données
+   déjà reçues).
+
+### Tests
+
+- `idsErreurs.test.js` (+1) : corps > 1 Mo ⇒ **413**, message clair (« Corps de requête
+  trop volumineux »), anonyme, sans fuite ;
+- `classeur.test.js` (+1) : grille démesurée refusée (lignes et colonnes), limite
+  non arbitraire (juste sous la borne, le traitement continue) ;
+- `lireOnglet.test.js` (nouveau, +5) : feuille déclarée > 20 000 lignes ⇒ refus AVANT
+  `values.get` ; > 500 colonnes ⇒ idem ; bornes exactes acceptées ; feuille valide lue avec
+  ses fusions ; sélection d'onglet ;
+- `transversal.test.js` (+1) : import stagiaires sur PostgreSQL jetable — valide ⇒ 2 créés,
+  réimport ⇒ déterministe (0 créé, 2 « déjà inscrits », pas de doublon), fichier invalide
+  ⇒ 400 + base inchangée, application toujours utilisable après l'erreur ;
+- suite complète : **366/366** (358 + 8), **2 exécutions consécutives** stables.
+
+### Production — lecture seule (aucune écriture, L12 non déployé)
+
+- routes d'import présentes et protégées (anonyme ⇒ 401) ; admin `GET /api/import/dernier`
+  ⇒ 200 ; migration courante **013_evaluations_qcm.sql** (13, aucune `014`) ; volumes
+  inchangés (baseline avant L12) ; aucun classeur de test téléversé.
+
+### Limites restantes
+
+1. la limite CSV de **1 Mo** est la borne JSON globale — suffisante pour un petit organisme,
+   mais pas de comptage de lignes dédié ; le rapprochement fait une requête par ligne
+   (inévitable pour la déduplication, volume borné par 1 Mo) ;
+2. la borne Google est fondée sur `gridProperties.rowCount/columnCount` (dimensions
+   déclarées de la grille) : une cellule unique gigantesque dans une petite feuille
+   n'est pas couverte par cette borne (risque résiduel minime) ;
+3. pas d'antivirus, pas de validation binaire xlsx/xls/ods (hors périmètre, aucun upload).
+
+### État
+
+- **aucune migration** ;
+- commit : « Imports : fiabiliser les fichiers et classeurs » (NON poussé) ;
+- **lot L12 TERMINÉ (local), push/déploiement en attente de validation humaine.**
+
+---
+
 
 Historique de principe :
 

@@ -81,3 +81,19 @@ test("une feuille sans colonne exploitable est refusée avec ses en-têtes", () 
   assert.match(r.erreur, /Colonnes introuvables/);
   assert.match(r.erreur, /indicateur/);
 });
+
+test("une grille démesurée est refusée avant tout traitement", () => {
+  const tropDeLignes = Array.from({ length: 20001 }, () => ["Indicateur 1", "Un document"]);
+  const r1 = extrairePreuves(tropDeLignes);
+  assert.match(r1.erreur, /trop volumineux/);
+  assert.match(r1.erreur, /lignes/);
+
+  const tropDeColonnes = [Array.from({ length: 501 }, () => "x")];
+  const r2 = extrairePreuves(tropDeColonnes);
+  assert.match(r2.erreur, /trop volumineux/);
+  assert.match(r2.erreur, /colonnes/);
+
+  // justes sous les bornes : le traitement continue (pas de rejet arbitraire).
+  const aLaLimite = [["Indicateurs", "Documents"], ["Indic 1", "Flyer"]];
+  assert.equal(extrairePreuves(aLaLimite).erreur, undefined);
+});

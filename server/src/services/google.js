@@ -7,6 +7,7 @@ import { sheets as sheetsApi } from "@googleapis/sheets";
 import { docs as docsApi } from "@googleapis/docs";
 import { config, googleConfigured } from "../config.js";
 import { query } from "../db.js";
+import { MAX_LIGNES, MAX_COLONNES } from "./classeur.js";
 
 export const LOGIN_SCOPES = ["openid", "email", "profile"];
 export const DRIVE_READONLY = "https://www.googleapis.com/auth/drive.readonly";
@@ -234,6 +235,18 @@ export async function lireOnglet(sheets, fichierId, onglet = null, { jeton = nul
   if (!feuille) throw new Error(`Onglet « ${onglet} » introuvable. Onglets : ${feuilles.map((f) => f.properties.title).join(", ")}`);
 
   const titre = feuille.properties.title;
+  // Borne EN AMONT : les dimensions de la feuille viennent des métadonnées
+  // (gridProperties), déjà chargées SANS les cellules. On refuse AVANT
+  // `values.get` pour ne jamais télécharger une feuille arbitrairement
+  // énorme — la réponse de `values.get` (plage utilisée) est ensuite
+  // mécaniquement bornée par rowCount/columnCount ≤ MAX_*.
+  const gp = feuille.properties?.gridProperties || {};
+  if ((gp.rowCount ?? 0) > MAX_LIGNES) {
+    throw new Error(`Classeur trop volumineux : ${gp.rowCount} lignes (limite ${MAX_LIGNES}).`);
+  }
+  if ((gp.columnCount ?? 0) > MAX_COLONNES) {
+    throw new Error(`Classeur trop volumineux : ${gp.columnCount} colonnes (limite ${MAX_COLONNES}).`);
+  }
   const { data } = await appelGoogle(
     "sheets.spreadsheets.values.get",
     () => sheets.spreadsheets.values.get({

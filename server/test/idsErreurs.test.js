@@ -188,3 +188,17 @@ test("JSON mal formé + anonyme : 400 avant authentification (parseur global)", 
   assert.equal(r.statut, 400);
   assert.ok(!r.texte.includes("SyntaxError"), "aucun détail interne ne fuit");
 });
+
+// Un fichier CSV trop gros dépasse la limite express.json (1 Mo) AVANT toute
+// route : 413 explicite, jamais 400 trompeur ni 500. Le parseur global
+// refuse avant l'authentification.
+test("un corps trop volumineux répond 413 avec un message clair, sans fuite", async () => {
+  baseVide();
+  const gros = JSON.stringify({ texte: "x".repeat(1_100_000) });
+  const r = await appel("/api/sessions/1/stagiaires/import-apercu", { methode: "POST", corps: gros, brut: true, utilisateur: null });
+  assert.equal(r.statut, 413);
+  // Le middleware est global : le message vise le corps, pas seulement un fichier.
+  assert.match(r.corps.error, /Corps de requête trop volumineux/);
+  assert.match(r.corps.error, /1 Mo/);
+  assert.ok(!r.texte.includes("entity"), "aucun détail interne ne fuit");
+});

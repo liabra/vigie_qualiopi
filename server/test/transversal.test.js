@@ -7,7 +7,9 @@
 //   · parcours A2C complet (formation → … → régénération) ;
 //   · parcours contributeur (autorisés / refusés) ;
 //   · cohérences relationnelles (croisements refusés) ;
-//   · rollback d'un import transactionnel.
+//   · rollback d'un import transactionnel ;
+//   · dates saisies invalides ⇒ 400 avant écriture (PostgreSQL réel) ;
+//   · processus réel (src/index.js) : démarrage, healthcheck, arrêt SIGTERM.
 // ─────────────────────────────────────────────────────────────
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { spawn } from "node:child_process";
 
 import { setPoolFactory, setQueryExecutor } from "../src/db.js";
 import { migrate } from "../src/migrate.js";
@@ -446,4 +449,117 @@ test("import stagiaires : valide, réimport déterministe, invalide sans écritu
   // 7. l'application reste utilisable après l'erreur.
   const encore = await api("GET", `/api/sessions/${sessionId}`, null, A);
   assert.equal(encore.statut, 200);
+});
+
+// ── Dates saisies (L13) : 400 AVANT écriture, jamais le 22007/22008 PG ──
+
+test("dates invalides : 400 clair sans détail PostgreSQL ni écriture ; vide/null et ISO conservés", async () => {
+  const A = adminId;
+  const compte = async (table) => (await pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n;
+  const sansDetailPg = (r) => assert.doesNotMatch(JSON.stringify(r.corps), /2200[78]|invalid input|out of range|syntax|postgres/i);
+  const refuse = (r, motif) => { assert.equal(r.statut, 400, JSON.stringify(r.corps)); assert.match(r.corps.error, motif); sansDetailPg(r); };
+  const { rows: [{ id: ind }] } = await pool.query(
+    "SELECT i.id FROM indicateurs i JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active ORDER BY i.numero LIMIT 1");
+  const formations = await api("GET", "/api/formations", null, A);
+  const s = await api("POST", "/api/sessions", {
+    formation_id: formations.corps.formations[0].id, date_debut: "2026-09-01", date_fin: "2026-12-15", reference: "SESS-DATES",
+  }, A);
+  assert.equal(s.statut, 201);
+  const sessionId = s.corps.session.id;
+
+  // 1. POST /preuves — date_echeance (échéance fixe)
+  const nPreuves = await compte("preuves");
+  for (const d of ["2026-02-31", "abc", "31/12/2026"]) {
+    refuse(await api("POST", "/api/preuves", { titre: "Échéance", indicateur_ids: [ind], type_alerte: "echeance_fixe", date_echeance: d }, A), /Date d'échéance invalide/);
+  }
+  assert.equal(await compte("preuves"), nPreuves, "aucune preuve créée");
+  const ok = await api("POST", "/api/preuves", { titre: "Échéance", indicateur_ids: [ind], type_alerte: "echeance_fixe", date_echeance: "2026-12-31" }, A);
+  assert.equal(ok.statut, 201);
+  const preuveId = ok.corps.preuves[0].id;
+  const lirePreuve = async () => (await pool.query(
+    "SELECT date_echeance, date_derniere_revision FROM preuves WHERE id = $1", [preuveId])).rows[0];
+  assert.deepEqual(await lirePreuve(), { date_echeance: "2026-12-31", date_derniere_revision: null });
+  // hors échéance fixe, la date n'est pas enregistrée (comportement historique conservé)
+  const ignoree = await api("POST", "/api/preuves", { titre: "Sans échéance", indicateur_ids: [ind], date_echeance: "abc" }, A);
+  assert.equal(ignoree.statut, 201);
+
+  // 2. PATCH /preuves/:id — date_echeance, date_derniere_revision
+  refuse(await api("PATCH", `/api/preuves/${preuveId}`, { date_echeance: "2026-02-30", titre: "Renommée" }, A), /Date d'échéance invalide/);
+  refuse(await api("PATCH", `/api/preuves/${preuveId}`, { date_derniere_revision: "2026-13-01" }, A), /dernière révision invalide/);
+  assert.deepEqual(await lirePreuve(), { date_echeance: "2026-12-31", date_derniere_revision: null }, "rien d'écrit");
+  assert.equal((await pool.query("SELECT titre FROM preuves WHERE id = $1", [preuveId])).rows[0].titre, "Échéance", "pas d'écriture partielle");
+  assert.equal((await api("PATCH", `/api/preuves/${preuveId}`, { date_derniere_revision: "2026-09-24" }, A)).statut, 200);
+  assert.equal((await api("PATCH", `/api/preuves/${preuveId}`, { date_echeance: "" }, A)).statut, 200);
+  assert.deepEqual(await lirePreuve(), { date_echeance: null, date_derniere_revision: "2026-09-24" });
+  assert.equal((await api("PATCH", `/api/preuves/${preuveId}`, { date_derniere_revision: null }, A)).statut, 200);
+  assert.equal((await lirePreuve()).date_derniere_revision, null);
+
+  // 3. POST /referentiel/versions — date_publication, date_application
+  const nVersions = await compte("referentiel_versions");
+  refuse(await api("POST", "/api/referentiel/versions", { code: "VX-a", libelle: "Essai", date_publication: "2026-02-31" }, A), /Date de publication invalide/);
+  refuse(await api("POST", "/api/referentiel/versions", { code: "VX-b", libelle: "Essai", date_application: "demain" }, A), /Date d'application invalide/);
+  assert.equal(await compte("referentiel_versions"), nVersions);
+  const v = await api("POST", "/api/referentiel/versions", { code: "VX-c", libelle: "Essai", date_publication: "", date_application: "2026-11-01" }, A);
+  assert.equal(v.statut, 201);
+  assert.equal(v.corps.version.date_publication, null);
+  assert.equal(v.corps.version.date_application, "2026-11-01");
+
+  // 4. POST / PATCH /audits — date_audit
+  const nAudits = await compte("audits_history");
+  refuse(await api("POST", "/api/audits", { type: "blanc", date_audit: "2026-02-31" }, A), /Date d'audit invalide/);
+  assert.equal(await compte("audits_history"), nAudits);
+  const au = await api("POST", "/api/audits", { type: "blanc", date_audit: "2026-03-15" }, A);
+  assert.equal(au.statut, 201);
+  refuse(await api("PATCH", `/api/audits/${au.corps.audit.id}`, { date_audit: "abc", auditeur: "X" }, A), /Date d'audit invalide/);
+  const { rows: [audit] } = await pool.query("SELECT date_audit, auditeur FROM audits_history WHERE id = $1", [au.corps.audit.id]);
+  assert.deepEqual(audit, { date_audit: "2026-03-15", auditeur: null });
+
+  // 5. POST /sessions/:id/stagiaires — date_inscription (la personne n'est pas créée seule)
+  const nStagiaires = await compte("stagiaires");
+  const nInscriptions = await compte("inscriptions");
+  refuse(await api("POST", `/api/sessions/${sessionId}/stagiaires`, { nom: "Date", prenom: "Faux", date_inscription: "2026-02-31" }, A), /Date d'inscription invalide/);
+  assert.equal(await compte("stagiaires"), nStagiaires, "aucun stagiaire orphelin");
+  assert.equal(await compte("inscriptions"), nInscriptions);
+  const ins = await api("POST", `/api/sessions/${sessionId}/stagiaires`, { nom: "Date", prenom: "Vide", date_inscription: null }, A);
+  assert.equal(ins.statut, 201);
+  const inscriptionId = ins.corps.inscription.id;
+
+  // 6. PATCH /inscriptions/:id — date_abandon
+  refuse(await api("PATCH", `/api/inscriptions/${inscriptionId}`, { statut: "abandon", date_abandon: "31/09/2026" }, A), /Date d'abandon invalide/);
+  const lireIns = async () => (await pool.query("SELECT statut, date_abandon FROM inscriptions WHERE id = $1", [inscriptionId])).rows[0];
+  assert.deepEqual(await lireIns(), { statut: "inscrit", date_abandon: null }, "statut inchangé");
+  assert.equal((await api("PATCH", `/api/inscriptions/${inscriptionId}`, { statut: "abandon", date_abandon: "2026-10-02" }, A)).statut, 200);
+  assert.deepEqual(await lireIns(), { statut: "abandon", date_abandon: "2026-10-02" });
+});
+
+// ── Exploitation (L13) : le VRAI point d'entrée ──────────────
+
+test("processus réel : démarre sur la base à jour, healthcheck 200, SIGTERM ⇒ arrêt propre (code 0)", async () => {
+  const port = PORT + 1;
+  const enfant = spawn(process.execPath, ["src/index.js"], {
+    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+    env: { PATH: process.env.PATH, PORT: String(port),
+      DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT}/vq` },
+  });
+  let out = "";
+  let err = "";
+  const fin = new Promise((r) => enfant.on("exit", (code) => r(code)));
+  const pret = new Promise((resolve, reject) => {
+    enfant.stdout.on("data", (d) => { out += d; if (out.includes("en ligne")) resolve(); });
+    enfant.stderr.on("data", (d) => (err += d));
+    fin.then(() => reject(new Error("processus arrêté avant l'écoute : " + err)));
+  });
+  try {
+    await pret;
+    assert.match(out, /Migrations : base déjà à jour\./);
+    const r = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.equal(r.status, 200);
+    enfant.kill("SIGTERM");
+    assert.equal(await fin, 0, err);
+    assert.match(out, /Signal SIGTERM reçu/);
+    assert.match(out, /Arrêt propre terminé/);
+    assert.doesNotMatch(out + err, /postgres:postgres@/);
+  } finally {
+    if (enfant.exitCode === null) enfant.kill("SIGKILL");
+  }
 });

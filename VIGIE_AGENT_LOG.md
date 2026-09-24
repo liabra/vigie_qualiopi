@@ -2001,3 +2001,85 @@ OK. **Push et déploiement Railway en attente de validation humaine.**
 ### État
 
 **L12 VALIDÉ EN PRODUCTION — lot TERMINÉ.**
+
+## 2026-09-24 (suite 30) — L13 : infra / maintenance / exploitation
+
+### Cadre
+
+Dernier lot structurel avant l'UX/UI. Audit de l'exploitation en **lecture seule** côté
+production, corrections **locales** uniquement, **aucune migration**, aucune modification
+Railway / Google / PostgreSQL. Détail complet : `PROJECT_HANDOFF.md` §7 quaterdecies.
+
+### Constats principaux
+
+- builder **Railpack 0.39** ; Node 22.23.2 (engines) / npm 10.9.8 ; `npm install` ;
+  `railway.json` fournit build / start / healthcheck / restart (rien côté dashboard) ;
+- **Config as Code déprécié, coupure ferme 01/12/2026** ; le remplaçant `.railway/railway.ts`
+  s'applique par `railway config apply` (mutation prod) ⇒ **non migré**, décision humaine ;
+  l'aperçu `railway config migrate` a été bloqué par le garde-fou de l'agent ;
+- `npm warn config production` : `NPM_CONFIG_PRODUCTION=false` posé par Railpack ⇒
+  devDependencies présentes dans l'image prod (jamais chargées) — correction par variable
+  `RAILPACK_PRUNE_DEPS=true` (validation requise) ;
+- `NODE_ENV=production` posé par Railpack, pas par une variable de service (README corrigé) ;
+  vérifié en prod par le cookie OAuth `Secure` ;
+- audit : vite/esbuild (serveur de dev, build uniquement) et uuid via `@googleapis/drive` 8
+  (non exploitable ici) — correctifs = montées majeures ⇒ dettes, rien appliqué ;
+- migrations déjà sous `pg_advisory_lock` (multi-instance sérialisé) ; échec ⇒ exit 1 avant
+  `listen` ;
+- healthcheck = process + `SELECT 1` (DB morte ⇒ 500 ; Google mort ⇒ 200) ; Railway ne
+  l'appelle qu'au déploiement ;
+- backups Railway **non confirmables par CLI/MCP** — à vérifier dans le dashboard ;
+- Railway SIGKILL 0 s après SIGTERM par défaut (`RAILWAY_DEPLOYMENT_DRAINING_SECONDS`).
+
+### Corrections
+
+1. `server/src/arret.js` + `index.js` : arrêt propre SIGTERM/SIGINT (close HTTP, keep-alive
+   inactifs, pool, délai de sécurité 10 s) ; npm relaie bien SIGTERM (vérifié) ;
+2. `server/src/db.js` : écouteur `error` du pool — une connexion inactive coupée ne fait
+   plus planter le processus ;
+3. log `Migrations : base déjà à jour.` ;
+4. `.env.example` (PORT, NODE_ENV), `README.md`.
+
+### Tests
+
+- `exploitation.test.js` (+7) et `transversal.test.js` (+1, vrai processus `src/index.js`
+  sur PG jetable : healthcheck 200 puis SIGTERM ⇒ exit 0) ;
+- **374/374** × 2 exécutions, 0 `ECONNREFUSED`, aucun PG résiduel ; build OK ;
+  `git diff --check` OK.
+
+### Dettes
+
+18 dettes consolidées (handoff) : **2 BLOQUANTES** (migration Config as Code avant le
+01/12/2026, backups à confirmer), 7 à traiter plus tard, 8 assumées/documentées, 1
+corrigée (dates).
+
+### Complément (même lot, commit amendé)
+
+- **bug dates** : 9 champs DATE de `req.body` (preuves, référentiel, audits, inscriptions)
+  non validés ⇒ 22007/22008 PostgreSQL ⇒ 500 (prouvé sur l'ancien code). Désormais
+  `services/dates.js`, 400 avant écriture, sémantique vide/null conservée ; +6 tests
+  (`dates.test.js` +5, `transversal.test.js` +1 sur PG réel) ;
+- **preview Config as Code** (dry-run autorisé) : `migrate --service vigie_qualiopi`
+  propose un partial `vigie_qualiopi` (Postgres hors périmètre) mais, planifié en lecture
+  seule, il **supprimerait les 7 variables et détacherait la source GitHub**, et perd la
+  politique de redémarrage. Brouillon corrigé (source github, `preserve()`, `deploy`
+  restart + `drainingSeconds: 15`) ⇒ plan **0 ajout / 2 modifs / 0 suppression**. Rien
+  appliqué, aucun `.railway/` dans le dépôt ;
+- draining 15 s : recommandé via `deploy.drainingSeconds` dans l'IaC (plutôt que la
+  variable) ;
+- `NODE_ENV=production` et `RAILPACK_PRUNE_DEPS=true` : risque faible (code Railpack :
+  prune en parallèle du build ; simulation npm 10.9.8 : build OK dans tous les cas, app
+  démarrée après prune) — non appliqués ;
+- **380/380** × 2, build OK, `git diff --check` OK.
+- **IaC préparée dans le dépôt** : `.railway/railway.ts` (partial `vigie_qualiopi`, source
+  GitHub `main`, Railpack, build/start/healthcheck 120 s, restart ON_FAILURE ×5,
+  `drainingSeconds: 15`, 7 variables en `preserve()`), SDK `railway` 3.11.0 isolé dans
+  `.railway/package.json` (installation de prod inchangée) ; `railway config plan` :
+  **0 / 2 / 0** ;
+- sauvegardes : dashboard « No Backups », réservé au plan Pro ⇒ dette ASSUMÉE (sauvegarde
+  externe chiffrée à définir) ; `NODE_ENV` / prune volontairement non activés.
+
+### État
+
+**L13 TERMINÉ (local).** Aucune migration. Rien poussé. Changements Railway recommandés
+en attente de validation humaine (aucun effectué).

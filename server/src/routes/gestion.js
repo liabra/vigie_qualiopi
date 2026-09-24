@@ -24,6 +24,7 @@ import {
   parserCsv, construireMapping, lireBooleen, normaliserEmail, validerEmail,
   normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
+import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -79,14 +80,8 @@ function identifiant(valeur) {
   return parseIdPositif(valeur);
 }
 
-// « AAAA-MM-JJ » strict. Le 30 février doit être refusé, pas reporté au
-// 2 mars : on relit la date telle que JavaScript l'a comprise et on la
-// compare au texte d'origine.
-export function estDateValide(valeur) {
-  if (typeof valeur !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(valeur)) return false;
-  const d = new Date(`${valeur}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valeur;
-}
+// « AAAA-MM-JJ » strict : règle centrale dans services/dates.js.
+export { estDateValide };
 
 // « AAAA-MM-JJ » → « JJ/MM/AAAA » pour les messages destinés aux humains.
 function dateFr(d) {
@@ -487,6 +482,9 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
   if (!stagiaire_id && (!nom?.trim() || !prenom?.trim())) return manque(res, "nom et prenom");
   if (!(await prescripteurConnu(prescripteur))) return res.status(400).json({ error: "Prescripteur inconnu." });
   if (civilite && !CIVILITES.includes(civilite)) return res.status(400).json({ error: "Civilité inconnue." });
+  if (dateOptionnelleInvalide(date_inscription)) { // fix : validée AVANT la transaction (plus de 500 22007/22008)
+    return res.status(400).json({ error: "Date d'inscription invalide : format attendu AAAA-MM-JJ." });
+  }
 
   const cx = await getPool().connect();
   try {
@@ -541,6 +539,9 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   const { statut, date_abandon, motif_abandon, groupe_id, prescripteur, dossier_complet } = req.body || {};
   if (statut && !STATUTS_INSCRIPTION.includes(statut)) return res.status(400).json({ error: "Statut d'inscription inconnu." });
   if (!(await prescripteurConnu(prescripteur))) return res.status(400).json({ error: "Prescripteur inconnu." });
+  if (dateOptionnelleInvalide(date_abandon)) { // fix
+    return res.status(400).json({ error: "Date d'abandon invalide : format attendu AAAA-MM-JJ." });
+  }
 
   // Un groupe ne se rattache qu'à SA session : le corps ne doit pas pouvoir
   // déplacer une inscription vers un groupe d'une autre session.

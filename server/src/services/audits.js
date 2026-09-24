@@ -9,6 +9,8 @@
 //  une violation de contrainte en 500.
 // ─────────────────────────────────────────────────────────────
 
+import { estDateValide } from "./dates.js";
+
 export const TYPES_AUDIT = ["initial", "surveillance", "renouvellement", "blanc", "interne"];
 export const RESULTATS_AUDIT = ["en_attente", "certifie", "maintenu", "non_certifie", "suspendu"];
 
@@ -41,6 +43,7 @@ export function champsAudit(corps = {}) {
   }
   if (present("date_audit")) {
     if (!corps.date_audit) return { erreur: "La date d'audit est obligatoire." };
+    if (!estDateValide(corps.date_audit)) return { erreur: "Date d'audit invalide : format attendu AAAA-MM-JJ." }; // fix
     champs.date_audit = corps.date_audit;
   }
   if (present("resultat")) {

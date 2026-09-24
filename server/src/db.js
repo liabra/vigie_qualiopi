@@ -7,6 +7,10 @@ import { config } from "./config.js";
 pg.types.setTypeParser(1082, (v) => v);
 
 let pool = null;
+
+// Le MESSAGE seulement : jamais l'objet, qui peut porter la configuration de connexion.
+export const surErreurPool = (e) =>
+  console.error("PostgreSQL — connexion inactive perdue : " + (e?.message || "erreur inconnue"));
 // Point d'injection (tests uniquement) : fabrique de pool de remplacement.
 // Elle couvre les TRANSACTIONS comme les requêtes simples, là où
 // setQueryExecutor ne couvre que `query()`. `null` rétablit le pool réel.
@@ -21,6 +25,10 @@ export function getPool() {
       connectionString: config.databaseUrl,
       ssl: local ? false : { rejectUnauthorized: false },
     });
+    // fix : une connexion INACTIVE coupée (redémarrage/maintenance PostgreSQL)
+    // émet « error » sur le pool ; sans écouteur, Node ferait planter le
+    // processus. Le pool écarte ce client et en recrée un à la demande.
+    pool.on("error", surErreurPool);
   }
   return pool;
 }

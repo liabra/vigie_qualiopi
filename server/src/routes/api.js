@@ -6,6 +6,7 @@ import { parseIdPositif } from "../services/ids.js";
 import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
 import { champsAudit } from "../services/audits.js";
+import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -128,6 +129,12 @@ router.post("/referentiel/versions", requireAdmin, wrap(async (req, res) => {
   const c = code?.trim();
   if (!c) return res.status(400).json({ error: "Code de version obligatoire." });
   if (!libelle?.trim()) return res.status(400).json({ error: "Libellé de version obligatoire." });
+  if (dateOptionnelleInvalide(date_publication)) { // fix
+    return res.status(400).json({ error: "Date de publication invalide : format attendu AAAA-MM-JJ." });
+  }
+  if (dateOptionnelleInvalide(date_application)) { // fix
+    return res.status(400).json({ error: "Date d'application invalide : format attendu AAAA-MM-JJ." });
+  }
   try {
     const { rows: [version] } = await query(
       `INSERT INTO referentiel_versions (code, libelle, date_publication, date_application, source, note)
@@ -451,6 +458,10 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   if (type_alerte === "echeance_fixe" && !date_echeance) {
     return res.status(400).json({ error: "Indiquez la date d'échéance." });
   }
+  // fix : seule une échéance fixe enregistre la date ; elle est validée avant toute écriture.
+  if (type_alerte === "echeance_fixe" && !estDateValide(date_echeance)) {
+    return res.status(400).json({ error: "Date d'échéance invalide : format attendu AAAA-MM-JJ." });
+  }
   if (periodicite_mois !== undefined && periodicite_mois !== null && periodicite_mois !== "" && !parseIdPositif(periodicite_mois)) {
     return res.status(400).json({ error: "Périodicité invalide : nombre entier de mois positif." });
   }
@@ -607,6 +618,12 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   }
   if (type_alerte !== undefined && type_alerte !== null && !TYPES_ALERTE.includes(type_alerte)) {
     return res.status(400).json({ error: "Type d'échéance inconnu." });
+  }
+  if (dateOptionnelleInvalide(date_echeance)) { // fix
+    return res.status(400).json({ error: "Date d'échéance invalide : format attendu AAAA-MM-JJ." });
+  }
+  if (dateOptionnelleInvalide(date_derniere_revision)) { // fix
+    return res.status(400).json({ error: "Date de dernière révision invalide : format attendu AAAA-MM-JJ." });
   }
 
   const sets = [];

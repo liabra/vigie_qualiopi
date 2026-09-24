@@ -17,7 +17,7 @@ encore d'échéances de péremption : ce sont des phases à part.
 ```
 client/                 React + Vite (écran de connexion, référentiel)
 server/
-  src/index.js          démarrage : config → migrations → seed si base vide → HTTP
+  src/index.js          démarrage : config → migrations → seed si base vide → HTTP ; arrêt propre (SIGTERM)
   src/app.js            Express : /auth, /api, puis le build du client
   src/session.js        cookies signés HMAC, requireAuth / requireAdmin
   src/services/google.js OAuth Google, Drive et Sheets (lecture seule)
@@ -54,8 +54,10 @@ version du référentiel n'est en base.
 2. **New → Database → PostgreSQL**, puis dans le service de l'app, variable
    `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`.
 3. Variables : `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `GOOGLE_REDIRECT_URI`, `ADMIN_EMAILS`, `DRIVE_ACCOUNT_EMAIL`, et
-   `NODE_ENV=production` (cookies `Secure`, `SESSION_SECRET` exigée).
+   `GOOGLE_REDIRECT_URI`, `ADMIN_EMAILS`, `DRIVE_ACCOUNT_EMAIL`.
+   `NODE_ENV=production` (cookies `Secure`, `SESSION_SECRET` exigée) est
+   aujourd'hui positionné par le builder Railpack au runtime, pas par une
+   variable de service — voir `PROJECT_HANDOFF.md`, exploitation (L13).
 4. **Settings → Networking → Generate Domain**, puis reporter
    `https://<domaine>/auth/google/callback` dans `GOOGLE_REDIRECT_URI` **et**
    dans la console Google.

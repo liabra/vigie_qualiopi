@@ -4,10 +4,10 @@
 | --- | --- |
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
-| **État validé au** | 22/09/2026 |
-| **Dernier lot métier validé en production** | stagiaires et dossiers (L3 `fbdc6c6`) + prescripteurs configurables (L3-bis `a2de631`) |
-| **Migration de production actuelle** | `011_prescripteurs_configurables.sql` |
-| **Suite de tests validée** | **199/199 au vert** |
+| **État validé au** | 24/09/2026 |
+| **Dernier lot validé en production** | L12 — imports / classeurs (`964743f`) |
+| **Migration de production actuelle** | `013_evaluations_qcm.sql` (13 migrations) |
+| **Suite de tests** | **380/380** en local après L13 (366 au déploiement L12) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -1113,7 +1113,7 @@ Toutes les AUTRES erreurs SQL sont retirées du mapping global et tombent en **5
    citées n'avaient pas de paramètre `:id` exposé ;
 4. les dates d'échéance des preuves (`date_echeance`, `date_derniere_revision`) ne sont pas
    encore validées en format : une saisie illisible y produisait déjà un 500 avant ce lot
-   (code PostgreSQL 22007, non concerné par ce durcissement) — reste à traiter plus tard.
+   (code PostgreSQL 22007, non concerné par ce durcissement) — **corrigé en L13** (§7 quaterdecies).
 
 ### Production — TERMINÉ
 
@@ -1530,6 +1530,382 @@ runtime). **Aucun upload binaire** : pas de multer, pas de disque, pas de xlsx/x
 
 ---
 
+## 7 quaterdecies. Lot L13 — infra / maintenance / exploitation — TERMINÉ (local)
+
+Dernier lot structurel avant le chantier UX/UI. Audit de l'exploitation Railway en **lecture
+seule** côté production, corrections **locales** ciblées, **aucune migration**, **aucune
+modification Railway / Google / PostgreSQL**.
+
+### Chemin réel de déploiement (observé)
+
+```text
+git push main (liabra/vigie_qualiopi)
+→ Railway auto-deploy (service vigie_qualiopi, 1 replica, europe-west4)
+→ builder RAILPACK 0.39 (pas Nixpacks), image Debian trixie
+→ mise installe Node 22.23.2 (lu dans engines.node de package.json) + npm 10.9.8
+→ `npm install` à la racine (workspaces client + server, package-lock.json)
+   avec NPM_CONFIG_PRODUCTION=false posé par Railpack ⇒ devDependencies INSTALLÉES
+→ `npm run build` (railway.json buildCommand) ⇒ `vite build` ⇒ client/dist
+→ image finale : /app complet (node_modules non élagués)
+→ `npm start` (railway.json startCommand) ⇒ `npm start -w server` ⇒ `node src/index.js`
+   (NODE_ENV=production posé par Railpack au runtime ; SIGTERM bien relayé par npm)
+→ checkConfig → migrate() (verrou consultatif) → seedIfEmpty() → listen(PORT=8080)
+→ healthcheck Railway GET /api/health (timeout 120 s, uniquement au déploiement)
+→ bascule du trafic ; l'ancien déploiement reçoit SIGTERM
+```
+
+- monorepo npm workspaces : `client/` (React 18 + Vite 5), `server/` (Express 4, ESM) ;
+- `railway.json` (Config as Code) : `buildCommand`, `startCommand`, `healthcheckPath`,
+  `healthcheckTimeout` 120, `restartPolicyType` ON_FAILURE, `restartPolicyMaxRetries` 5 ;
+  la config de service côté dashboard ne porte AUCUNE de ces valeurs (elles viennent
+  toutes du fichier) ;
+- PostgreSQL : service `Postgres-Vlqb`, image `postgres-ssl:18`, volume 5 Go,
+  `DATABASE_URL` en réseau privé (`*.railway.internal`, SSL désactivé pour ce cas) ;
+- domaine : `vigiequaliopi-production.up.railway.app` → port 8080 ;
+- OAuth : `GOOGLE_REDIRECT_URI` = `https://vigiequaliopi-production.up.railway.app/auth/google/callback`
+  (vérifié sur la redirection publique de `/auth/google/login`, sans connexion) ;
+  Google non configuré ⇒ démarrage quand même, avertissement en log, `/auth/*` ⇒
+  `?erreur=google_non_configure`, `/api/me` ⇒ `googleConfigured:false`.
+
+### Railway Config as Code — DÉPRÉCIÉ, migration NON faite (action humaine requise)
+
+- source officielle : `railway.json`/`railway.toml` sont dépréciés au profit de
+  l'Infrastructure as Code `.railway/railway.ts` ; **les fichiers existants cessent
+  d'être lus le 2026-12-01 (coupure ferme)** ;
+- `.railway/railway.ts` n'est **pas lu au déploiement** : il est appliqué par
+  `railway config apply` (mutation de la configuration du projet), et un fichier
+  « projet entier » décrit TOUS les services — omettre Postgres le supprimerait ;
+- la migration (`railway config migrate --apply`) efface le réglage « Config File » du
+  service puis exige `config plan/apply` : c'est une **modification de production**,
+  hors mandat L13. Même l'aperçu `railway config migrate` a été bloqué par le garde-fou
+  de l'agent — rien n'a été tenté ;
+- `railway.json` actuel est conforme au schéma (aucun champ obsolète) et reste
+  fonctionnel jusqu'au 01/12/2026 ;
+- **si rien n'est fait avant le 01/12/2026** : Railpack détecterait encore `npm run build`
+  / `npm start`, mais le **healthcheck** et la **politique de redémarrage** disparaîtraient
+  silencieusement (valeurs absentes du dashboard) ;
+- **aperçu réalisé (dry-run, autorisé, aucune écriture)** — `railway config migrate
+  --service vigie_qualiopi` (CLI 5.57.7) propose un **named partial**
+  `export const partial = "vigie_qualiopi"` ne déclarant QUE le service applicatif
+  (`build`, `start`, `healthcheck`, `healthcheckTimeout: 120`), dans un
+  `project("wonderful-emotion")` (nom générique, ignoré par le plan) ;
+- **`railway config plan` (lecture seule) sur ce fichier brut, écrit hors dépôt :
+  DANGEREUX** — `0 to add, 3 to change, 7 to destroy` : **suppression des 7 variables du
+  service** (`DATABASE_URL`, `SESSION_SECRET`, `GOOGLE_*`, `ADMIN_EMAILS`,
+  `DRIVE_ACCOUNT_EMAIL`) et **détachement de la source GitHub** (`source.repo` → null,
+  donc plus d'auto-deploy). Il **perd aussi** `restartPolicyType`/`restartPolicyMaxRetries`
+  sans que le plan le montre (valeurs présentes seulement dans `railway.json`). Postgres
+  n'apparaît pas (hors partial) ;
+- **brouillon corrigé** (types du paquet `railway` 3.11.0 : `deploy` accepte
+  `restartPolicyType`, `restartPolicyMaxRetries`, `drainingSeconds`) — plan en lecture
+  seule : **`0 to add, 2 to change, 0 to destroy`**, uniquement `build.buildCommand` et
+  `deploy.{startCommand, healthcheckPath, healthcheckTimeout, restartPolicyType,
+  restartPolicyMaxRetries, drainingSeconds}` ; variables préservées, source conservée,
+  **Postgres hors périmètre**. Contenu :
+
+  ```ts
+  import { defineRailway, github, preserve, project, service } from "railway/iac";
+  export const partial = "vigie_qualiopi";           // Postgres-Vlqb jamais déclaré ici
+  export default defineRailway((ctx) => {
+    const vigie_qualiopi = service("vigie_qualiopi", {
+      source: github("liabra/vigie_qualiopi", { branch: "main" }),
+      build: { builder: "RAILPACK", buildCommand: "npm run build" },
+      deploy: {
+        startCommand: "npm start", healthcheckPath: "/api/health", healthcheckTimeout: 120,
+        restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 5, drainingSeconds: 15,
+      },
+      env: { ADMIN_EMAILS: preserve(), DATABASE_URL: preserve(), DRIVE_ACCOUNT_EMAIL: preserve(),
+        GOOGLE_CLIENT_ID: preserve(), GOOGLE_CLIENT_SECRET: preserve(),
+        GOOGLE_REDIRECT_URI: preserve(), SESSION_SECRET: preserve() },
+    });
+    return project(ctx.projectName, { resources: [vigie_qualiopi] });
+  });
+  ```
+
+- procédure recommandée (humaine) : **ne jamais appliquer la sortie brute de
+  `migrate`** ; écrire le fichier corrigé ci-dessus (+ `npm install -D railway`) →
+  `railway config plan` doit afficher exactement `0 / 2 / 0` → retirer `railway.json` et
+  le réglage Config File (`migrate --apply` le fait, mais écrit la version brute : la
+  remplacer par la corrigée AVANT tout `apply`) → `railway config apply` → redéployer →
+  vérifier healthcheck et variables. Le premier `apply` fait prendre possession du
+  service par le partial `vigie_qualiopi`.
+
+**Migration IaC préparée dans le dépôt (L13 final)** :
+
+- `.railway/railway.ts` : le brouillon corrigé ci-dessus, commenté ;
+- `.railway/package.json` + `package-lock.json` : SDK `railway` **3.11.0** épinglé (paquet
+  officiel railwayapp, MIT, 6 paquets, 0 vulnérabilité), **isolé dans `.railway/`** : la
+  CLI l'exige pour évaluer le fichier, mais il n'est PAS un workspace ⇒ l'installation
+  npm de production (Railpack, racine) est **inchangée** ; `.railway/node_modules` est
+  ignoré par Git. Préparer un poste : `cd .railway && npm ci` ;
+- `railway config plan` sur ce fichier : **`0 to add, 2 to change, 0 to destroy`** — seuls
+  `build.buildCommand` et `deploy.{startCommand, healthcheckPath, healthcheckTimeout,
+  restartPolicyType, restartPolicyMaxRetries, drainingSeconds}` ; aucune variable, source,
+  domaine, replica, service ni Postgres touché ;
+- ordre retenu : push + déploiement applicatif → nouveau `plan` depuis le commit →
+  `apply` épinglé (`plan --out` puis `apply --plan`) seulement si identique → vérifications
+  → retrait de `railway.json`.
+
+### Node / npm
+
+- prod : Node **22.23.2** (engines `>=22.23.1 <23`), npm **10.9.8** (livré avec Node) ;
+  pas de `.nvmrc`, pas de `packageManager` — Railpack avertit « Specify the package manager
+  and version explicitly » (bénin) ;
+- local constaté : Node 24 / npm 11 (hors engines) — la suite passe, mais la référence
+  reste Node 22 ;
+- **`npm warn config production Use --omit=dev instead.`** : vient de
+  `NPM_CONFIG_PRODUCTION=false` que **Railpack** pose lui-même (ni le dépôt, ni une variable
+  de service). Il apparaît au build et au runtime (`npm start`). Non masqué. Conséquence
+  réelle : les devDependencies (dont `embedded-postgres`) sont **dans l'image de prod**
+  (jamais chargées par `server/src/**`) — contrairement à ce que laissait entendre le
+  journal L11 ;
+- Railpack utilise `npm install` (pas `npm ci`) ; le lockfile est respecté en pratique.
+- corrections possibles (variables Railway ⇒ **validation requise**) :
+  `RAILPACK_PRUNE_DEPS=true` et/ou `RAILPACK_NODE_NPM_INSTALL="npm ci"`.
+
+**Analyse de risque (code source Railpack + simulation locale npm 10.9.8, rien appliqué)** :
+
+- Vite, React et `@vitejs/plugin-react` sont en `dependencies` du client (pas dev) : ils
+  sont toujours installés et restent dans l'image même élaguée ; `vite` ne sert qu'au
+  build (Express sert `client/dist`) ; seule devDependency : `embedded-postgres` (+ binaires
+  de plateforme, `async-exit-hook`), importée uniquement par `test/transversal.test.js` ;
+- **`RAILPACK_PRUNE_DEPS=true`** : l'étape `prune` part de la couche *install* en parallèle
+  du *build* ; le build garde donc TOUTES les dépendances ; l'image prend `/app/node_modules`
+  depuis `prune` (`NPM_CONFIG_PRODUCTION=true npm prune --omit=dev --ignore-scripts`) et le
+  reste (dont `client/dist` et `server/node_modules`, non concernés) depuis `build`.
+  Simulation : prune ⇒ embedded-postgres retiré, vite et `server/node_modules/google-auth-library`
+  conservés, application démarrée (index 200, `/api/me` 200). **Risque faible** ; le
+  warning npm **persiste** (runtime `NPM_CONFIG_PRODUCTION=false`) ;
+- **`NODE_ENV=production` explicite** : les variables de service sont aussi visibles au
+  build, mais Railpack pose `NPM_CONFIG_PRODUCTION=false` à l'install, qui l'emporte :
+  simulation réelle ⇒ 203 paquets, embedded-postgres installé, build OK (identique à
+  aujourd'hui, cohérent avec les 204 du build Railway). Pire cas (NODE_ENV seul, sans ce
+  réglage Railpack) ⇒ 200 paquets, devDeps omises, **build OK** (vite en dependencies).
+  **Risque faible**, gain : ne plus dépendre du builder pour `Secure` et l'exigence de
+  SESSION_SECRET ;
+- réserve : simulation sur macOS (Node local 24), pas dans l'image Railpack ; à valider
+  sur un déploiement réel et à ne JAMAIS combiner avec un déplacement de vite en devDependencies.
+
+### Dépendances (npm audit / outdated, 24/09/2026)
+
+| Paquet | Gravité | Portée | Analyse | Décision |
+| --- | --- | --- | --- | --- |
+| `vite` ≤ 6.4.2 (+ `esbuild` ≤ 0.24.2) | high / moderate | **build uniquement** (vite est en `dependencies` du client mais n'est jamais exécuté en prod : Express sert `client/dist`) | failles du **serveur de dev** Vite (path traversal, fs.deny Windows, esbuild dev server) | dette : montée majeure Vite 5 → 8 à faire dans le chantier UX |
+| `uuid` < 11.1.1 via `@googleapis/drive` 8 → `googleapis-common` 7 → `gaxios` 6 | moderate | production | le défaut concerne v3/v5/v6 **avec `buf` fourni** ; gaxios n'utilise que v4 sans buffer ⇒ non exploitable ici | dette : `@googleapis/drive` 8 → 26 est **majeur** ; aligne aussi `google-auth-library` (aujourd'hui 9 pour Drive, 11 ailleurs) |
+| `@googleapis/docs` 14.0.0 → 14.0.1, `@googleapis/sheets` 18.0.0 → 18.0.1 | — | production | patch dans la plage déclarée | non appliqué (aucun besoin) |
+| `express` 5, `react` 19, `@vitejs/plugin-react` 6 | — | — | majeurs | non appliqués |
+
+Aucun `npm audit fix --force`, aucune montée majeure.
+
+### Démarrage / migrations
+
+Ordre : `checkConfig()` (DATABASE_URL requise ; SESSION_SECRET requise en prod) →
+`migrate()` → `seedIfEmpty()` → `listen`. Toute erreur avant `listen` ⇒
+`Démarrage impossible : <message>` + `exit(1)` : **jamais d'application partiellement
+démarrée** (le healthcheck échoue, l'ancien déploiement reste en place).
+Chaque migration a sa transaction + `ROLLBACK` sur erreur, n'est inscrite dans
+`schema_migrations` qu'après succès, n'est jamais rejouée. **Plusieurs instances** :
+`migrate()` prend déjà `pg_advisory_lock(7202609)` sur une connexion dédiée ⇒ les
+migrations sont sérialisées ; `seedIfEmpty()` n'est pas sous verrou mais le seed est
+idempotent (risque résiduel : deux imports concurrents de la V9 sur une base VIDE
+uniquement). Aujourd'hui : **1 replica**.
+
+### Arrêt propre (ajouté)
+
+`server/src/arret.js` : sur SIGTERM/SIGINT (une seule fois) → log du signal →
+`server.close()` (nouvelles connexions refusées, requêtes en cours terminées) +
+`closeIdleConnections()` (keep-alive inactifs) → `closePool()` → `exit(0)` ; délai de
+sécurité **10 s** ⇒ `closeAllConnections()` + `exit(1)`. Vérifié : npm relaie bien
+SIGTERM jusqu'à Node (pas besoin de changer `startCommand`).
+**Limite Railway** : par défaut l'ancien déploiement reçoit SIGKILL **0 s** après SIGTERM.
+Deux représentations de 15 s : (A) réglage de déploiement `drainingSeconds: 15`
+(`deploy.drainingSeconds` dans `railway.json` aujourd'hui, `deploy: { drainingSeconds }`
+dans `.railway/railway.ts` demain — vérifié dans le plan : `deploy.drainingSeconds null →
+15`) ; (B) variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=15`. **Recommandé : A**, porté
+par la future IaC (versionné, relu dans le plan, sans variable parallèle qui pourrait
+diverger). Rien d'appliqué.
+
+### PostgreSQL / pool
+
+Un seul `pg.Pool` paresseux par processus (défauts pg : max 10, pas de timeout de
+connexion), SSL `rejectUnauthorized:false` hors localhost / réseau privé, fermé par
+`closePool()` (CLI migrate + arrêt propre). Aucune requête ne crée de pool.
+**Corrigé** : aucun écouteur `error` sur le pool ⇒ une connexion inactive coupée
+(redémarrage/maintenance PostgreSQL) faisait **planter le processus**. Désormais
+journalisé (`PostgreSQL — connexion inactive perdue : <message>`), le pool recrée un
+client à la demande. Valeurs du pool inchangées (aucune mesure ne justifie d'y toucher).
+Seams de test `setPoolFactory` / `setQueryExecutor` / `setDriveFactory` : **jamais
+appelés depuis `server/src/**`** (vérifié par recherche) ; le runtime prod ne peut pas
+les activer.
+
+### Healthcheck
+
+`GET /api/health` = processus vivant **+** `SELECT 1` PostgreSQL ⇒ `{ok:true}` 200.
+Base morte ⇒ erreur ⇒ **500** « Erreur serveur. » (sans détail). Google mort ⇒ **200**
+(aucune dépendance Google). Railway n'appelle le healthcheck **qu'au déploiement** (pas
+de sonde continue) : une base indisponible bloque un NOUVEAU déploiement sans tuer
+l'instance en cours. Comportement jugé correct, non modifié.
+
+### Variables d'environnement (noms uniquement)
+
+| Variable | Code | `.env.example` | Railway | Statut |
+| --- | --- | --- | --- | --- |
+| `DATABASE_URL` | oui | oui | oui | requise |
+| `SESSION_SECRET` | oui | oui | oui | requise en prod |
+| `GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | oui | oui | oui | requises pour la connexion |
+| `ADMIN_EMAILS` | oui | oui | oui | requise au 1er accès |
+| `DRIVE_ACCOUNT_EMAIL` | oui | oui | oui | optionnelle (défaut actions.a2c@gmail.com) |
+| `CONTRIBUTEUR_EMAILS`, `ORGANISME_NOM`, `DRIVE_RACINE`, `DRIVE_RACINE_ID` | oui | oui | non | optionnelles (défauts) |
+| `PORT` | oui | **ajoutée** | fournie par Railway | — |
+| `NODE_ENV` | oui | **ajoutée** | **non** (posée par Railpack) | voir dette « NODE_ENV implicite » |
+
+Aucune variable obsolète, aucune variable documentée inutilisée. Le README disait de
+définir `NODE_ENV=production` dans Railway : ce n'est pas le cas en réalité — corrigé.
+Vérifié en prod : cookie OAuth `Secure` présent ⇒ `NODE_ENV=production` effectif.
+
+### Logs
+
+Démarrage (`Migration appliquée : …` ou **`Migrations : base déjà à jour.`** — ajouté),
+`Vigie Qualiopi en ligne …`, `Démarrage impossible : …`, erreurs Google (`nettoyer`,
+diagnostic sans jeton), erreur OAuth (message seul), erreur 500 (message seul), erreur
+pool (ajouté), arrêt (ajouté). Aucun token / cookie / secret / PII journalisé. Pas de
+plateforme externe : suffisant.
+
+### Sauvegarde / restauration — « si la base disparaît demain »
+
+- **constaté dans le dashboard (24/09/2026)** : Postgres-Vlqb → Backups affiche **« No
+  Backups »** ; la création de backups / PITR est **réservée au plan Pro** ⇒ **aucune
+  sauvegarde automatique Railway sur le plan actuel** (plan non modifié) ;
+- risque assumé : une perte du volume PostgreSQL n'aurait pas de filet Railway ; à terme,
+  **sauvegarde externe chiffrée** (`pg_dump` planifié hors Railway, chiffré, conservé hors
+  Drive partagé) — stratégie à définir ;
+- export manuel possible (client `pg_dump` 18 requis, non installé sur ce poste) :
+  `pg_dump "$DATABASE_PUBLIC_URL" -Fc -f vigie-AAAAMMJJ.dump` (URL publique du service
+  Postgres, jamais écrite dans un fichier suivi) ;
+- **le dump contient des données personnelles ET le refresh_token Drive**
+  (`drive_connexions`) : à stocker chiffré, hors Git, hors Drive partagé ;
+- restauration théorique : (a) backup Railway ⇒ « Restore » crée un nouveau volume et
+  **met le changement en attente** (staged) à déployer ; (b) dump ⇒ nouvelle base vide ⇒
+  `pg_restore --no-owner -d "$URL_NOUVELLE_BASE" vigie.dump` ⇒ pointer `DATABASE_URL`
+  ⇒ redéployer ; `migrate()` ne rejoue rien (schema_migrations restauré) ; vérifier
+  `/api/health`, les 13 migrations et les volumes ; reconnecter le Drive si le jeton a
+  été révoqué entre-temps.
+
+### Données hors PostgreSQL (Google Drive)
+
+PostgreSQL ne stocke que des **références** : `preuve_fichiers.drive_file_id/drive_url/
+drive_nom/drive_mime`, `modeles_documents.drive_file_id/drive_url`,
+`documents_generes.drive_file_id/drive_url`, `imports_drive.fichier_id/fichier_url`,
+`sessions.drive_folder_id`, `audits.rapport_drive_*`, `resultats_qcm.drive_file_id`,
+`drive_connexions` (jetons). Les **modèles, preuves et documents générés sont des
+fichiers Drive** : restaurer PostgreSQL ne recrée **aucun** fichier Drive supprimé
+(la corbeille Drive, 30 j, est le seul filet) ; à l'inverse, une base restaurée
+ancienne peut pointer vers des fichiers depuis supprimés ou déplacés.
+
+### Dettes consolidées (L1 → L13)
+
+| # | Dette | Classement |
+| --- | --- | --- |
+| 1 | Config as Code `railway.json` coupée le **01/12/2026** (healthcheck + restart perdus) | migration IaC préparée (plan 0/2/0) — état final après apply ci-dessous |
+| 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | ASSUMÉE / DOCUMENTÉE — pas disponible sur le plan actuel ; stratégie externe chiffrée à définir |
+| 3 | Délai SIGTERM → SIGKILL à 0 s par défaut (arrêt propre coupé) | traité par `drainingSeconds: 15` dans l'IaC |
+| 4 | `NODE_ENV=production` fourni implicitement par Railpack (un changement de builder désactiverait `Secure` et l'exigence de SESSION_SECRET) | À TRAITER PLUS TARD (optionnel, risque faible analysé ; volontairement non activé en L13) |
+| 5 | devDependencies dans l'image prod (`RAILPACK_PRUNE_DEPS` non activé volontairement) ; `npm install` au lieu de `npm ci` | À TRAITER PLUS TARD (optionnel) |
+| 6 | Vite 5 (failles serveur de dev) | À TRAITER PLUS TARD (chantier UX) |
+| 7 | `@googleapis/drive` 8 (uuid, double google-auth-library) | À TRAITER PLUS TARD |
+| 8 | Marqueurs non résolus non relus pour les **Sheets** (seuls les Docs sont relus) | À TRAITER PLUS TARD |
+| 9 | `documentsObsoletes` non persisté (alerte seulement dans le détail) | À TRAITER PLUS TARD (UX) |
+| 10 | ~~Dates saisies non validées (500 22007/22008)~~ | **CORRIGÉE en L13** |
+| 11 | Garde anti double génération en mémoire (mono-instance) ; fichier Drive orphelin possible en multi-instance | ASSUMÉE / DOCUMENTÉE (1 replica) |
+| 12 | Atomicité Drive ↔ PostgreSQL impossible (nettoyage best-effort) | ASSUMÉE / DOCUMENTÉE |
+| 13 | Ancien lien Drive d'un document régénéré non historisé | ASSUMÉE / DOCUMENTÉE |
+| 14 | Imports : borne 1 Mo globale, cellule géante hors borne Sheets, pas d'antivirus (aucun upload) | ASSUMÉE / DOCUMENTÉE |
+| 15 | Smoke navigateur non automatisé | ASSUMÉE / DOCUMENTÉE (à reconsidérer en UX) |
+| 16 | Pas d'ACL par session ; contributeur voit tout (dont tableau de bord, en lecture — tranché L10) | ASSUMÉE / DOCUMENTÉE |
+| 17 | `seedIfEmpty` hors verrou ; pool sans timeout de connexion | ASSUMÉE / DOCUMENTÉE |
+| 18 | PATCH : champs inconnus ignorés silencieusement | ASSUMÉE / DOCUMENTÉE |
+
+Hors dette technique mais daté : le contenu **V10** du référentiel reste à importer
+(coquille prête, L6).
+
+### Nettoyage
+
+Rien de manifestement obsolète dans les fichiers suivis : aucun TODO/FIXME, aucun
+`console.debug`, aucun script mort, aucune ancienne config (pas de Nixpacks/Procfile).
+`server/scripts/debug-sheets.js` est local et ignoré par Git (`debug-*.js`) — laissé.
+
+### Bug corrigé : dates saisies non validées ⇒ 500
+
+Neuf champs `DATE` de `req.body` partaient tels quels dans `INSERT`/`UPDATE` : PostgreSQL
+rejetait « abc » / « 31/12/2026 » (22007 `invalid input syntax for type date`) ou
+« 2026-02-31 » (22008 `date/time field value out of range`) ⇒ `Erreur serveur.` **500**
+(prouvé : le nouveau test échoue en 500 sur l'ancien code). Écritures déjà faites : aucune
+persistée — transactions annulées (`POST /preuves`, `PATCH /preuves/:id`, `POST
+/sessions/:id/stagiaires` où le stagiaire était créé puis annulé) ou instruction unique.
+
+| Route | Champ(s) | Table |
+| --- | --- | --- |
+| `POST /api/preuves` (échéance fixe) | `date_echeance` | `preuves` |
+| `PATCH /api/preuves/:id` | `date_echeance`, `date_derniere_revision` | `preuves` |
+| `POST /api/referentiel/versions` | `date_publication`, `date_application` | `referentiel_versions` |
+| `POST` / `PATCH /api/audits` | `date_audit` | `audits_history` |
+| `POST /api/sessions/:id/stagiaires` | `date_inscription` | `inscriptions` |
+| `PATCH /api/inscriptions/:id` | `date_abandon` | `inscriptions` |
+
+Correction : `server/src/services/dates.js` centralise `estDateValide` (règle existante des
+sessions/absences, déplacée et ré-exportée par `gestion.js`) + `dateOptionnelleInvalide`
+(sémantique historique `valeur || null` : vide/null ⇒ null ou défaut SQL). Validation
+**avant toute écriture** ⇒ **400** « Date … invalide : format attendu AAAA-MM-JJ. », sans
+détail PostgreSQL. Dates ISO valides inchangées ; hors échéance fixe, `date_echeance` reste
+ignorée comme avant. Déjà validés auparavant : sessions, absences, évaluations,
+satisfactions, veille, imports CSV. Aucun champ TIMESTAMP n'est pris de `req.body`.
+
+### Corrections (locales, sans effet Railway)
+
+1. `server/src/arret.js` (nouveau) + `index.js` : arrêt propre SIGTERM/SIGINT ;
+2. `server/src/db.js` : écouteur `error` sur le pool (plus de plantage sur connexion
+   inactive perdue), message seul ;
+3. `server/src/index.js` : log `Migrations : base déjà à jour.` ;
+4. `.env.example` (PORT, NODE_ENV) et `README.md` (NODE_ENV réel, arrêt propre) ;
+5. dates saisies validées avant écriture (voir ci-dessus).
+
+### Tests
+
+- `exploitation.test.js` (nouveau, +7) : requête en cours terminée puis serveur + pool
+  fermés (0) ; sortie forcée après délai (1) ; échec de fermeture du pool signalé sans
+  secret ; **SIGTERM réel** sur un processus (0, second signal ignoré) ; **démarrage réel**
+  `src/index.js` sur base injoignable ⇒ exit 1 avant écoute, sans mot de passe en log ;
+  migration en échec ⇒ ROLLBACK, rien dans `schema_migrations`, verrou relâché ; pool
+  unique + erreur de connexion inactive journalisée sans planter ;
+- `transversal.test.js` (+1) : **vrai processus** `src/index.js` sur PostgreSQL jetable ⇒
+  « base déjà à jour », `/api/health` 200, SIGTERM ⇒ « Arrêt propre terminé », exit 0 ;
+- `dates.test.js` (nouveau, +5) : ISO réelle (29/02 bissextile), impossibles/formats
+  étrangers/types inattendus refusés, vide/null permis, audit, ré-export ;
+- `transversal.test.js` (+1) : sur PostgreSQL RÉEL, les 6 routes ⇒ 400 sans détail PG,
+  comptes inchangés (aucun stagiaire orphelin, aucune écriture partielle d'un PATCH),
+  ISO/vide/null conservés ;
+- suite complète **380/380** (366 + 14), **2 exécutions consécutives** stables, 0
+  `ECONNREFUSED` en sortie, aucun PG jetable résiduel ; build OK ; `git diff --check` OK.
+
+### Production (lecture seule)
+
+Déploiement `964743f` SUCCESS, 1 replica, aucune modification staged ; noms de variables
+seulement ; `/api/health` 200 ; `/api/me` anonyme ; redirection OAuth publique inspectée
+(sans connexion). Aucune variable, aucun service, aucun volume, aucun backup modifié.
+
+### État
+
+- **aucune migration SQL** ;
+- commit : « Maintenance : fiabiliser l exploitation Railway » (NON poussé) ;
+- **changements Railway nécessaires, en attente de décision humaine** : migration Config
+  as Code avant le 01/12/2026 (fichier corrigé, plan `0/2/0`) incluant `drainingSeconds: 15` ;
+  vérification des backups (dashboard : Postgres-Vlqb → Backups → une sauvegarde
+  quotidienne existe-t-elle ?) ; recommandés, risque faible : `NODE_ENV=production`
+  explicite, `RAILPACK_PRUNE_DEPS=true` ;
+- **lot L13 TERMINÉ (local)**.
+
+---
+
 
 Historique de principe :
 
@@ -1834,7 +2210,11 @@ Ne pas sur-concevoir maintenant.
    - les tests automatisés sont verts.
 
 5. Configuration Railway :
-   - `railway.json` à migrer dans un chantier dédié avant échéance signalée.
+   - `railway.json` à migrer avant le **01/12/2026** — audité en L13 (§7 quaterdecies),
+     migration = action humaine sur la production, non faite.
+
+État au 24/09/2026 (L13) : points 1 (IDs invalides ⇒ 400, L8) et 2 (session modifiable,
+L4) traités ; point 3 tranché en L10 (lecture autorisée au contributeur) ; point 5 ouvert.
 
 6. README historique :
    - certaines sections peuvent être périmées ;

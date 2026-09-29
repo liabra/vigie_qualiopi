@@ -2437,6 +2437,40 @@ DERRIÈRE le panneau du tutoriel.
 
 ---
 
+## 14 quater. Q1 — Cœur qualité (socle backend) — LOCAL, non déployé
+
+Premier lot du chantier « cœur qualité » (Q1-B1) : **base + backend, sans UI**.
+
+- **Migration 015** `015_qualite_actions_signalements.sql` (additive, aucune colonne
+  existante modifiée) : `signalements_qualite` (`reclamation`/`incident`/`non_conformite`),
+  `actions_qualite`, `signalements_qualite_causes` (0..N causes normalisées),
+  `signalements_qualite_indicateurs` + `actions_qualite_indicateurs` (N-N), `historique_qualite`
+  (append-only), `compteurs_qualite` (références lisibles transactionnelles).
+- **Références** `AQ/REC/INC/NC-YYYY-NNN` : incrément atomique `INSERT … ON CONFLICT DO
+  UPDATE … RETURNING` (jamais `MAX()+1`).
+- **Formation/session** : la formation est **dérivée** de la session quand celle-ci est
+  fournie ; session incohérente avec la formation indiquée → 400.
+- **Workflows** explicites et tracés (pas de hard delete, annulation = statut) :
+  signalement `ouverte → qualifiee → en_traitement → resolue → cloturee` (+ `rouvrir`,
+  `annuler`) ; action `a_faire → en_cours → realisee → efficacite_a_verifier → cloturee`
+  (+ `rouvrir`, `annuler`). Clôture exige ≥ 1 indicateur.
+- **RBAC** : signalements **admin uniquement** (contributeur : 403, aucune fuite d'identité
+  réclamant) ; actions : admin complet, contributeur ne voit **que ses actions assignées**
+  et peut les `demarrer`/`realiser` (pas créer, assigner, clôturer, rouvrir, annuler).
+- **Délai réclamation** : 15 jours ouvrés par défaut conservé sur le dossier, échéance
+  indicative lundi-vendredi (jours fériés non gérés), corrigeable par l'admin.
+- **API** : `GET/POST/PATCH /api/actions-qualite(/:id)` + transitions
+  `demarrer/realiser/controle-efficacite/cloturer/rouvrir/annuler` ;
+  `GET/POST/PATCH /api/signalements(/:id)` + `qualifier/traiter/resoudre/cloturer/rouvrir/annuler`.
+  Backend = source d'autorité.
+- **Tests** : serveur **434/434** (395 + 39), client **146/146** inchangé. Fichiers :
+  `qualite.test.js` (bout en bout PostgreSQL réel), `qualite-service.test.js` (règles pures),
+  `transversal.test.js` mis à jour (001→015).
+- **Restant** : Q1-B2 (UI actions), Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive),
+  Q1-B5 (tableau de bord). Veille / Audits / Preuves / Satisfaction / Accueil non modifiés.
+
+---
+
 ## 15. Priorité actuelle : finaliser Vigie avant une nouvelle session
 
 La priorité n'est plus d'ajouter des fonctions isolées au fil de l'eau.

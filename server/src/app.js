@@ -6,6 +6,7 @@ import { sessionMiddleware } from "./session.js";
 import authRoutes from "./routes/auth.js";
 import apiRoutes from "./routes/api.js";
 import gestionRoutes from "./routes/gestion.js";
+import qualiteRoutes from "./routes/qualite.js";
 
 const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
@@ -28,6 +29,7 @@ export function createApp() {
   // gestion AVANT api : api.js se termine par un 404 attrape-tout, qui
   // masquerait sinon toutes les routes de la Phase 2.
   app.use("/api", gestionRoutes);
+  app.use("/api", qualiteRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

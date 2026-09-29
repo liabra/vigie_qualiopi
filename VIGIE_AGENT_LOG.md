@@ -2398,3 +2398,66 @@ Smoke prod anonyme : 5 routes SPA → 200 + écran de connexion, **0 écran blan
 console**, deep-links/refresh OK, responsive 1440/390 sans scroll horizontal ; API métier →
 **401**. Bundle déployé contient la garde « Un formulaire est actuellement ouvert » et les
 7 étapes. Arrêt gracieux du conteneur remplacé confirmé (SIGTERM → HTTP fermé → pool fermé).
+
+---
+
+## 2026-09-29 — Q1-B1 : socle cœur qualité (actions + signalements) — LOCAL, non poussé
+
+Chantier « cœur qualité » : base + backend seul, **aucune UI**. Un commit local, **rien poussé**.
+
+### Arbitrages d'architecture appliqués (dérogent au rapport Q1-A)
+
+- **`signalements_qualite`** (types `reclamation`/`incident`/`non_conformite`) — PAS de table
+  `reclamations` à trois types.
+- **Intégrité relationnelle** : `actions_qualite.signalement_id` est une **FK réelle** vers
+  `signalements_qualite(id)` `ON DELETE SET NULL`. PAS de `origine_type + origine_id`
+  polymorphique. Le champ `origine` (manuel/signalement) est purement catégoriel, dérivé.
+- **Preuves intactes** : `preuves.indicateur_id` reste **NOT NULL** ; aucune structure Preuves
+  modifiée. Le raccord preuves/Drive est reporté à Q1-B4.
+- Veille, Audits, Satisfaction, Accueil, NC d'audit JSON : **non modifiés**.
+
+### Migration 015 `015_qualite_actions_signalements.sql` (additive)
+
+Tables : `signalements_qualite` (avec `date_constat`, `canal`, `objet`, `description`,
+données réclamant minimales, `inscription_id`/`personne_concernee_libelle`, `responsable_id`,
+`formation_id`/`session_id`, `cause_autre_libelle`, `statut`, `delai_cible_jours_ouvres`,
+`date_echeance_cible`, réponse/dates, `cree_par`/`cloture_par`/`annulee_par`) ;
+`actions_qualite` (référence `AQ-…`, `titre`, `constat`, `signalement_id`, `origine`,
+formation/session, `responsable_id`, `priorite`, `echeance`, `action_prevue`,
+`date_mise_en_oeuvre`, `statut`, `resultat`, `controle_efficacite`, dates, acteurs) ;
+`signalements_qualite_causes` (0..N) ; N-N `*_indicateurs` ; `historique_qualite`
+(append-only) ; `compteurs_qualite` (références). Triggers `updated_at` étendus.
+
+### Mécanismes
+
+- **Références** : `INSERT … ON CONFLICT (annee,type) DO UPDATE SET dernier = …+1 RETURNING`
+  (atomique, sûr en concurrence) — format `AQ/REC/INC/NC-YYYY-NNN`.
+- **Délai réclamation** : 15 jours ouvrés par défaut conservé sur le dossier, échéance
+  indicative `datePlusJoursOuvres` (lundi-vendredi, jours fériés non gérés), corrigeable.
+- **Formation/session** : formation **dérivée** de la session ; incohérence → 400.
+- **Historique** : création, transitions, modification (fait seul pour les champs sensibles,
+  valeurs avant/après pour les champs structurés), rattachement/retrait d'indicateur.
+  Jamais de contenu personnel recopié.
+- **Workflows** : transitions explicites et tracées (voir `services/qualite.js`). Pas de
+  hard delete. Clôture exige ≥ 1 indicateur.
+
+### RBAC réel
+
+- **Signalements** : admin uniquement (`requireAdmin`) ; le contributeur reçoit 403 partout.
+- **Actions** : admin complet ; contributeur ne voit que ses actions (`responsable_id = lui`),
+  peut `demarrer`/`realiser` SON action, et ne peut ni créer, ni assigner, ni clôturer,
+  ni rouvrir, ni annuler. Le contributeur ne reçoit du signalement source qu'un **libellé
+  neutre** (`signalement_reference`) — jamais l'objet, la description ni l'identité.
+
+### Tests
+
+`npm test` : serveur **434/434** (395 + 39 nouveaux), client **146/146** (inchangé, aucune UI),
+build OK, `git diff --check` OK. Fichiers : `server/test/qualite.test.js` (bout en bout
+PostgreSQL réel : migration, références, workflows, RBAC, confidentialité, historique),
+`server/test/qualite-service.test.js` (règles pures), `server/test/transversal.test.js`
+mis à jour (001→015).
+
+### État
+
+**Un commit local prêt, AUCUN push.** Restant : Q1-B2 (UI actions), Q1-B3 (UI signalements),
+Q1-B4 (liaison preuves/Drive), Q1-B5 (tableau de bord).

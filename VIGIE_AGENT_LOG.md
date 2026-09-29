@@ -2351,3 +2351,50 @@ pool PostgreSQL fermé). » — **aucun arrêt forcé**, sortie avant le délai 
 **Non exécuté** : aucune session admin réelle disponible, et la consigne interdit de
 fabriquer un cookie. Les écrans authentifiés (aide, tutoriel, sessions archivées, responsive
 connecté) avaient été validés en local avant push (captures Chrome headless + cookie signé).
+
+---
+
+## 2026-09-29 — Tutoriel : navigation guidée entre les pages (déployé)
+
+Micro-évolution UX : « Découvrir Vigie » fait défiler la page réelle DERRIÈRE le panneau.
+Un commit local `6ca742a` « UX : faire naviguer le tutoriel entre les pages » (8 fichiers),
+puis poussé (`26207d9..6ca742a`, **sans force**).
+
+### Implémentation
+
+- **`client/src/aide/contenu.js`** : chaque étape porte son champ `route`, exposé par
+  `etapesTutoriel(role)` — aucune suite de `if`/`switch` dans les composants.
+- **Routes des 7 étapes** : 1 Bienvenue `/accueil` · 2 Navigation `/accueil` ·
+  3 Les sessions `/sessions` · 4 Les preuves `/preuves` · 5 La veille `/veille` ·
+  6 L'Accueil `/accueil` · 7 Où retrouver l'aide `/accueil`.
+- **`client/src/aide/Tutoriel.jsx`** : `useNavigate`/`useLocation` ; un effet sur `etape.route`
+  navigue avec `{ replace: true }` — le panneau reste monté (étape + focus conservés, aucun
+  flash), l'historique n'accumule pas 7 entrées. À la fin, aucune redirection (reste `/accueil`).
+- **Protection formulaire métier** : `client/src/ui/dialogue.js` étiquette la pile
+  (`type: "aide"` vs `"metier"`) et exporte `dialogueMetierEnCours()` ; `Drawer` accepte
+  `type` (défaut `metier`), `AideDrawer`/`Tutoriel` passent `type="aide"`. `AppShell` bloque
+  le lancement (premier usage **et** relance) et affiche un `ConfirmDialog` « Un formulaire
+  est actuellement ouvert… ». Aucun changement de droits.
+
+### Tests
+
+`npm test` : **395/395 serveur + 146/146 client** (2 exécutions stables), build OK,
+`git diff --check` OK, aucun ECONNRESET. Nouveaux : `client/test/tutoriel-navigation.test.jsx`
+(8) + assertion des routes dans `aide-contenu.test.js` (1).
+
+### Smoke Chrome local (PostgreSQL jetable + vrai serveur + cookies signés)
+
+- **Admin** : `/preuves` → étape 1 `/accueil` → `/sessions` → `/preuves` → `/veille` →
+  Précédent `/preuves` → Terminer (reste `/accueil`). Focus resté dans le drawer.
+- **Contributeur** : même parcours, étape Navigation **sans** mention admin.
+- **Mobile 390** : Accueil → Sessions → Preuves, drawer dans l'écran, **0 défilement horizontal**.
+- **0 erreur console** (admin, contributeur, mobile). 4 captures `/tmp/tutoriel-*.png` validées.
+
+### Déploiement
+
+Railway **SUCCESS** (`c8d08cae`, commit `6ca742a`) ; `/api/health` **200** ; migrations
+**001→014 inchangées, aucune 015** ; logs runtime propres (aucune erreur PostgreSQL/Google).
+Smoke prod anonyme : 5 routes SPA → 200 + écran de connexion, **0 écran blanc**, **0 erreur
+console**, deep-links/refresh OK, responsive 1440/390 sans scroll horizontal ; API métier →
+**401**. Bundle déployé contient la garde « Un formulaire est actuellement ouvert » et les
+7 étapes. Arrêt gracieux du conteneur remplacé confirmé (SIGTERM → HTTP fermé → pool fermé).

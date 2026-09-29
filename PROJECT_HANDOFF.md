@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 29/09/2026 |
-| **Dernier lot validé en production** | Après VF — **Aide intégrée et cycle de vie des sessions** (déployé le 29/09/2026) |
+| **Dernier lot validé en production** | Tutoriel — **navigation guidée entre les pages** (déployé le 29/09/2026) |
 | **Migration de production actuelle** | `014_archivage_sessions.sql` (14 migrations) |
-| **Suite de tests** | **395/395 serveur + 137/137 client** (déployés « Après VF ») |
+| **Suite de tests** | **395/395 serveur + 146/146 client** (déployés « tutoriel guidé ») |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2332,6 +2332,11 @@ Après le chantier « Après VF » (aide intégrée + cycle de vie des sessions,
 - migration de production : **014_archivage_sessions.sql** (14 migrations 001→014, aucune 015)
 - déploiement Railway : SUCCESS (commit `9a08cc7`), `/api/health` 200, arrêt gracieux confirmé
 
+Après le micro-lot « Tutoriel — navigation guidée » (§14 ter) :
+
+- `npm test` : **395/395 serveur + 146/146 client**
+- déploiement Railway : SUCCESS (commit `6ca742a`), `/api/health` 200
+
 Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
 chantier.
 
@@ -2403,6 +2408,32 @@ Premier chantier « Après VF » : deux évolutions livrées ensemble, sans refo
 Smoke anonyme (13 routes SPA → écran de connexion, 0 écran blanc, 0 erreur console, responsive
 1440/390 sans défilement horizontal, deep-links/refresh/retour-avant OK, API métier → 401) ;
 arrêt gracieux confirmé (SIGTERM → serveur HTTP fermé → pool PostgreSQL fermé).
+
+---
+
+## 14 ter. Tutoriel — navigation guidée entre les pages — TERMINÉ (déployé le 29/09/2026)
+
+Micro-évolution UX après « Après VF » : « Découvrir Vigie » fait défiler la page réelle
+DERRIÈRE le panneau du tutoriel.
+
+- **Routes des 7 étapes** (champ `route` dans la configuration centralisée
+  `client/src/aide/contenu.js`) : 1 Bienvenue `/accueil`, 2 Navigation `/accueil`,
+  3 Les sessions `/sessions`, 4 Les preuves `/preuves`, 5 La veille `/veille`,
+  6 L'Accueil `/accueil`, 7 Où retrouver l'aide `/accueil`.
+- **Navigation** : `Tutoriel.jsx` utilise `useNavigate`/`useLocation` ; un effet sur
+  `etape.route` navigue avec `{ replace: true }` (l'historique n'accumule pas 7 entrées),
+  le panneau reste monté (étape et focus conservés, aucun flash de fermeture/réouverture).
+- **Formulaire ouvert** : la pile de dialogues (`ui/dialogue.js`) est étiquetée
+  (`type: "aide"` vs `"metier"`) ; `dialogueMetierEnCours()` bloque le lancement du tutoriel
+  (premier usage et relance) et affiche une confirmation « Un formulaire est actuellement
+  ouvert… ». Aucun changement de droits : les routes des étapes sont communes aux deux rôles.
+- **Tests** : **395/395 serveur + 146/146 client** ; nouveaux tests
+  `client/test/tutoriel-navigation.test.jsx` (8) + `aide-contenu.test.js` (routes).
+- **Validation** : smoke Chrome local (admin/contributeur/mobile 390, PostgreSQL jetable +
+  vrai serveur + cookies signés) — navigation derrière le panneau, focus conservé, 0 erreur
+  console ; 4 captures `/tmp/tutoriel-*.png` validées.
+- **Déploiement** : commit `6ca742a` poussé, Railway SUCCESS (`c8d08cae`), `/api/health` 200,
+  migrations 001→014 inchangées, smoke anonyme prod 0 erreur console, arrêt gracieux confirmé.
 
 ---
 

@@ -1379,4 +1379,26 @@ défilement horizontal**, API métier → **401**. Arrêt gracieux confirmé (SI
 
 ---
 
+## 18. Tutoriel — navigation guidée entre les pages
+
+Réalisé et **déployé le 29/09/2026** (commit `6ca742a`). Le tutoriel de « Découvrir Vigie »
+fait désormais défiler la page réelle **derrière** le panneau.
+
+- **Routes des 7 étapes** : `/accueil` (1, 2, 6, 7) · `/sessions` (3) · `/preuves` (4) ·
+  `/veille` (5), portées par le champ `route` de la configuration centralisée
+  (`client/src/aide/contenu.js`).
+- **Navigation sans flash** : `{ replace: true }` (pas de pollution d'historique), panneau
+  toujours monté, étape et focus conservés ; la fin du tutoriel laisse l'utilisateur sur
+  `/accueil`.
+- **Formulaire ouvert** : détection via la pile de dialogues (`type: "aide"` / `"metier"`),
+  lancement bloqué avec confirmation « Un formulaire est actuellement ouvert… » — aucune
+  saisie perdue par une navigation automatique.
+- **Accessibilité** : le drawer reste annoncé (`role="dialog"`), focus piégé dans le panneau,
+  Échap ferme, Suivant/Précédent au clavier, titre d'étape = point de contexte.
+- **Validation** : `npm test` **395/395 serveur + 146/146 client** ; smoke Chrome local
+  admin/contributeur/mobile (0 erreur console) ; 4 captures `/tmp/tutoriel-*.png` validées ;
+  Railway SUCCESS (`c8d08cae`), `/api/health` 200.
+
+---
+
 *Fin du document.*

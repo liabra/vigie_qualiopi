@@ -75,8 +75,8 @@ function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fic
       return { rows: u ? [u] : [] };
     }
 
-    if (sql === "SELECT 1 FROM sessions WHERE id = $1") {
-      return { rows: sessions[params[0]] ? [{ "?column?": 1 }] : [], rowCount: sessions[params[0]] ? 1 : 0 };
+    if (sql === "SELECT archivee_le FROM sessions WHERE id = $1") {
+      return { rows: sessions[params[0]] ? [{ archivee_le: null }] : [], rowCount: sessions[params[0]] ? 1 : 0 };
     }
     if (sql === "SELECT session_id FROM groupes WHERE id = $1") {
       return groupes[params[0]] !== undefined ? { rows: [{ session_id: groupes[params[0]] }] } : { rows: [] };
@@ -243,7 +243,7 @@ test("un document externe (EduSign) se rattache à une session sans copier le fi
     assert.ok(
       ["BEGIN", "COMMIT", "ROLLBACK"].includes(a.sql) ||
       a.sql === SQL_UTILISATEUR ||
-      a.sql === "SELECT 1 FROM sessions WHERE id = $1" ||
+      a.sql === "SELECT archivee_le FROM sessions WHERE id = $1" ||
       a.sql === "SELECT session_id FROM groupes WHERE id = $1" ||
       a.sql.startsWith("SELECT i.id, i.numero FROM indicateurs") ||
       a.sql.startsWith("INSERT INTO preuves") ||

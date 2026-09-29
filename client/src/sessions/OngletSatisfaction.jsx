@@ -11,7 +11,7 @@ const vide = () => ({ type: "a_chaud", inscription_id: "", date_recueil: "", not
 // Onglet Satisfaction : réponses anonymes ou nominatives. Aucune borne de
 // date côté écran (un recueil à froid peut suivre la session) — règles
 // inchangées, le serveur tranche.
-export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, notifier }) {
+export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, notifier, archivee }) {
   const { session, stagiaires } = donnees;
   const sa = donnees.satisfactions;
   const [formulaire, setFormulaire] = useState(null);
@@ -21,7 +21,7 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
       <section className="sess-section" aria-labelledby="titre-satisfaction">
         <div className="sess-section__tete">
           <h2 id="titre-satisfaction" className="sess-section__titre">Satisfaction</h2>
-          {peutSaisir && <Button compact variante="primary" onClick={() => setFormulaire(vide())}>Ajouter un recueil</Button>}
+          {peutSaisir && !archivee && <Button compact variante="primary" onClick={() => setFormulaire(vide())}>Ajouter un recueil</Button>}
         </div>
         {sa.agregation.reponses > 0 && (
           <dl className="sess-chiffres">
@@ -34,7 +34,7 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
           </dl>
         )}
         {sa.satisfactions.length === 0 ? (
-          <EmptyState titre="Aucune réponse recueillie" action={peutSaisir && <Button variante="primary" onClick={() => setFormulaire(vide())}>Ajouter un recueil</Button>}>
+          <EmptyState titre="Aucune réponse recueillie" action={peutSaisir && !archivee && <Button variante="primary" onClick={() => setFormulaire(vide())}>Ajouter un recueil</Button>}>
             Enregistrez les questionnaires à chaud, à froid, financeur, entreprise ou formateur.
           </EmptyState>
         ) : (
@@ -56,7 +56,7 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
                   <td data-label="Commentaire" className="sess-table__texte">{f.commentaires || "—"}</td>
                   <td className="sess-table__actions">
                     {f.drive_file_id && <a className="ui-btn ui-btn--ghost ui-btn--compact" href={lienDrive(f.drive_file_id)} target="_blank" rel="noreferrer">Pièce<span className="visually-hidden"> (nouvel onglet)</span></a>}
-                    {peutSaisir && (
+                    {peutSaisir && !archivee && (
                       <Button compact onClick={() => setFormulaire({
                         id: f.id, type: f.type, inscription_id: f.inscription_id ? String(f.inscription_id) : "",
                         date_recueil: String(f.date_recueil || "").slice(0, 10), note_globale: f.note_globale ?? "",
@@ -71,7 +71,7 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
         )}
       </section>
 
-      {peutSaisir && (
+      {peutSaisir && !archivee && (
         <DrawerSatisfaction valeurInitiale={formulaire} sessionId={session.id} stagiaires={stagiaires} admin={admin}
           onFermer={() => setFormulaire(null)}
           onFait={async (m) => { setFormulaire(null); notifier({ ton: "success", titre: m }); await recharger(); }} />

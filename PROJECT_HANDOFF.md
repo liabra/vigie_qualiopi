@@ -2326,11 +2326,76 @@ Référence connue au **24/09/2026** (fin de la VF principale, UX-5) :
 - healthcheck : OK
 - arbre Git : aucun commit en attente de push au moment de cette rédaction
 
+Après le chantier « Après VF » (aide intégrée + cycle de vie des sessions, §14 bis) :
+
+- `npm test` : **395/395 serveur + 137/137 client** (2 exécutions)
+- migration locale : **014_archivage_sessions.sql** (non déployée, commits non poussés)
+
 Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
 chantier.
 
 Une fonctionnalité n'est considérée comme validée que si elle a été vérifiée **en production**
 (ou sur une base jetable équivalente), pas seulement parce que ses tests passent.
+
+---
+
+## 14 bis. Après VF — Aide intégrée et cycle de vie des sessions — TERMINÉ (local)
+
+Premier chantier « Après VF » : deux évolutions livrées ensemble, sans refonte globale.
+
+### A — Aide intégrée / tutoriel
+
+- **Contenu centralisé** dans `client/src/aide/` (`contenu.js`, module pur : aide
+  contextuelle par route, guide, tutoriel, petites notions ; `stockage.js` pour le
+  localStorage) — aucun texte d'aide dispersé dans les composants.
+- **Bouton « ? Aide »** permanent en bas de la barre latérale (au-dessus de Déconnexion),
+  présent aussi dans le menu mobile ; ouvre un panneau `Drawer` « Aide Vigie » qui ne quitte
+  jamais l'écran courant : **Aide de cette page** / **Découvrir Vigie** / **Guide complet**.
+- **Aide contextuelle** adaptée à la route (`/accueil`, `/sessions`, `/sessions/:id` et
+  onglets, `/indicateurs`, `/preuves`, `/veille`, `/audits`, `/formations`, `/modeles`,
+  `/prescripteurs`, `/versions`, `/parametres/google`) — elle ne décrit que ce qui existe.
+- **Tutoriel** : 7 étapes, Suivant/Précédent, quittable à tout moment, relançable depuis
+  l'aide ; proposé au **premier usage** via `localStorage` (`vigie_tutoriel_termine`) sans
+  migration ; `localStorage` indisponible ⇒ l'application continue normalement.
+- **Guide complet** : 12 rubriques avec recherche simple ; **respect du rôle** : la rubrique
+  admin n'est jamais montrée à un contributeur, et le tutoriel/guide ne décrivent jamais une
+  action admin-only à un contributeur.
+- **Petits « ? »** (`AideInfobulle`) posés uniquement sur les notions qui le méritent
+  (durée prévue, rupture réglementaire…), accessibles au clavier, Échap, retour de focus.
+- Accessibilité : clavier, Échap, retour de focus, libellés de boutons, lisible à 200 %,
+  mobile 390 px (Drawer plein écran sous 768 px).
+
+### B — Archivage / suppression sécurisée des sessions
+
+- **Migration 014** `014_archivage_sessions.sql` (additive, sans perte) : `sessions.archivee_le`
+  timestamptz nullable + `archivee_par` → `utilisateurs(id) ON DELETE SET NULL`.
+- **Modèle** : l'archivage est la voie normale (réversible, lecture seule, aucune donnée
+  Qualiopi modifiée) ; la suppression définitive est exceptionnelle.
+- **Routes admin** : `PATCH /api/sessions/:id/archive`, `PATCH /api/sessions/:id/restaure`,
+  `DELETE /api/sessions/:id` (session réellement vide uniquement, sinon **409**
+  « …Archivez-la plutôt »). `GET /api/sessions?etat=archivees|actives` (défaut actives).
+- **Lecture seule autoritaire côté serveur** : toute écriture sur une session archivée
+  (modification, groupe, stagiaire/import, inscription, absence, évaluation, satisfaction,
+  génération, preuve) répond **409** — pas seulement un masquage React.
+- **Suppression** : aucune cascade silencieuse — une session avec la moindre donnée de suivi
+  est refusée ; aucun fichier Google Drive n'est supprimé automatiquement.
+- **Client** : vue **Actives / Archivées** (URL `?etat=archivees`), bandeau « Session
+  archivée », actions Restaurer / Supprimer définitivement (confirmation renforcée en tapant
+  « SUPPRIMER »), onglets en lecture seule, contributeur sans aucune action admin.
+
+### Tests
+
+- `npm test` : **395/395 serveur + 137/137 client** (2 exécutions), build OK,
+  `git diff --check` OK.
+- Serveur : `archivage.test.js` (contrat HTTP), cycle de vie complet sur PostgreSQL jetable
+  dans `transversal.test.js`, bases simulées existantes adaptées (nouvelles requêtes
+  d'archivage), migrations 001→014.
+- Client : `archivage.test.jsx`, `aide.test.jsx`, `aide-contenu.test.js`.
+
+### État
+
+Livré **localement**, non déployé : **deux commits distincts** (aide puis archivage),
+**aucun push**.
 
 ---
 

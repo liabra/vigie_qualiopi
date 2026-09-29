@@ -55,7 +55,7 @@ function baseSimulee({ sessions = { 1: { date_debut: "2026-01-05", date_fin: "20
       return { rows: u ? [u] : [] };
     }
 
-    if (sql === "SELECT id, date_debut, date_fin FROM sessions WHERE id = $1") {
+    if (sql === "SELECT id, date_debut, date_fin, archivee_le FROM sessions WHERE id = $1") {
       const s = etat.sessions[params[0]];
       return { rows: s ? [{ id: params[0], ...s }] : [] };
     }
@@ -63,6 +63,16 @@ function baseSimulee({ sessions = { 1: { date_debut: "2026-01-05", date_fin: "20
     if (sql === "SELECT id FROM sessions WHERE id = $1") {
       const s = etat.sessions[params[0]];
       return { rows: s ? [{ id: params[0] }] : [] };
+    }
+
+    if (sql === "SELECT id, archivee_le FROM sessions WHERE id = $1") {
+      const s = etat.sessions[params[0]];
+      return { rows: s ? [{ id: params[0], ...s }] : [] };
+    }
+
+    if (sql === "SELECT archivee_le FROM sessions WHERE id = $1") {
+      const s = etat.sessions[params[0]];
+      return { rows: s ? [{ archivee_le: s.archivee_le ?? null }] : [] };
     }
 
     if (sql === "SELECT id, session_id FROM inscriptions WHERE id = $1") {

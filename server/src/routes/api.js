@@ -7,6 +7,7 @@ import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
 import { champsAudit } from "../services/audits.js";
 import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
+import { MSG_ARCHIVEE } from "../services/archive.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -309,9 +310,11 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
 
 // Sessions disponibles pour rattacher une preuve, avec le nombre d'inscrits
 // qui servira de nombre attendu en mode « par stagiaire ».
-router.get("/sessions", requireAuth, wrap(async (_req, res) => {
+// `?etat=archivees` renvoie les archivées ; par défaut, les ACTIVES seules.
+router.get("/sessions", requireAuth, wrap(async (req, res) => {
+  const archives = req.query.etat === "archivees";
   const { rows } = await query(
-    `SELECT s.id, s.reference, s.date_debut, s.date_fin, s.statut, s.lieu, s.horaire,
+    `SELECT s.id, s.reference, s.date_debut, s.date_fin, s.statut, s.lieu, s.horaire, s.archivee_le,
             f.intitule AS formation,
             (SELECT count(*)::int FROM inscriptions i WHERE i.session_id = s.id AND i.statut <> 'abandon') AS nb_inscrits,
             COALESCE(
@@ -324,6 +327,7 @@ router.get("/sessions", requireAuth, wrap(async (_req, res) => {
               '[]'::json) AS groupes
      FROM sessions s
      JOIN formations f ON f.id = s.formation_id
+     WHERE ${archives ? "s.archivee_le IS NOT NULL" : "s.archivee_le IS NULL"}
      ORDER BY s.date_debut DESC, s.id DESC
      LIMIT 500`
   );
@@ -493,8 +497,9 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
   const gid = lireLien(groupe_id, "Groupe");
   if (gid?.erreur) return res.status(400).json({ error: gid.erreur });
   if (sid) {
-    const { rowCount } = await query("SELECT 1 FROM sessions WHERE id = $1", [sid.id]);
-    if (!rowCount) return res.status(400).json({ error: "Session introuvable." });
+    const { rows: [session] } = await query("SELECT archivee_le FROM sessions WHERE id = $1", [sid.id]);
+    if (!session) return res.status(400).json({ error: "Session introuvable." });
+    if (session.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
   }
   if (gid) {
     const { rows: [groupe] } = await query("SELECT session_id FROM groupes WHERE id = $1", [gid.id]);

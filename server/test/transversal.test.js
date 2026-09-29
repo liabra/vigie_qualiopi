@@ -152,12 +152,12 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 
 // ── Migrations ───────────────────────────────────────────────
 
-test("migrations 001→013 appliquées depuis zéro, dans l'ordre", async () => {
+test("migrations 001→014 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 13, "13 migrations attendues");
+  assert.equal(noms.length, 14, "14 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
-  assert.match(noms[12], /^013_/, "finit par 013");
+  assert.match(noms[13], /^014_/, "finit par 014");
   // Tables clés présentes.
   for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions"]) {
     const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t]);
@@ -169,10 +169,10 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 13);
+  assert.equal(rows[0].n, 14);
 });
 
-test("montée incrémentale : base arrêtée à 010, données conservées après 011→013", async () => {
+test("montée incrémentale : base arrêtée à 010, données conservées après 011→014", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_incr");
@@ -188,11 +188,11 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
     "INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin) VALUES ($1, 1, $2, $3, $4)",
     [formation.id, "SESS-HIST", "2026-01-05", "2026-03-05"]);
 
-  // Finit la montée avec le vrai runner (011→013).
+  // Finit la montée avec le vrai runner (011→014).
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");
@@ -331,6 +331,79 @@ test("contributeur : saisies pédagogiques OK, administration refusée", async (
   }
   assert.equal((await api("GET", "/api/drive/recherche?q=abc", null, C)).statut, 403);
   assert.equal((await api("GET", "/api/drive/status", null, C)).statut, 403);
+});
+
+// ── Après VF : cycle de vie des sessions (archivage / restauration /
+// suppression) sur PostgreSQL réel ────────────────────────────
+
+test("cycle de vie : archivage, lecture seule, restauration, suppression d'une session vide", async () => {
+  const A = adminId;
+
+  // 1. formation + session réelle
+  const f = await api("POST", "/api/formations", { intitule: "Cycle de vie", code_interne: "CV-2026" }, A);
+  const session = await api("POST", "/api/sessions", {
+    formation_id: f.corps.formation.id, date_debut: "2026-04-01", date_fin: "2026-06-01", reference: "SESS-CYCLE",
+  }, A);
+  assert.equal(session.statut, 201);
+  const id = session.corps.session.id;
+
+  // 2. active par défaut
+  const actives = await api("GET", "/api/sessions", null, A);
+  assert.ok(actives.corps.sessions.some((s) => s.id === id), "la session apparaît dans les actives");
+
+  // 3. archiver
+  const arch = await api("PATCH", `/api/sessions/${id}/archive`, null, A);
+  assert.equal(arch.statut, 200);
+  assert.ok(arch.corps.session.archivee_le);
+
+  // 4. retirée des actives
+  const activesApres = await api("GET", "/api/sessions", null, A);
+  assert.ok(!activesApres.corps.sessions.some((s) => s.id === id), "la session archivée ne pollue plus la liste active");
+
+  // 5. présente dans les archivées
+  const archives = await api("GET", "/api/sessions?etat=archivees", null, A);
+  assert.ok(archives.corps.sessions.some((s) => s.id === id), "la session archivée apparaît dans la vue Archivées");
+
+  // 6. consultable en détail
+  assert.equal((await api("GET", `/api/sessions/${id}`, null, A)).statut, 200);
+
+  // 7. écriture refusée tant qu'archivée
+  const refuse = await api("PATCH", `/api/sessions/${id}`, { lieu: "Kourou" }, A);
+  assert.equal(refuse.statut, 409);
+  assert.match(refuse.corps.error, /archivée/);
+
+  // 8. restaurer
+  const restaure = await api("PATCH", `/api/sessions/${id}/restaure`, null, A);
+  assert.equal(restaure.statut, 200);
+  assert.equal(restaure.corps.session.archivee_le, null);
+
+  // 9. de nouveau active
+  const activesFin = await api("GET", "/api/sessions", null, A);
+  assert.ok(activesFin.corps.sessions.some((s) => s.id === id), "la session restaurée revient dans les actives");
+
+  // 10. session vide : archivée puis supprimée définitivement
+  const vide = await api("POST", "/api/sessions", {
+    formation_id: f.corps.formation.id, date_debut: "2026-07-01", date_fin: "2026-07-02", reference: "SESS-VIDE",
+  }, A);
+  const idVide = vide.corps.session.id;
+  await api("PATCH", `/api/sessions/${idVide}/archive`, null, A);
+  const suppr = await api("DELETE", `/api/sessions/${idVide}`, null, A);
+  assert.equal(suppr.statut, 200);
+  assert.equal((await api("GET", `/api/sessions/${idVide}`, null, A)).statut, 404, "la session vide a disparu");
+
+  // 11. session avec stagiaire : la suppression est refusée, données intactes
+  const pleine = await api("POST", "/api/sessions", {
+    formation_id: f.corps.formation.id, date_debut: "2026-08-01", date_fin: "2026-08-30", reference: "SESS-PLEINE",
+  }, A);
+  const idPleine = pleine.corps.session.id;
+  await api("POST", `/api/sessions/${idPleine}/stagiaires`, { nom: "Martin", prenom: "Alice" }, A);
+  await api("PATCH", `/api/sessions/${idPleine}/archive`, null, A);
+  const refusSuppr = await api("DELETE", `/api/sessions/${idPleine}`, null, A);
+  assert.equal(refusSuppr.statut, 409);
+  assert.match(refusSuppr.corps.error, /Archivez-la plutôt/);
+  const intacte = await api("GET", `/api/sessions/${idPleine}`, null, A);
+  assert.equal(intacte.statut, 200);
+  assert.equal(intacte.corps.stagiaires.length, 1, "le stagiaire et ses données sont intacts");
 });
 
 // ── Cohérences relationnelles (croisements refusés) ──────────

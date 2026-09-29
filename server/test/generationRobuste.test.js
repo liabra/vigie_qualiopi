@@ -50,6 +50,9 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
       const u = [ADMIN, CONTRIBUTEUR].find((x) => x.id === params[0]);
       return { rows: u ? [u] : [] };
     }
+    if (sql === "SELECT archivee_le FROM sessions WHERE id = $1") {
+      return { rows: [{ archivee_le: null }] };
+    }
     if (sql.startsWith("SELECT * FROM modeles_documents WHERE id = $1 AND actif")) {
       return { rows: modele === null ? [modeleDefaut] : (modele ? [modele] : []) };
     }

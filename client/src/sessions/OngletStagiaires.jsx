@@ -7,7 +7,7 @@ import { CIVILITES, formaterDate, libellePrescripteur } from "./format.js";
 // abandon. Lecture d'abord : les formulaires s'ouvrent à la demande.
 // Les champs sensibles (handicap, besoins d'adaptation) n'apparaissent QUE
 // dans le dossier, jamais dans le tableau.
-export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharger, notifier }) {
+export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharger, notifier, archivee }) {
   const { session, groupes, stagiaires } = donnees;
   const [filtreGroupe, setFiltreGroupe] = useState("");
   const [drawer, setDrawer] = useState(null); // "groupe" | "ajout" | "import" | { dossier: inscription_id }
@@ -41,7 +41,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
       <section className="sess-section" aria-labelledby="titre-groupes">
         <div className="sess-section__tete">
           <h2 id="titre-groupes" className="sess-section__titre">Groupes</h2>
-          {admin && <Button compact onClick={() => setDrawer("groupe")}>Ajouter un groupe</Button>}
+          {admin && !archivee && <Button compact onClick={() => setDrawer("groupe")}>Ajouter un groupe</Button>}
         </div>
         {groupes.length === 0
           ? <p className="sess-secondaire">Aucun groupe. Une session sur un seul lieu n'en a pas besoin.</p>
@@ -62,7 +62,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
       <section className="sess-section" aria-labelledby="titre-stagiaires">
         <div className="sess-section__tete">
           <h2 id="titre-stagiaires" className="sess-section__titre">Stagiaires</h2>
-          {peutSaisir && (
+          {peutSaisir && !archivee && (
             <div className="sess-actions">
               <Button compact onClick={() => setDrawer("import")}>Importer un CSV</Button>
               <Button compact variante="primary" onClick={() => setDrawer("ajout")}>Ajouter un stagiaire</Button>
@@ -73,7 +73,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
         {stagiaires.length === 0 ? (
           <EmptyState
             titre="Aucun stagiaire inscrit"
-            action={peutSaisir && <Button variante="primary" onClick={() => setDrawer("ajout")}>Ajouter un stagiaire</Button>}
+            action={peutSaisir && !archivee && <Button variante="primary" onClick={() => setDrawer("ajout")}>Ajouter un stagiaire</Button>}
           >
             {peutSaisir ? "Ajoutez les stagiaires un par un, ou importez un fichier CSV." : "Aucune inscription pour cette session."}
           </EmptyState>
@@ -126,7 +126,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
                         <Button compact onClick={() => setDrawer({ dossier: st.inscription_id })} aria-label={`Dossier de ${st.prenom} ${st.nom}`}>
                           Dossier
                         </Button>
-                        {peutSaisir && !abandonne && (
+                        {peutSaisir && !archivee && !abandonne && (
                           <Button compact variante="ghost" onClick={() => { setErreurAbandon(null); setAbandon(st); }} aria-label={`Déclarer l'abandon de ${st.prenom} ${st.nom}`}>
                             Abandon…
                           </Button>
@@ -141,11 +141,11 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
         )}
       </section>
 
-      {admin && (
+      {admin && !archivee && (
         <DrawerGroupe ouvert={drawer === "groupe"} sessionId={session.id} onFermer={() => setDrawer(null)}
           onFait={async (nom) => { setDrawer(null); notifier({ ton: "success", titre: `Groupe « ${nom} » ajouté.` }); await recharger(); }} />
       )}
-      {peutSaisir && (
+      {peutSaisir && !archivee && (
         <>
           <DrawerAjout ouvert={drawer === "ajout"} sessionId={session.id} groupes={groupes} prescripteurs={annexes.prescripteurs}
             onFermer={() => setDrawer(null)}
@@ -162,7 +162,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
         </>
       )}
       <DrawerDossier
-        st={dossierOuvert} groupes={groupes} prescripteurs={annexes.prescripteurs} peutSaisir={peutSaisir}
+        st={dossierOuvert} groupes={groupes} prescripteurs={annexes.prescripteurs} peutSaisir={peutSaisir && !archivee}
         onFermer={() => setDrawer(null)}
         onFait={async () => { setDrawer(null); notifier({ ton: "success", titre: "Dossier enregistré." }); await recharger(); }}
       />

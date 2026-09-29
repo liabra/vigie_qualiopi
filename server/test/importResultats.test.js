@@ -25,6 +25,9 @@ function baseSimulee({ inscriptions = [], failOn = null, session = { date_debut:
     if (sql === "SELECT id FROM sessions WHERE id = $1") {
       return { rows: [{ id: params[0] }] };
     }
+    if (sql === "SELECT id, archivee_le FROM sessions WHERE id = $1") {
+      return { rows: [{ id: params[0], archivee_le: null }] };
+    }
     if (sql === "SELECT date_debut, date_fin FROM sessions WHERE id = $1") {
       return { rows: [{ ...session }] };
     }

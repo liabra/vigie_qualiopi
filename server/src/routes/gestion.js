@@ -25,6 +25,7 @@ import {
   normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
 import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
+import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -323,6 +324,7 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
 
   const { rows: [actuelle] } = await query("SELECT * FROM sessions WHERE id = $1", [id]);
   if (!actuelle) return res.status(404).json({ error: "Session introuvable." });
+  if (actuelle.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
 
   // Valeurs retenues pour chaque champ (l'ancienne par défaut), pour comparer
   // ce qui change réellement — sans quoi un PATCH ne modifiant rien serait
@@ -453,11 +455,56 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
   }
 }));
 
+// ── Archivage / restauration / suppression (Après VF) ─────────
+// L'archivage est la voie normale : réversible, sans perte, lecture seule.
+// La suppression définitive est exceptionnelle et réservée aux sessions
+// réellement VIDES (aucune donnée de suivi) — jamais de cascade silencieuse.
+
+router.patch("/sessions/:id/archive", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const { rows: [session] } = await query(
+    "UPDATE sessions SET archivee_le = now(), archivee_par = $2 WHERE id = $1 RETURNING *",
+    [id, req.user.id]
+  );
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  res.json({ session });
+}));
+
+router.patch("/sessions/:id/restaure", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const { rows: [session] } = await query(
+    "UPDATE sessions SET archivee_le = NULL, archivee_par = NULL WHERE id = $1 RETURNING *",
+    [id]
+  );
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  res.json({ session });
+}));
+
+router.delete("/sessions/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [id]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+
+  const deps = await dependancesSession(id);
+  if (!deps.vide) {
+    return res.status(409).json({
+      error: "Cette session contient des données de suivi et ne peut pas être supprimée. Archivez-la plutôt.",
+    });
+  }
+  await query("DELETE FROM sessions WHERE id = $1", [id]);
+  res.json({ ok: true });
+}));
+
 router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   const { nom, lieu, formateur } = req.body || {};
   if (!nom?.trim()) return manque(res, "nom");
+  const etat = await verifierSessionActive(sessionId);
+  if (etat.erreur) return res.status(etat.statut).json({ error: etat.erreur });
   try {
     const { rows: [groupe] } = await query(
       "INSERT INTO groupes (session_id, nom, lieu, formateur) VALUES ($1,$2,$3,$4) RETURNING *",
@@ -489,8 +536,9 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
-    const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+    const { rows: [session] } = await cx.query("SELECT id, archivee_le FROM sessions WHERE id = $1", [sessionId]);
     if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+    if (session.archivee_le) { await cx.query("ROLLBACK"); return res.status(409).json({ error: MSG_ARCHIVEE }); }
     let gid = null;
     if (groupe_id !== undefined && groupe_id !== null && groupe_id !== "") {
       gid = identifiant(groupe_id);
@@ -565,6 +613,11 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
     if (!rowCount) return res.status(400).json({ error: "Ce groupe n'appartient pas à la session." });
   }
 
+  // Une inscription d'une session ARCHIVÉE est en lecture seule, comme le
+  // reste de la session (backend autoritaire, pas un simple masquage UI).
+  // Placé APRÈS la garde « Rien à modifier » pour conserver la convention
+  // L8 : un corps vide répond 400 sans accès base.
+
   const sets = [];
   const params = [id];
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
@@ -578,6 +631,14 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   if (prescripteur !== undefined) set("prescripteur", prescripteur || null);
   if (dossier_complet !== undefined) set("dossier_complet", dossier_complet === true);
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
+
+  const { rows: [lien] } = await query(
+    "SELECT s.archivee_le FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1",
+    [id]
+  );
+  if (!lien) return res.status(404).json({ error: "Inscription introuvable." });
+  if (lien.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+
   const { rows } = await query(`UPDATE inscriptions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
   if (!rows.length) return res.status(404).json({ error: "Inscription introuvable." });
   res.json({ inscription: rows[0] });
@@ -679,12 +740,13 @@ router.post("/inscriptions/:id/absences", requireRedacteur, wrap(async (req, res
 
   // C'est l'inscription qui porte la session, donc les dates de référence.
   const { rows: [cible] } = await query(
-    `SELECT i.id, s.date_debut, s.date_fin
+    `SELECT i.id, s.date_debut, s.date_fin, s.archivee_le
      FROM inscriptions i JOIN sessions s ON s.id = i.session_id
      WHERE i.id = $1`,
     [inscriptionId]
   );
   if (!cible) return res.status(404).json({ error: "Inscription introuvable." });
+  if (cible.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
   if (corps.date_absence < cible.date_debut || corps.date_absence > cible.date_fin) {
     return res.status(400).json({
       error: `La date doit tomber dans les dates de la session (du ${cible.date_debut} au ${cible.date_fin}).`,
@@ -723,7 +785,7 @@ router.patch("/absences/:id", requireRedacteur, wrap(async (req, res) => {
 
   const { rows: [actuelle] } = await query(
     `SELECT a.id, a.inscription_id, a.date_absence, a.demi_journee, a.duree_heures, a.justifiee, a.motif,
-            s.date_debut, s.date_fin
+            s.date_debut, s.date_fin, s.archivee_le
      FROM absences a
      JOIN inscriptions i ON i.id = a.inscription_id
      JOIN sessions s ON s.id = i.session_id
@@ -731,6 +793,7 @@ router.patch("/absences/:id", requireRedacteur, wrap(async (req, res) => {
     [id]
   );
   if (!actuelle) return res.status(404).json({ error: "Absence introuvable." });
+  if (actuelle.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
 
   const sets = [];
   const params = [id];
@@ -800,6 +863,15 @@ router.patch("/absences/:id", requireRedacteur, wrap(async (req, res) => {
 router.delete("/absences/:id", requireRedacteur, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant d'absence invalide." });
+  const { rows: [lien] } = await query(
+    `SELECT s.archivee_le FROM absences a
+     JOIN inscriptions i ON i.id = a.inscription_id
+     JOIN sessions s ON s.id = i.session_id
+     WHERE a.id = $1`,
+    [id]
+  );
+  if (!lien) return res.status(404).json({ error: "Absence introuvable." });
+  if (lien.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
   const { rowCount } = await query("DELETE FROM absences WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Absence introuvable." });
   res.json({ ok: true });
@@ -1014,8 +1086,9 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
-    const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+    const { rows: [session] } = await cx.query("SELECT id, archivee_le FROM sessions WHERE id = $1", [sessionId]);
     if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+    if (session.archivee_le) { await cx.query("ROLLBACK"); return res.status(409).json({ error: MSG_ARCHIVEE }); }
 
     const r = await classerStagiaires({ req: (sql, params) => cx.query(sql, params), sessionId, texte });
     if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
@@ -1210,6 +1283,8 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     groupeId = identifiant(groupe_id);
     if (!groupeId) return res.status(400).json({ error: "Identifiant de groupe invalide." });
   }
+  const etat = await verifierSessionActive(sessionId);
+  if (etat.erreur) return res.status(etat.statut).json({ error: etat.erreur });
   try {
     const r = await genererDocuments({
       modeleId, sessionId, groupeId,
@@ -1299,8 +1374,9 @@ router.post("/sessions/:id/evaluations", requireRedacteur, wrap(async (req, res)
   if (!corps.type) return res.status(400).json({ error: "Type d'évaluation obligatoire." });
   if (!corps.date_passage) return res.status(400).json({ error: "Date de passage obligatoire." });
 
-  const { rows: [session] } = await query("SELECT id, date_debut, date_fin FROM sessions WHERE id = $1", [sessionId]);
+  const { rows: [session] } = await query("SELECT id, date_debut, date_fin, archivee_le FROM sessions WHERE id = $1", [sessionId]);
   if (!session) return res.status(404).json({ error: "Session introuvable." });
+  if (session.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
   const ins = await inscriptionDeSession(query, inscriptionId, sessionId);
   if (ins.erreur) return res.status(ins.erreur).json({ error: ins.message });
 
@@ -1340,7 +1416,7 @@ router.patch("/evaluations/:id", requireRedacteur, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant d'évaluation invalide." });
   const { rows: [avant] } = await query(
-    `SELECT e.*, i.session_id, s.date_debut, s.date_fin
+    `SELECT e.*, i.session_id, s.date_debut, s.date_fin, s.archivee_le
      FROM resultats_qcm e
      JOIN inscriptions i ON i.id = e.inscription_id
      JOIN sessions s ON s.id = i.session_id
@@ -1348,6 +1424,7 @@ router.patch("/evaluations/:id", requireRedacteur, wrap(async (req, res) => {
     [id]
   );
   if (!avant) return res.status(404).json({ error: "Évaluation introuvable." });
+  if (avant.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
 
   const corps = req.body || {};
   if (corps.inscription_id !== undefined) {
@@ -1522,8 +1599,9 @@ router.post("/sessions/:id/evaluations/import", requireRedacteur, wrap(async (re
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
-    const { rows: [session] } = await cx.query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+    const { rows: [session] } = await cx.query("SELECT id, archivee_le FROM sessions WHERE id = $1", [sessionId]);
     if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+    if (session.archivee_le) { await cx.query("ROLLBACK"); return res.status(409).json({ error: MSG_ARCHIVEE }); }
     const r = await classerResultats({ req: (sql, params) => cx.query(sql, params), sessionId, texte });
     if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
 
@@ -1587,8 +1665,9 @@ router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, re
   if (!corps.type) return res.status(400).json({ error: "Type de satisfaction obligatoire." });
   if (!corps.date_recueil) return res.status(400).json({ error: "Date de recueil obligatoire." });
 
-  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  const { rows: [session] } = await query("SELECT id, archivee_le FROM sessions WHERE id = $1", [sessionId]);
   if (!session) return res.status(404).json({ error: "Session introuvable." });
+  if (session.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
   const inscriptionId = corps.inscription_id === null || corps.inscription_id === undefined
     ? null : identifiant(corps.inscription_id);
   if (corps.inscription_id !== undefined && corps.inscription_id !== null && !inscriptionId) {
@@ -1626,6 +1705,8 @@ router.patch("/satisfactions/:id", requireRedacteur, wrap(async (req, res) => {
   if (!id) return res.status(400).json({ error: "Identifiant de satisfaction invalide." });
   const { rows: [avant] } = await query("SELECT * FROM satisfactions WHERE id = $1", [id]);
   if (!avant) return res.status(404).json({ error: "Satisfaction introuvable." });
+  const { rows: [ss] } = await query("SELECT archivee_le FROM sessions WHERE id = $1", [avant.session_id]);
+  if (ss?.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
 
   const corps = req.body || {};
   if (corps.inscription_id !== undefined) {

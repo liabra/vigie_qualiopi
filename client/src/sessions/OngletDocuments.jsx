@@ -7,7 +7,7 @@ import { PORTEES, TYPES_EDUSIGN, formaterDateHeure } from "./format.js";
 // Onglet Documents : d'un côté les DOCUMENTS GÉNÉRÉS PAR VIGIE (modèles
 // Google, dont les feuilles d'assiduité), de l'autre les DOCUMENTS EXTERNES
 // (EduSign, Drive), rattachés sans être copiés.
-export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger, notifier }) {
+export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger, notifier, archivee }) {
   const { session, groupes, documents, externes } = donnees;
   const [generation, setGeneration] = useState(false);
   const [rattachement, setRattachement] = useState(false);
@@ -21,11 +21,11 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
             <h2 id="titre-generes" className="sess-section__titre">Documents générés par Vigie</h2>
             <p className="sess-secondaire">Copies des modèles Google Docs / Sheets, marqueurs remplacés. Le modèle d'origine n'est jamais modifié.</p>
           </div>
-          {peutSaisir && <Button compact variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}
+          {peutSaisir && !archivee && <Button compact variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}
         </div>
         {documents.length === 0 ? (
           <EmptyState titre="Aucun document généré pour cette session"
-            action={peutSaisir && <Button variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}>
+            action={peutSaisir && !archivee && <Button variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}>
             Convocations, attestations, feuilles d'assiduité… à partir des modèles déclarés.
           </EmptyState>
         ) : (
@@ -54,7 +54,7 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
             <h2 id="titre-externes" className="sess-section__titre">Documents externes / EduSign</h2>
             <p className="sess-secondaire">Fichiers déjà présents sur le Drive (exports EduSign…), rattachés à un indicateur. Rien n'est copié.</p>
           </div>
-          {admin && <Button compact onClick={() => setRattachement(true)}>Rattacher un document</Button>}
+          {admin && !archivee && <Button compact onClick={() => setRattachement(true)}>Rattacher un document</Button>}
         </div>
         {externes.length === 0 ? (
           <p className="sess-secondaire">Aucun document externe rattaché.</p>
@@ -83,11 +83,11 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
         )}
       </section>
 
-      {peutSaisir && (
+      {peutSaisir && !archivee && (
         <DrawerGeneration ouvert={generation} session={session} groupes={groupes} modeles={annexes.modeles}
           onFermer={() => setGeneration(false)} onGenere={recharger} />
       )}
-      {admin && (
+      {admin && !archivee && (
         <DrawerRattachement ouvert={rattachement} sessionId={session.id} indicateurs={annexes.indicateurs}
           onFermer={() => setRattachement(false)}
           onFait={async () => { setRattachement(false); notifier({ ton: "success", titre: "Document externe rattaché." }); await recharger(); }} />

@@ -27,7 +27,7 @@ const vide = () => ({
 // Onglet Évaluations : résultats (QCM, positionnement…), saisie et import
 // CSV. Aucun moteur de questionnaire. La date de passage est bornée à la
 // période de la session (contrôlée aussi par le serveur).
-export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notifier }) {
+export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notifier, archivee }) {
   const { session, stagiaires } = donnees;
   const ev = donnees.evaluations;
   const [formulaire, setFormulaire] = useState(null);
@@ -38,7 +38,7 @@ export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notif
       <section className="sess-section" aria-labelledby="titre-evaluations">
         <div className="sess-section__tete">
           <h2 id="titre-evaluations" className="sess-section__titre">Évaluations</h2>
-          {peutSaisir && (
+          {peutSaisir && !archivee && (
             <div className="sess-actions">
               <Button compact onClick={() => setImports(true)}>Importer un CSV</Button>
               <Button compact variante="primary" onClick={() => setFormulaire(vide())} disabled={stagiaires.length === 0}>Ajouter une évaluation</Button>
@@ -57,7 +57,7 @@ export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notif
         {ev.evaluations.length === 0 ? (
           <EmptyState
             titre="Aucune évaluation enregistrée"
-            action={peutSaisir && stagiaires.length > 0 && <Button variante="primary" onClick={() => setFormulaire(vide())}>Ajouter une évaluation</Button>}
+            action={peutSaisir && !archivee && stagiaires.length > 0 && <Button variante="primary" onClick={() => setFormulaire(vide())}>Ajouter une évaluation</Button>}
           >
             {stagiaires.length === 0 ? "Inscrivez d'abord des stagiaires." : "Saisissez les résultats un par un, ou importez un export Google Forms / Sheets."}
           </EmptyState>
@@ -86,7 +86,7 @@ export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notif
                     <td data-label="Résultat"><Badge ton={r.ton}>{r.libelle}</Badge></td>
                     <td className="sess-table__actions">
                       {e.drive_file_id && <a className="ui-btn ui-btn--ghost ui-btn--compact" href={lienDrive(e.drive_file_id)} target="_blank" rel="noreferrer">Pièce<span className="visually-hidden"> (nouvel onglet)</span></a>}
-                      {peutSaisir && (
+                      {peutSaisir && !archivee && (
                         <Button compact onClick={() => setFormulaire({
                           id: e.id, inscription_id: String(e.inscription_id), type: e.type, intitule: e.intitule || "",
                           date_passage: String(e.date_passage || "").slice(0, 10), score: e.score ?? "", score_max: e.score_max ?? "",
@@ -102,7 +102,7 @@ export function OngletEvaluations({ donnees, admin, peutSaisir, recharger, notif
         )}
       </section>
 
-      {peutSaisir && (
+      {peutSaisir && !archivee && (
         <>
           <DrawerEvaluation valeurInitiale={formulaire} session={session} stagiaires={stagiaires} admin={admin}
             onFermer={() => setFormulaire(null)}

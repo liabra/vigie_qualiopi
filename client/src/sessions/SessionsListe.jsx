@@ -14,14 +14,18 @@ export function SessionsListe({ admin }) {
   useTitrePage("Sessions");
   const naviguer = useNavigate();
   const [params, setParams] = useSearchParams();
+  const etat = params.get("etat") === "archivees" ? "archivees" : "actives";
   const vue = VUES_SESSIONS.some((v) => v.id === params.get("vue")) ? params.get("vue") : "toutes";
   const [q, setQ] = useTexteUrl("q");
   const [sessions, setSessions] = useState(null);
   const [err, setErr] = useState(null);
 
   const charger = useCallback(async () => {
-    try { setSessions((await api("/api/sessions")).sessions); setErr(null); } catch (e) { setErr(e.message); }
-  }, []);
+    try {
+      const url = etat === "archivees" ? "/api/sessions?etat=archivees" : "/api/sessions";
+      setSessions((await api(url)).sessions); setErr(null);
+    } catch (e) { setErr(e.message); }
+  }, [etat]);
   useEffect(() => { charger(); }, [charger]);
 
   // Forme fonctionnelle : part toujours des paramètres les plus récents
@@ -33,9 +37,16 @@ export function SessionsListe({ admin }) {
       return p;
     });
   }
+  function changerEtat(valeur) {
+    setParams((courants) => {
+      const p = new URLSearchParams(courants);
+      if (valeur === "archivees") p.set("etat", "archivees"); else p.delete("etat");
+      return p;
+    });
+  }
 
   const [creation, setCreation] = useState(false);
-  const affichees = sessions ? filtrerSessions(sessions, { vue, q }) : [];
+  const affichees = sessions ? filtrerSessions(sessions, { vue: etat === "archivees" ? "toutes" : vue, q }) : [];
   const compteurs = sessions ? compterParVue(sessions) : {};
 
   return (
@@ -44,7 +55,7 @@ export function SessionsListe({ admin }) {
         fil={[{ libelle: "Formation" }, { libelle: "Sessions" }]}
         titre="Sessions"
         description="Gestion des sessions de formation"
-        actions={admin && <Button variante="primary" onClick={() => setCreation(true)}>+ Nouvelle session</Button>}
+        actions={admin && etat === "actives" && <Button variante="primary" onClick={() => setCreation(true)}>+ Nouvelle session</Button>}
       />
       {err && <Alert ton="error" titre="Les sessions n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
       {!sessions && !err && <LoadingState texte="Chargement des sessions…" />}
@@ -61,17 +72,35 @@ export function SessionsListe({ admin }) {
       {sessions && sessions.length > 0 && (
         <section className="sess-liste" aria-label="Liste des sessions">
           <div className="sess-filtres">
-            <div className="sess-vues" role="group" aria-label="Filtrer par statut">
-              {VUES_SESSIONS.map((v) => (
-                <button
-                  key={v.id} type="button" aria-pressed={vue === v.id}
-                  className={"sess-vue" + (vue === v.id ? " sess-vue--active" : "")}
-                  onClick={() => changerFiltre("vue", v.id)}
-                >
-                  {v.libelle} <span className="sess-vue__compteur">{compteurs[v.id]}</span>
-                </button>
-              ))}
+            <div className="sess-etats" role="group" aria-label="Actives ou archivées">
+              <button
+                type="button" aria-pressed={etat === "actives"}
+                className={"sess-etat" + (etat === "actives" ? " sess-etat--active" : "")}
+                onClick={() => changerEtat("actives")}
+              >
+                Actives
+              </button>
+              <button
+                type="button" aria-pressed={etat === "archivees"}
+                className={"sess-etat" + (etat === "archivees" ? " sess-etat--active" : "")}
+                onClick={() => changerEtat("archivees")}
+              >
+                Archivées
+              </button>
             </div>
+            {etat === "actives" && (
+              <div className="sess-vues" role="group" aria-label="Filtrer par statut">
+                {VUES_SESSIONS.map((v) => (
+                  <button
+                    key={v.id} type="button" aria-pressed={vue === v.id}
+                    className={"sess-vue" + (vue === v.id ? " sess-vue--active" : "")}
+                    onClick={() => changerFiltre("vue", v.id)}
+                  >
+                    {v.libelle} <span className="sess-vue__compteur">{compteurs[v.id]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <label className="sess-recherche">
               <span className="visually-hidden">Rechercher une session</span>
               <input
@@ -112,7 +141,11 @@ export function SessionsListe({ admin }) {
                       <td data-label="Formation">{s.formation}</td>
                       <td data-label="Dates">{formaterPeriode(s.date_debut, s.date_fin)}</td>
                       <td data-label="Lieu">{s.lieu || "—"}</td>
-                      <td data-label="Statut"><Badge ton={st.ton}>{st.libelle}</Badge></td>
+                      <td data-label="Statut">
+                        {etat === "archivees"
+                          ? <Badge ton="warning">Archivée</Badge>
+                          : <Badge ton={st.ton}>{st.libelle}</Badge>}
+                      </td>
                       <td data-label="Inscrits" className="sess-num">{s.nb_inscrits}</td>
                       <td className="sess-table__actions">
                         <Button compact to={`/sessions/${s.id}`} aria-label={`Ouvrir la session ${titreSession(s)}`}>Ouvrir</Button>

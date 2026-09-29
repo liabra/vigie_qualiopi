@@ -110,6 +110,7 @@ test("mass assignment : une inscription n'accepte pas de colonne système", asyn
     const sql = sqlNormalise(text);
     if (sql === SQL_UTILISATEUR) return { rows: [{ id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" }] };
     if (sql === "SELECT 1 FROM prescripteurs WHERE code = $1") return { rows: [], rowCount: 0 };
+    if (sql.startsWith("SELECT s.archivee_le FROM inscriptions")) return { rows: [{ archivee_le: null }] };
     const m = /^UPDATE inscriptions SET (.+) WHERE id = \$1 RETURNING \*$/.exec(sql);
     if (m) {
       colonnes = m[1].split(",").map((c) => c.trim().split(" = ")[0]);

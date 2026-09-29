@@ -167,6 +167,10 @@ function baseSimulee({ absences = [], session = SESSION, inscriptions = INSCRIPT
     }
 
     // ── DELETE /api/absences/:id ──
+    if (sql.startsWith("SELECT s.archivee_le FROM absences")) {
+      const a = etat.find((x) => x.id === params[0]);
+      return res(a ? [{ archivee_le: null }] : []);
+    }
     if (sql.startsWith("DELETE FROM absences")) {
       const i = etat.findIndex((x) => x.id === params[0]);
       if (i < 0) return { rows: [], rowCount: 0 };

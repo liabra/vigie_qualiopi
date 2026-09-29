@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { messageDepassementDuree } from "../messages.js";
-import { Alert, Badge, Button, Drawer, EmptyState, LoadingState, PageHeader, Tabs } from "../ui/index.js";
+import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, LoadingState, PageHeader, Tabs } from "../ui/index.js";
+import { useDialogue } from "../ui/dialogue.js";
+import { AideInfobulle } from "../aide/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { FormulaireSession, erreursSession, valeursDepuisSession } from "./FormulaireSession.jsx";
 import {
@@ -34,6 +38,13 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
   const [annexes, setAnnexes] = useState({ modeles: [], prescripteurs: [], indicateurs: [] });
   const [bandeaux, setBandeaux] = useState([]);
   const [edition, setEdition] = useState(false);
+  // Cycle de vie (Après VF) : archivage / restauration / suppression.
+  const [archivage, setArchivage] = useState(false);
+  const [restauration, setRestauration] = useState(false);
+  const [suppression, setSuppression] = useState(false);
+  const [cycleEnCours, setCycleEnCours] = useState(false);
+  const [erreurCycle, setErreurCycle] = useState(null);
+  const naviguer = useNavigate();
 
   const charger = useCallback(async () => {
     try {
@@ -82,6 +93,34 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
     onChange?.();
   }
 
+  // Archivage / restauration : PATCH, puis rechargement. La suppression a
+  // son propre chemin (DELETE + retour à la liste).
+  async function actionCycle(action, succes) {
+    setCycleEnCours(true); setErreurCycle(null);
+    try {
+      await api(`/api/sessions/${session.id}/${action}`, { method: "PATCH" });
+      notifier({ ton: "success", titre: succes });
+      setArchivage(false); setRestauration(false);
+      await recharger();
+    } catch (e) {
+      setErreurCycle(e.message);
+    } finally {
+      setCycleEnCours(false);
+    }
+  }
+
+  async function supprimerDefinitivement() {
+    setCycleEnCours(true); setErreurCycle(null);
+    try {
+      await api(`/api/sessions/${session.id}`, { method: "DELETE" });
+      onChange?.();
+      naviguer("/sessions");
+    } catch (e) {
+      setErreurCycle(e.message);
+      setCycleEnCours(false);
+    }
+  }
+
   if (introuvable) {
     return (
       <>
@@ -103,23 +142,39 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
   const base = `/sessions/${session.id}`;
   const incoherences = incoherencesStatut(session);
   const Contenu = ONGLETS[onglet] || VueEnsemble;
-  const ctx = { donnees, annexes, admin, peutSaisir, recharger, notifier, base };
+  const archivee = !!session.archivee_le;
+  const ctx = { donnees, annexes, admin, peutSaisir, recharger, notifier, base, archivee };
 
   return (
     <div className="sess-detail">
       <PageHeader
         fil={[{ libelle: "Formation" }, { libelle: "Sessions", to: "/sessions" }, { libelle: titreSession(session) }]}
         titre={session.formation}
-        actions={admin && <Button onClick={() => setEdition(true)}>Modifier la session</Button>}
+        actions={admin && (
+          <>
+            {archivee ? (
+              <>
+                <Button variante="primary" onClick={() => setRestauration(true)}>Restaurer la session</Button>
+                <Button variante="danger" onClick={() => setSuppression(true)}>Supprimer définitivement</Button>
+              </>
+            ) : (
+              <>
+                <Button variante="primary" onClick={() => setEdition(true)}>Modifier la session</Button>
+                <Button onClick={() => setArchivage(true)}>Archiver la session</Button>
+              </>
+            )}
+          </>
+        )}
       />
       <div className="sess-entete">
         <div className="sess-entete__ligne">
           {session.reference && <span className="sess-entete__ref">{session.reference}</span>}
           <Badge ton={st.ton}>{st.libelle}</Badge>
+          {archivee && <Badge ton="warning">Session archivée</Badge>}
         </div>
         <dl className="sess-meta">
           <div><dt>Dates</dt><dd>{formaterPeriode(session.date_debut, session.date_fin)}</dd></div>
-          <div><dt>Durée prévue</dt><dd>{formaterHeures(duree.heures) || "Non renseignée"}{duree.source === "formation" && <span className="sess-secondaire"> (durée de la formation)</span>}</dd></div>
+          <div><dt>Durée prévue <AideInfobulle id="duree_prevue" /></dt><dd>{formaterHeures(duree.heures) || "Non renseignée"}{duree.source === "formation" && <span className="sess-secondaire"> (durée de la formation)</span>}</dd></div>
           <div><dt>Horaire</dt><dd>{session.horaire || "—"}</dd></div>
           <div><dt>Lieu</dt><dd>{session.lieu || "—"}</dd></div>
           <div><dt>Formateur</dt><dd>{session.formateur || "—"}</dd></div>
@@ -127,6 +182,11 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
         </dl>
       </div>
 
+      {archivee && (
+        <Alert ton="info" titre="Session archivée">
+          Cette session est en lecture seule : elle reste consultable, mais ne peut plus être modifiée tant qu'elle n'est pas restaurée.
+        </Alert>
+      )}
       {incoherences.length > 0 && (
         <Alert ton="warning" titre="Statut à vérifier">
           {incoherences.join(" ; ")}. Les dates peuvent être indicatives ou corrigées après coup — le statut n'est pas modifié automatiquement.
@@ -180,7 +240,68 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
           }}
         />
       )}
+
+      <ConfirmDialog
+        ouvert={archivage} titre="Archiver la session ?" libelleConfirmer="Archiver la session"
+        ton="primary" enCours={cycleEnCours}
+        onAnnuler={() => { if (!cycleEnCours) { setArchivage(false); setErreurCycle(null); } }}
+        onConfirmer={() => actionCycle("archive", "Session archivée.")}
+      >
+        Cette session ne sera pas supprimée. Elle restera consultable mais deviendra en lecture seule.
+        {erreurCycle && <Alert ton="error">{erreurCycle}</Alert>}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        ouvert={restauration} titre="Restaurer la session ?" libelleConfirmer="Restaurer la session"
+        ton="primary" enCours={cycleEnCours}
+        onAnnuler={() => { if (!cycleEnCours) { setRestauration(false); setErreurCycle(null); } }}
+        onConfirmer={() => actionCycle("restaure", "Session restaurée.")}
+      >
+        La session redeviendra modifiable et réapparaîtra dans les sessions actives.
+        {erreurCycle && <Alert ton="error">{erreurCycle}</Alert>}
+      </ConfirmDialog>
+
+      <SuppressionSession
+        ouvert={suppression} enCours={cycleEnCours} erreur={erreurCycle}
+        onAnnuler={() => { if (!cycleEnCours) { setSuppression(false); setErreurCycle(null); } }}
+        onConfirmer={supprimerDefinitivement}
+      />
     </div>
+  );
+}
+
+// Suppression définitive : action destructive, confirmée en TAPANT
+// « SUPPRIMER ». Le serveur refuse de toute façon une session qui contient
+// des données de suivi (409) — cette confirmation ne remplace pas la garde
+// backend, elle l'accompagne.
+function SuppressionSession({ ouvert, enCours, erreur, onAnnuler, onConfirmer }) {
+  const ref = useRef(null);
+  const idTitre = useId();
+  const [saisie, setSaisie] = useState("");
+  useDialogue(ref, ouvert, { onFermer: onAnnuler, fermable: !enCours, focusInitial: "input" });
+  useEffect(() => { if (ouvert) setSaisie(""); }, [ouvert]);
+  if (!ouvert) return null;
+  return createPortal(
+    <div className="ui-modale-racine">
+      <div className="ui-drawer-voile" aria-hidden="true" />
+      <div ref={ref} role="alertdialog" aria-modal="true" aria-labelledby={idTitre} className="ui-modale" tabIndex={-1}>
+        <h2 id={idTitre} className="ui-modale__titre">Supprimer définitivement cette session ?</h2>
+        <div className="ui-modale__texte">
+          <p>Cette action est irréversible. Elle n'est possible que si la session ne contient aucune donnée de suivi.</p>
+          <Field label={<>Tapez <strong>SUPPRIMER</strong> pour confirmer</>}>
+            <input value={saisie} onChange={(e) => setSaisie(e.target.value)} disabled={enCours} />
+          </Field>
+          {erreur && <Alert ton="error">{erreur}</Alert>}
+        </div>
+        <div className="ui-modale__actions">
+          <Button data-annuler onClick={onAnnuler} disabled={enCours}>Annuler</Button>
+          <Button variante="danger" onClick={onConfirmer} disabled={enCours || saisie !== "SUPPRIMER"}>
+            {enCours ? "Suppression…" : "Supprimer définitivement"}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

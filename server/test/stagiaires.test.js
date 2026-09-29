@@ -69,6 +69,14 @@ function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], prescri
       const ok = params[0] === 7;
       return { rows: ok ? [{ id: 7 }] : [], rowCount: ok ? 1 : 0 };
     }
+    if (sql === "SELECT id, archivee_le FROM sessions WHERE id = $1") {
+      const ok = params[0] === 7;
+      return { rows: ok ? [{ id: 7, archivee_le: null }] : [], rowCount: ok ? 1 : 0 };
+    }
+    if (sql.startsWith("SELECT s.archivee_le FROM inscriptions")) {
+      const i = etat.inscriptions.find((x) => x.id === params[0]);
+      return { rows: i ? [{ archivee_le: null }] : [], rowCount: i ? 1 : 0 };
+    }
     if (sql.startsWith("SELECT id, nom FROM groupes WHERE session_id = $1")) {
       const rows = etat.groupes.filter((g) => g.session_id === params[0]).map((g) => ({ id: g.id, nom: g.nom }));
       return { rows, rowCount: rows.length };

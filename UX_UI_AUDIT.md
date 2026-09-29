@@ -1322,4 +1322,51 @@ Idées déjà identifiées, **non commencées** :
 
 ---
 
+## 17. Après VF — Aide intégrée et cycle de vie des sessions
+
+Réalisé le **29/09/2026** (deux commits distincts, aucun push). Aucun redesign global :
+le design system, la navigation et les écrans de la VF sont conservés.
+
+### Aide intégrée / tutoriel
+
+- **`client/src/aide/`** centralise tout le contenu (aide contextuelle par route, guide,
+  tutoriel, notions) dans un module pur `contenu.js` — aucune cinquantaine de textes
+  dispersés dans les composants.
+- Bouton **« ? Aide »** permanent en bas de la sidebar (au-dessus de Déconnexion), présent
+  dans le menu mobile ; ouvre un `Drawer` « Aide Vigie » réutilisé, qui ne quitte jamais
+  l'écran courant. Trois accès : **Aide de cette page**, **Découvrir Vigie**, **Guide complet**.
+- Aide contextuelle pour les routes demandées (`/accueil`, `/sessions`, `/sessions/:id` +
+  onglets, `/indicateurs`, `/preuves`, `/veille`, `/audits`, `/formations`, `/modeles`,
+  `/prescripteurs`, `/versions`, `/parametres/google`) — n'explique que ce qui existe.
+- Tutoriel de **7 étapes** (Bienvenue, Navigation, Sessions, Preuves, Veille, Accueil, Où
+  retrouver l'aide) : Suivant/Précédent, quittable à tout moment, relançable. Premier usage
+  via `localStorage` (`vigie_tutoriel_termine`) sans migration ; stockage indisponible ⇒
+  l'application continue.
+- Guide complet 12 rubriques avec **recherche simple** ; **respect du rôle** (la rubrique
+  « Paramètres admin » n'est jamais montrée à un contributeur).
+- **Petits « ? »** (`AideInfobulle`) posés seulement sur les notions qui le méritent
+  (durée prévue, rupture réglementaire). Accessibilité : clavier, Échap, retour de focus,
+  lisible à 200 %, mobile 390 px.
+
+### Cycle de vie des sessions (archivage / suppression)
+
+- Migration **014** additive (`archivee_le`, `archivee_par`) ; l'archivage est la voie
+  normale, la suppression définitive est exceptionnelle.
+- Vue **Actives / Archivées** dans la liste des sessions (URL `?etat=archivees`) ; les
+  archivées ne polluent pas la liste active.
+- Fiche d'une session archivée : **bandeau « Session archivée »** + badge, lecture seule,
+  actions admin **Restaurer la session** / **Supprimer définitivement** (confirmation
+  renforcée en tapant « SUPPRIMER »). Onglets sans action de saisie tant que la session
+  n'est pas restaurée.
+- Backend **autoritaire** : toute écriture sur une session archivée répond **409** ; la
+  suppression n'est acceptée que si la session est réellement vide (sinon **409**
+  « …Archivez-la plutôt »), sans cascade ni suppression Drive automatique.
+
+### Tests
+
+`npm test` : **395/395 serveur + 137/137 client** (2 exécutions). Captures réelles dans
+`/tmp` (aide, tutoriel, mobile, sessions archivées, détail archivé, suppression).
+
+---
+
 *Fin du document.*

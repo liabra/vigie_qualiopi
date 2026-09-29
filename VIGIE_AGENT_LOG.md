@@ -2237,3 +2237,69 @@ conservée ; sauvegarde externe chiffrée recommandée à terme.
 ### État
 
 **VF principale de Vigie TERMINÉE et VALIDÉE EN PRODUCTION.**
+
+---
+
+## 2026-09-29 — Après VF : aide intégrée / tutoriel + archivage / suppression des sessions
+
+Premier chantier « Après VF ». Deux évolutions livrées ensemble, sans refonte globale,
+en **deux commits distincts** (aucun push) : « UX : ajouter aide et tutoriel integres »
+puis « Sessions : ajouter archivage et suppression securisee » (migration 014 dans le second).
+
+### Audit suppression (avant toute modification)
+
+Lecture du schéma réel (001/005) : `sessions` est référencée par
+`groupes` (CASCADE), `inscriptions` (CASCADE, qui entraîne `absences` et `resultats_qcm`),
+`satisfactions` (CASCADE), `generations` (CASCADE), `documents_generes` (CASCADE),
+`preuves.session_id` (SET NULL). Un `DELETE` direct serait **destructeur en cascade** :
+c'est exactement ce que le chantier interdit. Aucune ancienne migration modifiée.
+
+### A — Aide intégrée / tutoriel
+
+- `client/src/aide/` : contenu **centralisé** (`contenu.js` pur : aide contextuelle par
+  route, guide 12 rubriques, tutoriel 7 étapes, notions des petits « ? » ; `stockage.js`
+  pour le localStorage).
+- Bouton **« ? Aide »** permanent en bas de la sidebar (au-dessus de Déconnexion) et dans le
+  menu mobile ; panneau `Drawer` « Aide Vigie » (Aide de cette page / Découvrir Vigie /
+  Guide complet) qui ne quitte jamais l'écran courant.
+- Aide contextuelle pour toutes les routes demandées ; ne décrit jamais une fonction
+  inexistante ; respecte le rôle (guide admin masqué au contributeur, tutoriel adapté).
+- Tutoriel : premier usage via `localStorage` (`vigie_tutoriel_termine`), relançable,
+  quittable à tout moment ; `localStorage` indisponible ⇒ l'application continue.
+- Petits « ? » (`AideInfobulle`) sur « durée prévue » (Sessions) et « rupture réglementaire »
+  (Veille) — composant réutilisable pour les autres notions.
+- Accessibilité : clavier, Échap, retour de focus (via `useDialogue`), 200 %, 390 px.
+
+### B — Archivage / suppression des sessions
+
+- **Migration 014** additive : `sessions.archivee_le timestamptz` + `archivee_par →
+  utilisateurs ON DELETE SET NULL`. Aucun index ajouté (table minuscule, documenté).
+- **Routes admin** : `PATCH /sessions/:id/archive`, `/restaure`, `DELETE /sessions/:id`
+  (vide uniquement ⇒ sinon **409** « Archivez-la plutôt »). `GET /sessions?etat=…`.
+- **Lecture seule autoritaire** : 409 sur toute écriture d'une session archivée (PATCH
+  session, groupes, stagiaires/import, inscription, absences, évaluations, satisfactions,
+  générations, preuves avec session) — pas seulement un masquage React.
+- **Suppression** : comptage des dépendances AVANT tout `DELETE` (aucune cascade, aucun
+  fichier Drive supprimé automatiquement) ; confirmation renforcée en tapant « SUPPRIMER ».
+- **Client** : vues Actives / Archivées (URL `?etat=archivees`), bandeau « Session archivée »,
+  Restaurer / Supprimer (admin), onglets en lecture seule, contributeur sans action admin.
+
+### Vérifications
+
+- `npm test` : **395/395 serveur + 137/137 client**, **2 exécutions consécutives**, 0 échec.
+- `npm run build` : OK. `git diff --check` : OK.
+- **Réserve environnement** : Node local **v24.13.0** alors que `engines` exige
+  `>=22.23.1 <23` ; le test `server/test/exploitation.test.js` (arrêt SIGTERM) est **flaky
+  sous Node 24** (échoue parfois, passe parfois) — **préexistant**, hors périmètre de ce
+  chantier, non modifié.
+- Captures réelles (Chrome headless via Playwright, serveur local + PostgreSQL jetable
+  `embedded-postgres`, cookie admin signé) : 6 PNG dans `/tmp` (aide contextuelle, tutoriel,
+  aide mobile 390, sessions archivées, détail session archivée, suppression session vide).
+- Bases simulées existantes adaptées (nouvelles requêtes d'archivage) ; `transversal.test.js`
+  mis à jour pour 014 et enrichi du cycle de vie complet (archive → lecture seule → restore →
+  suppression vide / refus 409).
+
+### État
+
+**Deux commits locaux prêts, AUCUN push.** Détail : `PROJECT_HANDOFF.md` §14 bis et
+`UX_UI_AUDIT.md` §17.

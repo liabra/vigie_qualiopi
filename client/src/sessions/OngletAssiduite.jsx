@@ -8,7 +8,7 @@ import { DEMI_JOURNEES, SEUIL_ASSIDUITE, formaterDate, formaterHeures, syntheseA
 // serveur et affiché seulement quand il le juge fiable (jamais pour un
 // abandon ni sans durée prévue). Aucune durée n'est déduite d'une
 // demi-journée : elle est toujours saisie.
-export function OngletAssiduite({ donnees, peutSaisir, recharger, notifier }) {
+export function OngletAssiduite({ donnees, peutSaisir, recharger, notifier, archivee }) {
   const abs = donnees.absences;
   const synthese = syntheseAssiduite(abs);
   const [deplie, setDeplie] = useState(() => new Set());
@@ -39,7 +39,7 @@ export function OngletAssiduite({ donnees, peutSaisir, recharger, notifier }) {
       <section className="sess-section" aria-labelledby="titre-synthese-assiduite">
         <div className="sess-section__tete">
           <h2 id="titre-synthese-assiduite" className="sess-section__titre">Synthèse</h2>
-          {peutSaisir && donnees.stagiaires.length > 0 && (
+          {peutSaisir && !archivee && donnees.stagiaires.length > 0 && (
             <Button compact variante="primary" onClick={() => setFormulaire({ id: null, inscription_id: "", date_absence: s.date_debut, demi_journee: "", duree_heures: "", justifiee: false, motif: "" })}>
               Saisir une absence
             </Button>
@@ -125,7 +125,7 @@ export function OngletAssiduite({ donnees, peutSaisir, recharger, notifier }) {
                                   <strong>{formaterHeures(x.duree_heures)}</strong>
                                   <Badge ton={x.justifiee ? "success" : "error"}>{x.justifiee ? "Justifiée" : "Non justifiée"}</Badge>
                                   {x.motif && <span className="sess-secondaire sess-absences__motif">{x.motif}</span>}
-                                  {peutSaisir && (
+                                  {peutSaisir && !archivee && (
                                     <span className="sess-actions">
                                       <Button compact onClick={() => setFormulaire({
                                         id: x.id, inscription_id: String(f.inscription_id), date_absence: x.date_absence,
@@ -149,7 +149,7 @@ export function OngletAssiduite({ donnees, peutSaisir, recharger, notifier }) {
         )}
       </section>
 
-      {peutSaisir && (
+      {peutSaisir && !archivee && (
         <DrawerAbsence
           valeurInitiale={formulaire} session={s} stagiaires={donnees.stagiaires}
           onFermer={() => setFormulaire(null)}

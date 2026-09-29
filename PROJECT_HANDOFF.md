@@ -2463,7 +2463,12 @@ Premier lot du chantier « cœur qualité » (Q1-B1) : **base + backend, sans UI
   `demarrer/realiser/controle-efficacite/cloturer/rouvrir/annuler` ;
   `GET/POST/PATCH /api/signalements(/:id)` + `qualifier/traiter/resoudre/cloturer/rouvrir/annuler`.
   Backend = source d'autorité.
-- **Tests** : serveur **434/434** (395 + 39), client **146/146** inchangé. Fichiers :
+- **Complément Q1-B2A (acteurs lisibles)** : `GET /api/utilisateurs` (admin, actifs,
+  champs `id/nom/email/role` seulement) ; réponses actions enrichies de
+  `responsable_nom`/`cree_par_nom`/`cloture_par_nom`/`annulee_par_nom` (LEFT JOIN, sans N+1) ;
+  détail action enrichi de `historique` append-only avec `acteur_nom`. Aucune fuite du
+  signalement source vers le contributeur.
+- **Tests** : serveur **441/441** (395 + 46), client **146/146** inchangé. Fichiers :
   `qualite.test.js` (bout en bout PostgreSQL réel), `qualite-service.test.js` (règles pures),
   `transversal.test.js` mis à jour (001→015).
 - **Restant** : Q1-B2 (UI actions), Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive),

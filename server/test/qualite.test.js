@@ -442,3 +442,83 @@ test("installation existante 001→014 + données : 015 appliquée sans perte, p
   assert.equal(rowCount, 1, "actions_qualite créée");
   await p.end();
 });
+
+// ── Acteurs lisibles + utilisateurs actifs (Q1-B2A) ──────────
+
+test("GET /api/utilisateurs : admin 200, contributeur 403, anonyme 401", async () => {
+  assert.equal((await api("GET", "/api/utilisateurs", undefined, C())).statut, 403);
+  assert.equal((await api("GET", "/api/utilisateurs")).statut, 401);
+  const r = await api("GET", "/api/utilisateurs", undefined, A());
+  assert.equal(r.statut, 200);
+  assert.ok(Array.isArray(r.corps.utilisateurs));
+});
+
+test("GET /api/utilisateurs : actifs uniquement, champs minimaux, tri", async () => {
+  const { rows: [inactif] } = await pool.query("INSERT INTO utilisateurs (email, nom, role, actif) VALUES ('off2@q1.local','Off Deux','contributeur', false) RETURNING id");
+  const r = await api("GET", "/api/utilisateurs", undefined, A());
+  const courriels = r.corps.utilisateurs.map((u) => u.email);
+  assert.ok(courriels.includes("admin@q1.local") && courriels.includes("contrib@q1.local"));
+  assert.ok(!courriels.includes("off2@q1.local"), "inactif exclu");
+  const u = r.corps.utilisateurs.find((x) => x.id === adminId);
+  assert.deepEqual(Object.keys(u).sort(), ["email", "id", "nom", "role"], "aucun champ sensible (google_sub…)");
+  const noms = r.corps.utilisateurs.map((x) => x.nom);
+  assert.deepEqual(noms, [...noms].sort(), "tri par nom stable");
+  await pool.query("DELETE FROM utilisateurs WHERE id = $1", [inactif.id]);
+});
+
+test("actions : noms lisibles (responsable, créateur, clôture)", async () => {
+  const a = (await creerAction({ responsable_id: contribId })).corps.action;
+  // Liste admin enrichie.
+  const liste = await api("GET", "/api/actions-qualite", undefined, A());
+  const ligne = liste.corps.actions.find((x) => x.id === a.id);
+  assert.equal(ligne.responsable_nom, "Tukui");
+  assert.equal(ligne.cree_par_nom, "Mme Stark");
+  // Détail admin enrichi.
+  const detail = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.action;
+  assert.equal(detail.responsable_nom, "Tukui");
+  assert.equal(detail.cree_par_nom, "Mme Stark");
+  // Clôture → cloture_par_nom.
+  await api("PATCH", `/api/actions-qualite/${a.id}/demarrer`, {}, A());
+  await api("PATCH", `/api/actions-qualite/${a.id}/realiser`, { resultat: "Fait" }, A());
+  await api("PATCH", `/api/actions-qualite/${a.id}/controle-efficacite`, { controle_efficacite: "OK", date_controle_efficacite: "2026-10-01" }, A());
+  await api("PATCH", `/api/actions-qualite/${a.id}`, { indicateur_ids: [indicateurId] }, A());
+  await api("PATCH", `/api/actions-qualite/${a.id}/cloturer`, {}, A());
+  const clot = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.action;
+  assert.equal(clot.cloture_par_nom, "Mme Stark");
+});
+
+test("utilisateur désactivé après assignation : l'action reste lisible", async () => {
+  const { rows: [util] } = await pool.query("INSERT INTO utilisateurs (email, nom, role) VALUES ('resp2@q1.local','Resp Deux','contributeur') RETURNING id");
+  const a = (await creerAction({ responsable_id: util.id })).corps.action;
+  await pool.query("UPDATE utilisateurs SET actif = false WHERE id = $1", [util.id]);
+  const detail = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.action;
+  assert.equal(detail.responsable_nom, "Resp Deux", "nom conservé malgré la désactivation");
+  await pool.query("DELETE FROM utilisateurs WHERE id = $1", [util.id]);
+});
+
+test("utilisateur supprimé : absence de responsable affichée proprement", async () => {
+  const { rows: [util] } = await pool.query("INSERT INTO utilisateurs (email, nom, role) VALUES ('resp3@q1.local','Resp Trois','contributeur') RETURNING id");
+  const a = (await creerAction({ responsable_id: util.id })).corps.action;
+  await pool.query("DELETE FROM utilisateurs WHERE id = $1", [util.id]);
+  const detail = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.action;
+  assert.equal(detail.responsable_id, null);
+  assert.equal(detail.responsable_nom, null);
+});
+
+test("contributeur : voit le nom du responsable de SON action, pas la liste utilisateurs", async () => {
+  const a = (await creerAction({ responsable_id: contribId })).corps.action;
+  const vue = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, C())).corps.action;
+  assert.equal(vue.responsable_nom, "Tukui");
+  assert.equal((await api("GET", "/api/utilisateurs", undefined, C())).statut, 403);
+});
+
+test("historique : acteur lisible et aucune donnée réclamant", async () => {
+  const s = (await creerSignalement({ reclamant_nom: "Jane Roe", objet: "Confidentiel" })).corps.signalement;
+  const a = (await creerAction({ signalement_id: s.id, responsable_id: contribId })).corps.action;
+  const detail = await api("GET", `/api/actions-qualite/${a.id}`, undefined, A());
+  assert.ok(Array.isArray(detail.corps.historique));
+  const creation = detail.corps.historique.find((h) => h.evenement === "creation");
+  assert.equal(creation.acteur_nom, "Mme Stark", "auteur lisible");
+  const brut = JSON.stringify(detail.corps.historique);
+  assert.ok(!brut.includes("Jane Roe"), "aucune donnée réclamant dans l'historique");
+});

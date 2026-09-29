@@ -2461,3 +2461,33 @@ mis à jour (001→015).
 
 **Un commit local prêt, AUCUN push.** Restant : Q1-B2 (UI actions), Q1-B3 (UI signalements),
 Q1-B4 (liaison preuves/Drive), Q1-B5 (tableau de bord).
+
+---
+
+## 2026-09-29 — Q1-B2A : complément backend minimal pour l'UI Actions qualité — LOCAL
+
+Prérequis backend identifié pour Q1-B2 (assignation + noms lisibles). Backend seul, aucune UI.
+
+- **`GET /api/utilisateurs`** (`requireAdmin`) : utilisateurs **actifs**, champs
+  `id / nom / email / role` seulement (jamais `google_sub` ni secret), tri `nom, email`.
+  Le contributeur reçoit **403** (il n'a aucun accès à la liste des comptes).
+- **Actions enrichies** (liste + détail + réponses de transitions, via `LEFT JOIN`, sans N+1) :
+  `responsable_nom`, `cree_par_nom`, `cloture_par_nom`, `annulee_par_nom` — les IDs sont conservés.
+  Un responsable **désactivé** reste lisible (LEFT JOIN sans filtre `actif`) ; un utilisateur
+  **supprimé** (`ON DELETE SET NULL`) rend `responsable_nom = null` proprement.
+- **Historique** : le détail `GET /api/actions-qualite/:id` renvoie désormais `historique`
+  (append-only) avec `acteur_nom` (LEFT JOIN utilisateurs). Aucun contenu du signalement
+  source ne transite ; le contributeur n'y voit que les événements de SON action.
+- **Confidentialité** : le contributeur voit `responsable_nom`/noms d'acteurs de SON action,
+  jamais la liste globale des utilisateurs, jamais de donnée réclamant (testé).
+
+### Tests
+
+`npm test` : serveur **441/441** (434 + 7 nouveaux), client **146/146** (inchangé),
+build OK, `git diff --check` OK. Nouveaux tests dans `server/test/qualite.test.js`
+(RBAC utilisateurs, actifs uniquement, champs minimaux, noms lisibles, désactivation/
+suppression de responsable, historique sans donnée réclamant).
+
+### État
+
+**Un commit local, AUCUN push.** Reste : l'UI Actions qualité (Q1-B2 proprement dit).

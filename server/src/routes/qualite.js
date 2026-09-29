@@ -171,6 +171,17 @@ const LIGNES_SIGNALEMENT = `
     (SELECT count(*)::int FROM actions_qualite a WHERE a.signalement_id = s.id) AS nb_actions
   FROM signalements_qualite s`;
 
+// ── Utilisateurs actifs (assignation d'une action) ──────────
+// Admin uniquement : le contributeur n'a aucun accès à la liste des
+// comptes. Champs réduits au strict nécessaire (id, nom, email, rôle) —
+// jamais google_sub ni donnée technique.
+router.get("/utilisateurs", requireAdmin, wrap(async (_req, res) => {
+  const { rows } = await query(
+    "SELECT id, nom, email, role FROM utilisateurs WHERE actif ORDER BY nom NULLS LAST, email"
+  );
+  res.json({ utilisateurs: rows, total: rows.length });
+}));
+
 // ── Signalements ──────────────────────────────────────────────
 
 router.get("/signalements", requireAdmin, wrap(async (req, res) => {
@@ -358,11 +369,19 @@ const LIGNES_ACTION = `
     s.reference AS signalement_reference,
     s.type AS signalement_type,
     s.objet AS signalement_objet,
+    r.nom AS responsable_nom,
+    cp.nom AS cree_par_nom,
+    cl.nom AS cloture_par_nom,
+    an.nom AS annulee_par_nom,
     COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero, 'libelle', i.libelle) ORDER BY i.numero)
               FROM actions_qualite_indicateurs ai JOIN indicateurs i ON i.id = ai.indicateur_id
               WHERE ai.action_id = a.id), '[]'::json) AS indicateurs
   FROM actions_qualite a
-  LEFT JOIN signalements_qualite s ON s.id = a.signalement_id`;
+  LEFT JOIN signalements_qualite s ON s.id = a.signalement_id
+  LEFT JOIN utilisateurs r ON r.id = a.responsable_id
+  LEFT JOIN utilisateurs cp ON cp.id = a.cree_par
+  LEFT JOIN utilisateurs cl ON cl.id = a.cloture_par
+  LEFT JOIN utilisateurs an ON an.id = a.annulee_par`;
 
 function actionPourRole(action, role) {
   if (role === "admin") return action;
@@ -397,7 +416,17 @@ router.get("/actions-qualite/:id", requireRedacteur, wrap(async (req, res) => {
   if (req.user.role !== "admin" && a.responsable_id !== req.user.id) {
     return res.status(403).json({ error: "Action non attribuée." });
   }
-  res.json({ action: actionPourRole(a, req.user.role) });
+  // Historique append-only de l'action, avec le nom lisible de l'auteur.
+  // Aucun contenu du signalement source n'y transite.
+  const { rows: historique } = await query(
+    `SELECT h.id, h.evenement, h.champ, h.ancienne_valeur, h.nouvelle_valeur, h.cree_le, h.par,
+            u.nom AS acteur_nom
+     FROM historique_qualite h
+     LEFT JOIN utilisateurs u ON u.id = h.par
+     WHERE h.entite_type = 'action' AND h.entite_id = $1
+     ORDER BY h.id`, [id]
+  );
+  res.json({ action: actionPourRole(a, req.user.role), historique });
 }));
 
 router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {

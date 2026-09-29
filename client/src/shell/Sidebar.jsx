@@ -5,7 +5,7 @@ import { Badge } from "../ui/index.js";
 // Barre latérale : marque, groupes de navigation filtrés par rôle, compte.
 // L'entrée active est signalée par aria-current="page" (posé par NavLink),
 // un filet à gauche et une graisse plus forte — pas par la couleur seule.
-export function Sidebar({ id, user, ouvert, onFermer, onLogout }) {
+export function Sidebar({ id, user, ouvert, onFermer, onLogout, onAide }) {
   const admin = user.role === "admin";
   const groupes = navigationPour(user.role);
   return (
@@ -40,6 +40,9 @@ export function Sidebar({ id, user, ouvert, onFermer, onLogout }) {
       </nav>
 
       <div className="shell-sidebar__pied">
+        <button type="button" className="ui-btn ui-btn--ghost ui-btn--compact shell-aide" onClick={onAide}>
+          <span aria-hidden="true">?</span>&nbsp; Aide
+        </button>
         <p className="shell-compte__nom">{user.nom || user.email}</p>
         <Badge ton={admin ? "info" : "neutral"}>{admin ? "Administrateur" : "Contributeur"}</Badge>
         <button type="button" className="ui-btn ui-btn--ghost ui-btn--compact shell-deconnexion" onClick={onLogout}>

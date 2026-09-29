@@ -80,11 +80,15 @@ export function apiSimulee(role, surcharges = {}) {
   const routes = { ...routesParDefaut(role), ...surcharges };
   const appels = [];
   globalThis.fetch = async (url, options = {}) => {
-    const chemin = String(url).split("?")[0];
+    const brut = String(url);
+    const [chemin, requete] = brut.split("?");
     const methode = options.method || "GET";
     const corps = options.body ? JSON.parse(options.body) : undefined;
     appels.push({ methode, chemin, corps });
-    let r = routes[`${methode} ${chemin}`];
+    // Une surcharge peut cibler une chaîne de requête précise
+    // (ex. « GET /api/sessions?etat=archivees ») ; à défaut, le chemin seul.
+    let r = routes[`${methode} ${chemin}${requete ? "?" + requete : ""}`];
+    if (r === undefined) r = routes[`${methode} ${chemin}`];
     if (typeof r === "function") r = await r(corps);
     if (r === undefined) return reponse(404, { error: "Introuvable." });
     return Array.isArray(r) ? reponse(r[0], r[1]) : reponse(200, r);
@@ -96,8 +100,14 @@ let racine = null;
 let conteneur = null;
 
 // Monte l'application à l'adresse `chemin`, comme un chargement de page.
-export async function monter(chemin, role = "admin", surcharges = {}) {
+// Par défaut, le tutoriel de démarrage est marqué « terminé » (utilisateur
+// qui revient). `options.premierUsage` simule le tout premier passage.
+export async function monter(chemin, role = "admin", surcharges = {}, { premierUsage = false } = {}) {
   const appels = apiSimulee(role, surcharges);
+  try {
+    if (premierUsage) window.localStorage.removeItem("vigie_tutoriel_termine");
+    else window.localStorage.setItem("vigie_tutoriel_termine", "true");
+  } catch { /* ignoré */ }
   window.history.replaceState(null, "", chemin);
   conteneur = document.createElement("div");
   document.body.appendChild(conteneur);
@@ -115,6 +125,7 @@ export async function demonter() {
   racine = null;
   conteneur = null;
   try { window.sessionStorage.clear(); } catch { /* ignoré */ }
+  try { window.localStorage.clear(); } catch { /* ignoré */ }
 }
 
 // Attend qu'une condition devienne vraie (rendus asynchrones, fetch simulé).

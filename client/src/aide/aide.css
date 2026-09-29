@@ -1,0 +1,58 @@
+/* ─────────────────────────────────────────────────────────────
+   Aide intégrée (Après VF) : bouton, panneau, tutoriel, petits « ? ».
+   Lisible à 200 % (unités rem), utilisable à 390 px (le panneau est un
+   Drawer plein écran sous 768 px, déjà géré par le composant Drawer).
+   ───────────────────────────────────────────────────────────── */
+
+/* Bouton « ? Aide » de la barre latérale. */
+.shell-aide { justify-content: flex-start; width: 100%; }
+
+/* Panneau d'aide. */
+.aide-entre { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-4); }
+.aide-entre__btn {
+  display: flex; align-items: center; min-height: 2.5rem; padding: 0 var(--space-3);
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent;
+  color: var(--color-text-secondary); font: inherit; font-weight: var(--font-weight-medium);
+  text-align: left; cursor: pointer;
+}
+.aide-entre__btn:hover { color: var(--color-text); background: var(--color-surface-2); }
+.aide-entre__btn--actif { background: var(--color-primary-soft); border-color: var(--color-border-input); color: var(--color-text); }
+
+.aide-corps { display: grid; gap: var(--space-3); }
+.aide-corps__titre { margin: 0; font-size: var(--font-size-section-title); }
+.aide-section__titre { margin: var(--space-4) 0 var(--space-2); font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); }
+.aide-section__liste { margin: 0; padding-left: 1.25rem; display: grid; gap: var(--space-2); color: var(--color-text-secondary); }
+.aide-section__liste li { line-height: var(--line-height-body, 1.45); }
+
+.aide-guide-bloc { display: grid; gap: var(--space-1); }
+.aide-guide-bloc__titre { margin: var(--space-2) 0 0; font-weight: var(--font-weight-semibold); }
+
+.aide-pied { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+
+/* Tutoriel. */
+.aide-tutoriel__texte { margin: 0 0 var(--space-4); font-size: var(--font-size-body); line-height: var(--line-height-body, 1.5); }
+.aide-tutoriel__points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.aide-tutoriel__point { color: var(--color-text-secondary); font-size: var(--font-size-small); padding-left: var(--space-3); border-left: 2px solid var(--color-border); }
+.aide-tutoriel__point--actif { color: var(--color-text); border-left-color: var(--color-primary); font-weight: var(--font-weight-semibold); }
+
+/* Petit « ? » contextuel. */
+.aide-info { position: relative; display: inline-flex; align-items: center; }
+.aide-info__btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.125rem; height: 1.125rem;
+  border-radius: var(--radius-pill); border: 1px solid var(--color-border-input); background: var(--color-surface);
+  color: var(--color-text-secondary); font-size: 0.75rem; font-weight: var(--font-weight-semibold); cursor: pointer;
+}
+.aide-info__btn:hover { color: var(--color-text); }
+.aide-info__popover {
+  position: absolute; z-index: 70; top: calc(100% + var(--space-2)); left: 0; width: 16rem;
+  display: grid; gap: var(--space-2); padding: var(--space-3);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float); color: var(--color-text-secondary); font-size: var(--font-size-small);
+  line-height: var(--line-height-body, 1.45);
+}
+.aide-info__popover strong { color: var(--color-text); font-size: var(--font-size-body); }
+
+/* Sur petit écran, la bulle reste dans la page. */
+@media (max-width: 480px) {
+  .aide-info__popover { position: fixed; left: var(--space-3); right: var(--space-3); width: auto; }
+}

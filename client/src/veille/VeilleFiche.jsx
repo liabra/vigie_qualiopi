@@ -5,6 +5,7 @@ import { RechercheDrive } from "../RechercheDrive.jsx";
 import { Alert, Badge, Button, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { STATUTS_ACTION, STATUTS_VEILLE, TYPES_VEILLE, formaterDate, lienExterneSur } from "./format.js";
+import { AideInfobulle } from "../aide/index.js";
 
 // Texte long saisi (résumé, analyse, action) : paragraphes conservés, jamais
 // de rendu « formulaire désactivé ».
@@ -98,7 +99,7 @@ export function VeilleFiche({ veilleId, admin }) {
           <section className="veille-etape" aria-labelledby="etape-analyser">
             <h2 id="etape-analyser" className="veille-etape__titre"><span className="veille-etape__num" aria-hidden="true">2</span>Analyser</h2>
             {v.rupture_reglementaire && (
-              <Alert ton="warning" titre="Rupture réglementaire">Cette veille a été signalée comme une rupture réglementaire.</Alert>
+              <Alert ton="warning" titre={<>Rupture réglementaire <AideInfobulle id="rupture_reglementaire" /></>}>Cette veille a été signalée comme une rupture réglementaire.</Alert>
             )}
             <h3 className="veille-sous-titre">Analyse d'impact pour l'organisme</h3>
             <Texte valeur={v.analyse_impact} vide={v.statut === "a_analyser" ? "Analyse à réaliser." : "Aucune analyse rédigée."} />

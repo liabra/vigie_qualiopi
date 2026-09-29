@@ -2,16 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar.jsx";
 import { Alert } from "../ui/index.js";
+import { AideDrawer, Tutoriel, marquerTutorielTermine, tutorielTermine } from "../aide/index.js";
 
 // Coque de l'application : barre latérale (fixe sur ordinateur, tiroir sur
 // tablette et mobile), zone principale, lien d'évitement. Les pages sont
 // rendues dans <Outlet />.
 export function AppShell({ user, onLogout, flash, onFlashVu }) {
   const [menuOuvert, setMenuOuvert] = useState(false);
+  const [aideOuverte, setAideOuverte] = useState(false);
+  const [tutorielOuvert, setTutorielOuvert] = useState(false);
   const boutonMenu = useRef(null);
   const principal = useRef(null);
   const { pathname } = useLocation();
   const premierChemin = useRef(pathname);
+
+  // Première visite sur ce navigateur : proposer le tutoriel. Si
+  // localStorage est indisponible, tutorielTermine() renvoie true et
+  // l'application continue normalement (jamais bloquante).
+  useEffect(() => {
+    if (!tutorielTermine()) setTutorielOuvert(true);
+  }, []);
+
+  const fermerTutoriel = () => { setTutorielOuvert(false); marquerTutorielTermine(); };
+  const ouvrirTutoriel = () => { setAideOuverte(false); setTutorielOuvert(true); };
 
   // Changer de page referme le tiroir ; le message de retour OAuth
   // (?erreur= / ?drive=) ne concerne que la page d'arrivée.
@@ -58,6 +71,7 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
         id="navigation-principale" user={user} ouvert={menuOuvert}
         onFermer={() => { setMenuOuvert(false); boutonMenu.current?.focus(); }}
         onLogout={onLogout}
+        onAide={() => { setMenuOuvert(false); setAideOuverte(true); }}
       />
       {menuOuvert && <div className="shell-voile" aria-hidden="true" onClick={() => setMenuOuvert(false)} />}
 
@@ -67,6 +81,15 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
           <Outlet />
         </div>
       </main>
+
+      {aideOuverte && (
+        <AideDrawer
+          role={user.role} chemin={pathname}
+          onFermer={() => setAideOuverte(false)}
+          onTutoriel={ouvrirTutoriel}
+        />
+      )}
+      {tutorielOuvert && <Tutoriel role={user.role} onTerminer={fermerTutoriel} />}
     </div>
   );
 }

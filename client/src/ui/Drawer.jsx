@@ -6,11 +6,11 @@ import { useDialogue } from "./dialogue.js";
 // sous 768 px. `pied` : actions fixes en bas (Annuler / Enregistrer).
 // `fermable` à false pendant une opération en cours (Échap, voile et croix
 // sont alors sans effet).
-export function Drawer({ ouvert, titre, description, onFermer, pied, taille = "moyen", fermable = true, children }) {
+export function Drawer({ ouvert, titre, description, onFermer, pied, taille = "moyen", fermable = true, type = "metier", children }) {
   const ref = useRef(null);
   const idTitre = useId();
   const idDescription = useId();
-  useDialogue(ref, ouvert, { onFermer, fermable, focusInitial: ".ui-drawer__corps input, .ui-drawer__corps select, .ui-drawer__corps textarea, .ui-drawer__corps button" });
+  useDialogue(ref, ouvert, { onFermer, fermable, type, focusInitial: ".ui-drawer__corps input, .ui-drawer__corps select, .ui-drawer__corps textarea, .ui-drawer__corps button" });
   if (!ouvert) return null;
   return createPortal(
     <div className="ui-drawer-racine">

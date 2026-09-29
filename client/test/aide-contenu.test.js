@@ -47,6 +47,22 @@ test("etapesTutoriel : 5 à 7 étapes, ordre stable, contenu présent", () => {
   }
 });
 
+test("etapesTutoriel : chaque étape porte sa route cible (parcours guidé)", () => {
+  const attendues = [
+    "/accueil", // Bienvenue
+    "/accueil", // Navigation
+    "/sessions", // Les sessions
+    "/preuves", // Les preuves
+    "/veille", // La veille
+    "/accueil", // L'Accueil
+    "/accueil", // Où retrouver l'aide
+  ];
+  for (const role of ["admin", "contributeur"]) {
+    const e = etapesTutoriel(role);
+    assert.deepEqual(e.map((s) => s.route), attendues, role);
+  }
+});
+
 test("rechercherGuide : filtre insensible à la casse et aux accents", () => {
   const r = rechercherGuide("admin", "archivage");
   assert.ok(r.some((x) => x.id === "sessions"));

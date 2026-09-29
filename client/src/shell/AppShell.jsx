@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar.jsx";
-import { Alert } from "../ui/index.js";
+import { Alert, ConfirmDialog } from "../ui/index.js";
+import { dialogueMetierEnCours } from "../ui/dialogue.js";
 import { AideDrawer, Tutoriel, marquerTutorielTermine, tutorielTermine } from "../aide/index.js";
 
 // Coque de l'application : barre latérale (fixe sur ordinateur, tiroir sur
@@ -11,6 +12,7 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
   const [menuOuvert, setMenuOuvert] = useState(false);
   const [aideOuverte, setAideOuverte] = useState(false);
   const [tutorielOuvert, setTutorielOuvert] = useState(false);
+  const [blocageFormulaire, setBlocageFormulaire] = useState(false);
   const boutonMenu = useRef(null);
   const principal = useRef(null);
   const { pathname } = useLocation();
@@ -20,11 +22,15 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
   // localStorage est indisponible, tutorielTermine() renvoie true et
   // l'application continue normalement (jamais bloquante).
   useEffect(() => {
-    if (!tutorielTermine()) setTutorielOuvert(true);
+    if (!tutorielTermine() && !dialogueMetierEnCours()) setTutorielOuvert(true);
   }, []);
 
   const fermerTutoriel = () => { setTutorielOuvert(false); marquerTutorielTermine(); };
-  const ouvrirTutoriel = () => { setAideOuverte(false); setTutorielOuvert(true); };
+  const ouvrirTutoriel = () => {
+    setAideOuverte(false);
+    if (dialogueMetierEnCours()) { setBlocageFormulaire(true); return; }
+    setTutorielOuvert(true);
+  };
 
   // Changer de page referme le tiroir ; le message de retour OAuth
   // (?erreur= / ?drive=) ne concerne que la page d'arrivée.
@@ -90,6 +96,16 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
         />
       )}
       {tutorielOuvert && <Tutoriel role={user.role} onTerminer={fermerTutoriel} />}
+      <ConfirmDialog
+        ouvert={blocageFormulaire}
+        titre="Formulaire en cours"
+        libelleConfirmer="Compris"
+        ton="primary"
+        onConfirmer={() => setBlocageFormulaire(false)}
+        onAnnuler={() => setBlocageFormulaire(false)}
+      >
+        Un formulaire est actuellement ouvert. Fermez-le ou enregistrez vos modifications avant de lancer le tutoriel.
+      </ConfirmDialog>
     </div>
   );
 }

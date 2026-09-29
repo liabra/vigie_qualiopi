@@ -319,37 +319,37 @@ export function rechercherGuide(role, q) {
 
 const ETAPES = [
   {
-    id: "bienvenue", titre: "Bienvenue dans Vigie",
+    id: "bienvenue", titre: "Bienvenue dans Vigie", route: "/accueil",
     admin: "Vigie aide A2C à rester prêt pour un audit Qualiopi : formations, sessions, stagiaires, preuves et veille réglementaire au même endroit.",
     contributeur: "Vigie aide A2C à rester prêt pour un audit Qualiopi : formations, sessions, stagiaires, preuves et veille réglementaire au même endroit.",
   },
   {
-    id: "navigation", titre: "Navigation",
+    id: "navigation", titre: "Navigation", route: "/accueil",
     admin: "Le menu de gauche donne accès à l'Accueil, aux Sessions et à tout ce qui concerne la qualité (indicateurs, preuves, veille, audits). Les paramètres se règlent en bas de ce menu.",
     contributeur: "Le menu de gauche donne accès à l'Accueil, aux Sessions et à tout ce qui concerne la qualité (indicateurs, preuves, veille, audits).",
   },
   {
-    id: "sessions", titre: "Les sessions",
+    id: "sessions", titre: "Les sessions", route: "/sessions",
     admin: "Une session de formation se crée dans « Sessions », puis se remplit : stagiaires, absences, évaluations, satisfaction et documents, onglet par onglet.",
     contributeur: "Dans « Sessions », ouvrez une session pour gérer les stagiaires : absences, évaluations, satisfaction et documents, onglet par onglet.",
   },
   {
-    id: "preuves", titre: "Les preuves",
+    id: "preuves", titre: "Les preuves", route: "/preuves",
     admin: "Chaque indicateur Qualiopi doit être appuyé par des preuves. Vous les suivez dans « Preuves », par indicateur ou en liste complète, avec leurs statuts et leurs échéances.",
     contributeur: "Les preuves de conformité se consultent dans « Preuves », par indicateur ou en liste complète.",
   },
   {
-    id: "veille", titre: "La veille",
+    id: "veille", titre: "La veille", route: "/veille",
     admin: "La veille réglementaire se traite en trois temps : S'informer, Analyser, puis Agir. Une rupture réglementaire peut rendre des preuves caduques.",
     contributeur: "La veille réglementaire se consulte en trois temps : S'informer, Analyser, puis Agir.",
   },
   {
-    id: "accueil", titre: "L'Accueil",
+    id: "accueil", titre: "L'Accueil", route: "/accueil",
     admin: "L'Accueil vous montre ce qui demande votre attention : sessions en cours, prochaines sessions et alertes.",
     contributeur: "L'Accueil vous montre ce qui demande votre attention : sessions en cours, prochaines sessions et alertes.",
   },
   {
-    id: "aide", titre: "Où retrouver l'aide",
+    id: "aide", titre: "Où retrouver l'aide", route: "/accueil",
     admin: "Le bouton « ? Aide » en bas du menu ouvre cette aide à tout moment : aide de la page courante, guide complet et relance de ce tutoriel.",
     contributeur: "Le bouton « ? Aide » en bas du menu ouvre cette aide à tout moment : aide de la page courante, guide complet et relance de ce tutoriel.",
   },
@@ -357,7 +357,7 @@ const ETAPES = [
 
 export function etapesTutoriel(role) {
   const admin = role === "admin";
-  return ETAPES.map((e) => ({ id: e.id, titre: e.titre, texte: admin ? e.admin : e.contributeur }));
+  return ETAPES.map((e) => ({ id: e.id, titre: e.titre, route: e.route, texte: admin ? e.admin : e.contributeur }));
 }
 
 // ─────────────────────────────────────────────────────────────

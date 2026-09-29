@@ -9,14 +9,22 @@ import { useEffect, useRef } from "react";
 const pile = [];
 const FOCUSABLES = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function useDialogue(ref, ouvert, { onFermer, fermable = true, focusInitial = null } = {}) {
+// Un dialogue « métier » (création/modification, confirmation d'une action)
+// est-il actuellement ouvert ? Les panneaux d'aide (AideDrawer, Tutoriel)
+// sont étiquetés type « aide » et ne comptent pas : c'est ce qui permet au
+// tutoriel de ne pas démarrer par-dessus un formulaire non enregistré.
+export function dialogueMetierEnCours() {
+  return pile.some((j) => j.type === "metier");
+}
+
+export function useDialogue(ref, ouvert, { onFermer, fermable = true, focusInitial = null, type = "metier" } = {}) {
   const dernier = useRef({ onFermer, fermable });
   dernier.current = { onFermer, fermable };
 
   useEffect(() => {
     if (!ouvert) return undefined;
     const noeud = ref.current;
-    const jeton = {};
+    const jeton = { type };
     pile.push(jeton);
     const declencheur = document.activeElement;
     const focusables = () => [...noeud.querySelectorAll(FOCUSABLES)].filter((e) => !e.closest("[hidden]"));

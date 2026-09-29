@@ -15,7 +15,7 @@ export function AideDrawer({ role, chemin, onFermer, onTutoriel }) {
 
   return (
     <Drawer
-      ouvert onFermer={onFermer} titre="Aide Vigie"
+      ouvert type="aide" onFermer={onFermer} titre="Aide Vigie"
       description="Une aide courte, au bon endroit, sans quitter la page."
     >
       <nav className="aide-entre" aria-label="Sections de l'aide">

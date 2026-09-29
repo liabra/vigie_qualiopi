@@ -4,10 +4,10 @@
 | --- | --- |
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
-| **État validé au** | 24/09/2026 |
-| **Dernier lot validé en production** | UX-5 — finalisation de l'interface : **VF principale terminée** (refonte UX-1A → UX-5) |
-| **Migration de production actuelle** | `013_evaluations_qcm.sql` (13 migrations) |
-| **Suite de tests** | **380/380 serveur + 111/111 client** (déployés en UX-5) |
+| **État validé au** | 29/09/2026 |
+| **Dernier lot validé en production** | Après VF — **Aide intégrée et cycle de vie des sessions** (déployé le 29/09/2026) |
+| **Migration de production actuelle** | `014_archivage_sessions.sql` (14 migrations) |
+| **Suite de tests** | **395/395 serveur + 137/137 client** (déployés « Après VF ») |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2329,7 +2329,8 @@ Référence connue au **24/09/2026** (fin de la VF principale, UX-5) :
 Après le chantier « Après VF » (aide intégrée + cycle de vie des sessions, §14 bis) :
 
 - `npm test` : **395/395 serveur + 137/137 client** (2 exécutions)
-- migration locale : **014_archivage_sessions.sql** (non déployée, commits non poussés)
+- migration de production : **014_archivage_sessions.sql** (14 migrations 001→014, aucune 015)
+- déploiement Railway : SUCCESS (commit `9a08cc7`), `/api/health` 200, arrêt gracieux confirmé
 
 Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
 chantier.
@@ -2339,7 +2340,7 @@ Une fonctionnalité n'est considérée comme validée que si elle a été vérif
 
 ---
 
-## 14 bis. Après VF — Aide intégrée et cycle de vie des sessions — TERMINÉ (local)
+## 14 bis. Après VF — Aide intégrée et cycle de vie des sessions — TERMINÉ (déployé le 29/09/2026)
 
 Premier chantier « Après VF » : deux évolutions livrées ensemble, sans refonte globale.
 
@@ -2394,8 +2395,14 @@ Premier chantier « Après VF » : deux évolutions livrées ensemble, sans refo
 
 ### État
 
-Livré **localement**, non déployé : **deux commits distincts** (aide puis archivage),
-**aucun push**.
+**Déployé en production le 29/09/2026.** Trois commits poussés sur `main` (`21d3678` UX,
+`5216206` sessions, `9a08cc7` tests) — déploiement Railway **SUCCESS** (`f32ca37d`, commit
+`9a08cc7`), `/api/health` **200**, migration **014** appliquée une seule fois (14 migrations
+001→014, aucune 015). Vérifié en production (lecture seule) : colonnes `sessions.archivee_le` /
+`archivee_par` présentes, sessions existantes **non archivées par défaut**, volumes intacts.
+Smoke anonyme (13 routes SPA → écran de connexion, 0 écran blanc, 0 erreur console, responsive
+1440/390 sans défilement horizontal, deep-links/refresh/retour-avant OK, API métier → 401) ;
+arrêt gracieux confirmé (SIGTERM → serveur HTTP fermé → pool PostgreSQL fermé).
 
 ---
 

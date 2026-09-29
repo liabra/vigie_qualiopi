@@ -2303,3 +2303,51 @@ c'est exactement ce que le chantier interdit. Aucune ancienne migration modifié
 
 **Deux commits locaux prêts, AUCUN push.** Détail : `PROJECT_HANDOFF.md` §14 bis et
 `UX_UI_AUDIT.md` §17.
+
+---
+
+## 2026-09-29 — Déploiement du lot « Après VF » en production
+
+Validation pré-push sous **Node 22.23.3** (réserve Node 24 levée, voir § Vérifications) :
+`npm test` **395/395 serveur + 137/137 client**, `npm run build` OK, `git diff --check` OK,
+aucun `ECONNRESET`, aucun PostgreSQL jetable restant. Puis **push sans `--force`** :
+`baf8bd5..9a08cc7` sur `main`.
+
+### Déploiement Railway
+
+- Déploiement **`f32ca37d`** (créé 2026-09-29T06:00:05Z) → **SUCCESS**.
+- Commit déployé : **`9a08cc7`** (`9a08cc7ffe201c07cf49f49a26abee431b711c16`,
+  « Tests : stabiliser l arret propre du serveur ») — repo `liabra/vigie_qualiopi`, `main`.
+- `/api/health` → **HTTP 200** `{"ok":true}`.
+
+### Base de données (lecture seule, aucun écrit, aucun archivage réel)
+
+- `schema_migrations` : **14** entrées, exactement **001 → 014**, **aucune 015+**.
+- Colonnes `sessions.archivee_le` et `sessions.archivee_par` **présentes**.
+- **1 session**, `archivee_le IS NULL` (les sessions historiques ne sont **pas** archivées
+  par défaut). Volumes constatés : utilisateurs 1, formations 1, sessions 1, groupes 3,
+  inscriptions 8, absences 1, resultats_qcm 2, satisfactions 2, preuves 144, veille 1,
+  audits_history 0, modeles_documents 2, generations 4, documents_generes 6.
+
+### Smoke anonyme (aucune écriture, aucun cookie fabriqué)
+
+- 13 routes SPA (`/`, `/accueil`, `/sessions`, `/sessions?etat=archivees`, `/indicateurs`,
+  `/preuves`, `/veille`, `/audits`, `/formations`, `/modeles`, `/prescripteurs`,
+  `/versions`, `/parametres/google`) → **200** + HTML, écran de connexion, **0 écran blanc**.
+- Deep-links, refresh, retour/avant : OK. Responsive **1440** et **390** : **0 défilement
+  horizontal**. **0 erreur console**.
+- API métier anonyme (`/api/sessions`, `/api/referentiel`, `/api/indicateurs`, `/api/preuves`,
+  `/api/veille`, `/api/audits`) → **401**.
+
+### Arrêt gracieux
+
+Logs du déploiement précédent pendant le remplacement : `sending signal SIGTERM to container`
+→ « Signal SIGTERM reçu : arrêt en cours… » → « Arrêt propre terminé (serveur HTTP fermé,
+pool PostgreSQL fermé). » — **aucun arrêt forcé**, sortie avant le délai Railway
+(`DELAI_ARRET_MS` 10 s < `drainingSeconds` 15 s).
+
+### Smoke connecté
+
+**Non exécuté** : aucune session admin réelle disponible, et la consigne interdit de
+fabriquer un cookie. Les écrans authentifiés (aide, tutoriel, sessions archivées, responsive
+connecté) avaient été validés en local avant push (captures Chrome headless + cookie signé).

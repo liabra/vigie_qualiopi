@@ -1324,7 +1324,8 @@ Idées déjà identifiées, **non commencées** :
 
 ## 17. Après VF — Aide intégrée et cycle de vie des sessions
 
-Réalisé le **29/09/2026** (deux commits distincts, aucun push). Aucun redesign global :
+Réalisé le **29/09/2026**, **déployé en production le 29/09/2026** (push `baf8bd5..9a08cc7`,
+déploiement Railway `f32ca37d` SUCCESS, commit `9a08cc7`). Aucun redesign global :
 le design system, la navigation et les écrans de la VF sont conservés.
 
 ### Aide intégrée / tutoriel
@@ -1366,6 +1367,15 @@ le design system, la navigation et les écrans de la VF sont conservés.
 
 `npm test` : **395/395 serveur + 137/137 client** (2 exécutions). Captures réelles dans
 `/tmp` (aide, tutoriel, mobile, sessions archivées, détail archivé, suppression).
+
+### Validation en production
+
+`/api/health` **200** ; migration **014** appliquée une seule fois (001→014, aucune 015) ;
+colonnes `sessions.archivee_le` / `archivee_par` présentes ; sessions existantes non
+archivées par défaut. Smoke anonyme : 13 routes SPA → écran de connexion, **0 écran blanc**,
+**0 erreur console**, deep-links/refresh/retour-avant OK, responsive 1440/390 **sans
+défilement horizontal**, API métier → **401**. Arrêt gracieux confirmé (SIGTERM → HTTP fermé
+→ pool PostgreSQL fermé).
 
 ---
 

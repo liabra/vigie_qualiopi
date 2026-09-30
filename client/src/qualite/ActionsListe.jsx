@@ -58,9 +58,11 @@ export function ActionsListe({ admin }) {
       return p;
     });
   }
+  // fix : une seule navigation. `setQ("")` repartait des paramètres du
+  // rendu courant et réinjectait les filtres select ; useTexteUrl vide
+  // lui-même le champ de recherche quand `q` disparaît de l'URL.
   function reinitialiser() {
     setParams(new URLSearchParams());
-    setQ("");
   }
 
   const formationParId = Object.fromEntries(formations.map((f) => [f.id, f.intitule]));

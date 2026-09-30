@@ -3,7 +3,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, bouton, cliquer, demonter, dialogue, liensNavigation, monter, saisir, texte, touche } from "./outils.jsx";
+import { attendre, bouton, champ, cliquer, demonter, dialogue, liensNavigation, monter, saisir, texte, touche } from "./outils.jsx";
 import { filtrerActions } from "../src/qualite/format.js";
 
 let natifs = 0;
@@ -95,6 +95,52 @@ test("recherche et filtres dans l'URL", async () => {
   assert.ok(texte().includes("Réviser la procédure"));
   await cliquer(bouton("Réinitialiser les filtres"));
   await attendre(() => texte().includes("Relancer les convocations"));
+});
+
+// Régression : « Réinitialiser » ne doit jamais réappliquer un filtre select
+// supprimé (la remise à zéro de `q` partait d'anciens paramètres d'URL).
+const visibles = () => ["Relancer les convocations", "Réviser la procédure"].filter((t) => texte().includes(t));
+const recherche = () => document.querySelector('.veille-filtres input[type="search"]');
+
+test("réinitialiser : un filtre select est supprimé de l'URL et de l'écran", async () => {
+  await monter("/actions-qualite", "admin", avecActions());
+  await attendre(() => visibles().length === 2);
+  await saisir(champ("Statut"), "en_cours");
+  await attendre(() => visibles().length === 1);
+  assert.equal(new URLSearchParams(window.location.search).get("statut"), "en_cours");
+  await cliquer(bouton("Réinitialiser les filtres"));
+  await attendre(() => visibles().length === 2, 1000).catch(() => {});
+  assert.equal(window.location.search, "", "URL sans filtre");
+  assert.equal(champ("Statut").value, "", "select revenu à « Tous les statuts »");
+  assert.equal(visibles().length, 2, "liste complète");
+});
+
+test("réinitialiser : recherche + filtre select supprimés ensemble", async () => {
+  await monter("/actions-qualite", "admin", avecActions());
+  await attendre(() => visibles().length === 2);
+  await saisir(champ("Priorité"), "normale");
+  await saisir(recherche(), "procédure");
+  await attendre(() => visibles().length === 1 && window.location.search.includes("q="));
+  const p = new URLSearchParams(window.location.search);
+  assert.equal(p.get("priorite"), "normale");
+  assert.equal(p.get("q"), "procédure");
+  await cliquer(bouton("Réinitialiser les filtres"));
+  await attendre(() => visibles().length === 2, 1000).catch(() => {});
+  assert.equal(window.location.search, "", "ni q ni priorité dans l'URL");
+  assert.equal(recherche().value, "", "champ de recherche vide");
+  assert.equal(champ("Priorité").value, "", "select neutre");
+  assert.equal(visibles().length, 2, "liste complète");
+});
+
+test("réinitialiser : tous les filtres d'un lien direct sont supprimés (statut, priorité, origine, responsable, indicateur, session, q)", async () => {
+  await monter("/actions-qualite?statut=en_cours&priorite=haute&origine=manuel&responsable=2&ind=5&session=3&q=relancer", "admin", avecActions());
+  await attendre(() => bouton("Réinitialiser les filtres") || bouton("Effacer les filtres"));
+  await cliquer(bouton("Réinitialiser les filtres") || bouton("Effacer les filtres"));
+  await attendre(() => visibles().length === 2, 1000).catch(() => {});
+  assert.equal(window.location.search, "", "URL sans aucun filtre");
+  assert.equal(recherche().value, "");
+  for (const l of ["Statut", "Priorité", "Origine", "Responsable", "Indicateur", "Session"]) assert.equal(champ(l).value, "", l);
+  assert.equal(visibles().length, 2, "liste complète");
 });
 
 test("création : le formulaire envoie titre et responsable", async () => {

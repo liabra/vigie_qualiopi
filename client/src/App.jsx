@@ -23,6 +23,8 @@ import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
 import { VeilleFiche } from "./veille/VeilleFiche.jsx";
 import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
+import { ActionsListe } from "./qualite/ActionsListe.jsx";
+import { ActionFiche } from "./qualite/ActionFiche.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -70,6 +72,15 @@ function VeillePage({ modifier = false, admin }) {
   const { veilleId } = useParams();
   const id = /^\d+$/.test(veilleId) ? Number(veilleId) : veilleId;
   return modifier ? <VeilleFormulaire key={id} veilleId={id} /> : <VeilleFiche key={id} veilleId={id} admin={admin} />;
+}
+
+// /actions-qualite/:actionId : identifiant numérique converti ; toute autre
+// valeur est transmise telle quelle, le serveur répond 400 et la page
+// affiche « Action introuvable ».
+function ActionPage({ admin }) {
+  const { actionId } = useParams();
+  const id = /^\d+$/.test(actionId) ? Number(actionId) : actionId;
+  return <ActionFiche key={id} actionId={id} admin={admin} />;
 }
 
 const VUES_REFERENTIEL = {
@@ -160,6 +171,8 @@ export default function App() {
         <Route path="veille/:veilleId" element={<VeillePage admin={isAdmin} />} />
         <Route path="veille/:veilleId/modifier" element={admin(<VeillePage modifier admin={isAdmin} />)} />
         <Route path="audits" element={<EcranExistant><AuditsHistory admin={isAdmin} /></EcranExistant>} />
+        <Route path="actions-qualite" element={<ActionsListe admin={isAdmin} />} />
+        <Route path="actions-qualite/:actionId" element={<ActionPage admin={isAdmin} />} />
 
         <Route path="formations" element={admin(<FormationsPage />)} />
         <Route path="modeles" element={admin(<ModelesPage />)} />

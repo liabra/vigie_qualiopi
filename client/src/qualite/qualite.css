@@ -1,0 +1,123 @@
+/* Q1-B2 — Actions qualité : mise en page locale (compteurs, fiche,
+   historique). Les composants réutilisent ui-* / sess-* existants. */
+
+/* Compteurs du haut de liste */
+.qualite-compteurs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.qualite-compteur {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.qualite-compteur__n {
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+}
+.qualite-compteur__l {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.qualite-reset {
+  margin: 0.25rem 0 0.75rem;
+}
+
+/* Fiche : badges, actions contextuelles, grille */
+.qualite-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.qualite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.qualite-grille {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 900px) {
+  .qualite-grille { grid-template-columns: repeat(2, 1fr); }
+}
+
+.qualite-fiche {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.qualite-ligne {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0.75rem;
+  margin: 0;
+}
+.qualite-ligne__l {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.qualite-ligne__v {
+  margin: 0;
+}
+
+.qualite-section {
+  margin: 1rem 0 0;
+}
+.qualite-section__titre {
+  font-size: 1.05rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 0.5rem;
+}
+
+/* Historique chronologique */
+.qualite-historique {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.qualite-historique__item {
+  display: grid;
+  grid-template-columns: 130px 150px 1fr;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.qualite-historique__date {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+.qualite-historique__auteur {
+  font-weight: var(--font-weight-semibold);
+}
+.qualite-historique__texte {
+  color: var(--color-text);
+}
+
+/* Mobile : fiche et historique en colonne */
+@media (max-width: 600px) {
+  .qualite-compteurs { grid-template-columns: repeat(2, 1fr); }
+  .qualite-ligne { grid-template-columns: 1fr; gap: 0.125rem; }
+  .qualite-historique__item { grid-template-columns: 1fr; gap: 0.125rem; }
+  .qualite-historique__date { order: -1; }
+}

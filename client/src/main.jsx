@@ -10,6 +10,7 @@ import "./sessions/sessions.css";
 import "./veille/veille.css";
 import "./parametres/parametres.css";
 import "./aide/aide.css";
+import "./qualite/qualite.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

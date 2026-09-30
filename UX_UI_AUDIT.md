@@ -1401,4 +1401,36 @@ fait désormais défiler la page réelle **derrière** le panneau.
 
 ---
 
+## 19. Q1-B2 — Actions qualité (UI) — LOCAL / VALIDÉ, non déployé
+
+Réalisé et **validé localement le 30/09/2026** (deux commits locaux, **aucun push, aucun
+déploiement**). L'écran « Actions qualité » du socle Q1-B1 est maintenant pilotable.
+
+- **Navigation** : entrée « Actions qualité » dans le groupe Qualité ; routes
+  `/actions-qualite` (liste) et `/actions-qualite/:actionId` (fiche), identifiant numérique
+  converti (autre valeur → « Action introuvable »).
+- **Liste** : compteurs par rôle, segments, filtres dans l'URL (statut, priorité, origine,
+  indicateur, session, responsable, recherche), réinitialisation, tableau lisible avec
+  référence / statut / priorité / responsable / échéance / contexte (session archivée
+  signalée) / indicateurs compactés.
+- **Formulaire** (drawer, mêmes primitives que Veille/Sessions) : titre obligatoire,
+  priorité, responsable, échéance, constat, action prévue, **sessions archivées
+  sélectionnables** (formation dérivée), indicateurs à cocher.
+- **Fiche** : badges, traitement, efficacité, clôture, historique append-only lisible ;
+  transitions contextuelles par statut, confirmations pour clôture/réouverture/annulation.
+- **Rôles** : admin complet ; contributeur restreint à ses actions, sans commande admin et
+  sans donnée réclamant (déjà couvert par le RBAC backend, vérifié en smoke).
+- **Responsive / accessibilité** : drawer plein écran < 768 px, table en cartes, aucun
+  débordement horizontal en 390 px (`scrollWidth == clientWidth == 390`), focus piégé dans
+  les dialogues, boutons accessibles (`aria-label`, `aria-pressed`, `aria-live`).
+- **Validation** : `npm test` **441/441 serveur + 165/165 client**, build Vite OK,
+  `git diff --check` OK ; smoke Chrome local connecté (admin/contributeur/mobile, **0 erreur
+  console**) ; captures `/tmp/q1b2-*.png` validées visuellement.
+- **Revue Q1-B2-R** : « Compléter le contrôle » retiré (409 systématique), 403 contributeur
+  rendu « Action introuvable » (pas de fuite d'existence), filtres d'URL inconnus ignorés.
+
+**Restant** : Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive), Q1-B5 (tableau de bord).
+
+---
+
 *Fin du document.*

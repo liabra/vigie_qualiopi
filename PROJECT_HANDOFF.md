@@ -4,10 +4,10 @@
 | --- | --- |
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
-| **État validé au** | 29/09/2026 |
+| **État validé au** | 30/09/2026 |
 | **Dernier lot validé en production** | Tutoriel — **navigation guidée entre les pages** (déployé le 29/09/2026) |
-| **Migration de production actuelle** | `014_archivage_sessions.sql` (14 migrations) |
-| **Suite de tests** | **395/395 serveur + 146/146 client** (déployés « tutoriel guidé ») |
+| **Migration de production actuelle** | `014_archivage_sessions.sql` (14 migrations) — `015` encore **locale** |
+| **Suite de tests** | **441/441 serveur + 165/165 client** (local ; production = 395/395 + 146/146) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2473,6 +2473,68 @@ Premier lot du chantier « cœur qualité » (Q1-B1) : **base + backend, sans UI
   `transversal.test.js` mis à jour (001→015).
 - **Restant** : Q1-B2 (UI actions), Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive),
   Q1-B5 (tableau de bord). Veille / Audits / Preuves / Satisfaction / Accueil non modifiés.
+
+---
+
+## 14 quinquies. Q1-B2 — UI Actions qualité — LOCAL / VALIDÉ (non déployé)
+
+Interface de pilotage des actions d'amélioration, en lecture sur le socle Q1-B1 + Q1-B2A.
+**Deux commits locaux, AUCUN push, AUCUN déploiement.**
+
+### Fichiers
+
+- **Nouveaux** : `client/src/qualite/format.js` (statuts, priorités, origines, compteurs,
+  segments, filtres, décodage d'historique), `client/src/qualite/FormulaireAction.jsx`
+  (drawer création/modification), `client/src/qualite/ActionsListe.jsx` (liste + filtres),
+  `client/src/qualite/ActionFiche.jsx` (détail + transitions + historique),
+  `client/src/qualite/qualite.css`, `client/test/actions-qualite.test.jsx` (19 tests).
+- **Modifiés** : `App.jsx` (routes `/actions-qualite` et `/actions-qualite/:actionId` avec
+  conversion d'identifiant numérique), `navigation.js` (entrée « Actions qualité »),
+  `aide/contenu.js` (section d'aide + clé), `main.jsx` (import CSS),
+  `test/navigation.test.js` et `test/routes.test.jsx` (listes de navigation mises à jour),
+  `test/outils.jsx` (routes mockées).
+
+### Comportements
+
+- **Liste** : 4 compteurs (admin : Ouvertes / En retard / Efficacité à vérifier / Clôturées ;
+  contributeur : Mes actions ouvertes / En retard / À réaliser / Efficacité à vérifier),
+  segments (Actives / Clôturées / Annulées / Toutes), filtres dans l'URL (statut, priorité,
+  origine, indicateur, session, responsable, recherche), « Réinitialiser les filtres ».
+- **Formulaire** (drawer) : titre obligatoire, priorité, responsable (liste admin active),
+  échéance, constat, action prévue, session **archivées incluses** (formation dérivée),
+  indicateurs Qualiopi à cocher (sélecteur groupé).
+- **Fiche détail** : badges, contexte, traitement, efficacité, clôture, **historique
+  append-only lisible** (auteur + libellé avant → après).
+- **Transitions admin** : à faire → Démarrer ; en cours → Marquer réalisée (+ Modifier,
+  Annuler) ; réalisée → Contrôler l'efficacité ; efficacité à vérifier → Compléter / Clôturer ;
+  clôturée → Réouvrir. La clôture exige ≥ 1 indicateur.
+- **Contributeur** : ne voit **que ses actions**, peut Démarrer / Marquer réalisée, **aucune
+  commande admin** (pas de création, d'assignation, de clôture, de réouverture, d'annulation),
+  aucune donnée réclamant / signalement source.
+
+### Validation
+
+- **Tests** : serveur **441/441**, client **165/165** (146 + 19), build Vite OK,
+  `git diff --check` OK.
+- **Revue contradictoire Q1-B2-R** : bouton « Compléter le contrôle » retiré (il menait
+  systématiquement à un 409, le backend n'autorisant le contrôle que depuis `realisee`) ;
+  un 403 sur le détail d'une action non attribuée au contributeur est rendu comme
+  « Action introuvable » (aucune fuite d'existence par différence de rendu) ; filtres
+  d'URL inconnus/non numériques ignorés (plus de liste vidée par une URL éditée).
+  `actions-qualite.test.jsx` passe à 19 tests (3 nouveaux).
+- **Smoke local connecté** : PostgreSQL jetable + vrai serveur + cookies signés + Chrome
+  headless — parcours admin complet (création → assignation → démarrage → réalisation →
+  contrôle efficacité → clôture → historique → réouverture) et contributeur (action seule,
+  aucune commande admin) — **0 erreur console**, aucun débordement horizontal en 390 px
+  (`scrollWidth == clientWidth == 390`).
+- **Captures** `/tmp/q1b2-*.png` : liste admin, formulaire, fiche en cours, fiche efficacité,
+  historique, liste mobile, fiche mobile — toutes validées visuellement.
+
+### État
+
+**LOCAL / VALIDÉ, non déployé.** Restant : Q1-B3 (UI signalements), Q1-B4 (liaison
+preuves/Drive), Q1-B5 (tableau de bord). Veille / Audits / Preuves / Satisfaction / Accueil
+non modifiés.
 
 ---
 

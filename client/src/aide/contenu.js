@@ -176,6 +176,40 @@ const AIDE = {
       },
     ],
   },
+  actions: {
+    titre: "Actions qualité",
+    sections: [
+      {
+        titre: "Pourquoi une action qualité",
+        lignes: [
+          "Une action qualité consigne une amélioration ou une correction à mener : un constat, un responsable, une échéance, une action prévue.",
+        ],
+      },
+      {
+        titre: "Les champs utiles",
+        lignes: [
+          "Responsable : la personne chargée de mener l'action. Priorité : Basse, Normale, Haute ou Urgente.",
+          "Échéance : la date butoir souhaitée. Action prévue : ce qui sera fait, par qui, comment.",
+          "Une action peut être reliée à une formation, une session (même archivée) et à des indicateurs Qualiopi.",
+        ],
+      },
+      {
+        titre: "La boucle : À faire → Réalisée → Clôturée",
+        lignes: [
+          "À faire : l'action est décidée. En cours : elle est engagée.",
+          "Réalisée : le résultat est consigné, avec la date de mise en œuvre.",
+          "Efficacité à vérifier : le contrôle d'efficacité est renseigné (le « fait » n'est pas encore « efficace »).",
+          "Clôturée : l'action est terminée et son efficacité vérifiée. Une action réalisée n'est pas nécessairement clôturée : son efficacité peut devoir être vérifiée.",
+        ],
+      },
+      {
+        titre: "Indicateurs liés",
+        lignes: [
+          "Relier un indicateur Qualiopi rattache l'action au référentiel. Au moins un indicateur est nécessaire avant la clôture.",
+        ],
+      },
+    ],
+  },
 };
 
 // Route → clé d'aide. Le préfixe le plus long l'emporte (les onglets d'une
@@ -187,6 +221,7 @@ const CLES = [
   ["/preuves", "preuves"],
   ["/veille", "veille"],
   ["/audits", "audits"],
+  ["/actions-qualite", "actions"],
   ["/formations", "formations"],
   ["/modeles", "modeles"],
   ["/prescripteurs", "prescripteurs"],

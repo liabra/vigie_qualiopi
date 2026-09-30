@@ -68,6 +68,28 @@ export function routesParDefaut(role) {
     "GET /api/audits": { audits: [] },
     "GET /api/drive/status": { configured: true, connected: true, lectureSeule: true, compte: "drive@exemple.fr" },
     "GET /api/import/dernier": { import: null },
+    "GET /api/utilisateurs": {
+      utilisateurs: [
+        { id: 1, nom: "Mme Stark", email: "admin@exemple.fr", role: "admin" },
+        { id: 2, nom: "Tukui", email: "tukui@exemple.fr", role: "contributeur" },
+      ],
+    },
+    "GET /api/actions-qualite": { actions: [], total: 0 },
+    "GET /api/actions-qualite/1": {
+      action: {
+        id: 1, reference: "AQ-2026-001", titre: "Relancer les convocations", constat: "Retard constaté",
+        origine: "manuel", priorite: "haute", statut: "en_cours", responsable_id: 2, responsable_nom: "Tukui",
+        cree_par_nom: "Mme Stark", echeance: "2026-10-15", action_prevue: "Relancer par mail",
+        date_mise_en_oeuvre: null, resultat: null, controle_efficacite: null, date_controle_efficacite: null,
+        date_cloture: null, cloture_par_nom: null, signalement_id: null, formation_id: null, session_id: null,
+        indicateurs: [],
+      },
+      historique: [
+        { id: 1, evenement: "creation", champ: "statut", ancienne_valeur: null, nouvelle_valeur: "a_faire", par: 1, acteur_nom: "Mme Stark", cree_le: "2026-09-30T09:00:00Z" },
+        { id: 2, evenement: "demarrer", champ: "statut", ancienne_valeur: "a_faire", nouvelle_valeur: "en_cours", par: 2, acteur_nom: "Tukui", cree_le: "2026-09-30T10:00:00Z" },
+      ],
+    },
+    "GET /api/sessions?etat=archivees": { sessions: [], total: 0 },
     "POST /auth/logout": { ok: true },
     "GET /api/sessions/999": [404, { error: "Session introuvable." }],
     "GET /api/sessions/abc": [400, { error: "Identifiant de session invalide." }],

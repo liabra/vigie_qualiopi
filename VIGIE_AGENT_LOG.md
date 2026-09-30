@@ -2491,3 +2491,62 @@ suppression de responsable, historique sans donnée réclamant).
 ### État
 
 **Un commit local, AUCUN push.** Reste : l'UI Actions qualité (Q1-B2 proprement dit).
+
+---
+
+## 2026-09-30 — Q1-B2 : UI Actions qualité — LOCAL / VALIDÉ (non déployé)
+
+Interface de pilotage des actions d'amélioration, en lecture sur Q1-B1 + Q1-B2A.
+**Deux commits locaux, AUCUN push, AUCUN déploiement.**
+
+### Fichiers
+
+- **Nouveaux** : `client/src/qualite/format.js` (module pur : libellés, compteurs, segments,
+  filtres, retard, décodage d'historique), `client/src/qualite/FormulaireAction.jsx` (drawer
+  création/modification, origine toujours **manuelle** — le lien signalement attend Q1-B3),
+  `client/src/qualite/ActionsListe.jsx` (liste + compteurs + filtres URL),
+  `client/src/qualite/ActionFiche.jsx` (détail + transitions + historique + dialogues),
+  `client/src/qualite/qualite.css`, `client/test/actions-qualite.test.jsx` (19 tests).
+- **Modifiés** : `client/src/App.jsx` (routes + `ActionPage` à identifiant numérique),
+  `client/src/navigation.js` (entrée « Actions qualité »), `client/src/aide/contenu.js`,
+  `client/src/main.jsx` (import CSS), `client/test/outils.jsx` (routes mockées),
+  `client/test/navigation.test.js` + `client/test/routes.test.jsx` (listes de navigation).
+
+### Comportements
+
+- **Liste** : compteurs par rôle (admin : Ouvertes / En retard / Efficacité à vérifier /
+  Clôturées ; contributeur : Mes actions ouvertes / En retard / À réaliser / Efficacité à
+  vérifier), segments Actives/Clôturées/Annulées/Toutes, filtres dans l'URL (statut, priorité,
+  origine, indicateur, session, responsable, recherche), « Réinitialiser les filtres ».
+- **Formulaire** : titre obligatoire ; priorité, responsable (admin, actifs), échéance,
+  constat, action prévue ; **sessions archivées sélectionnables** (une action qualité peut être
+  postérieure à la formation) avec formation dérivée ; indicateurs à cocher (sélecteur groupé).
+- **Fiche** : badges, contexte (session archivée signalée), traitement, efficacité, clôture,
+  historique append-only lisible (`decrireEvenement`, auteur + avant → après).
+- **Transitions admin** : a_faire → Démarrer ; en_cours → Marquer réalisée / Modifier /
+  Annuler ; realisee → Contrôler l'efficacité ; efficacite_a_verifier → Compléter / Clôturer ;
+  cloturee → Réouvrir. Clôture exige ≥ 1 indicateur.
+- **Contributeur** : voit **ses actions seulement**, peut Démarrer / Marquer réalisée,
+  aucune commande admin, aucune donnée réclamant / signalement source (vérifié en smoke).
+
+### Validation
+
+- `npm test` : serveur **441/441**, client **165/165** (146 + 19), build Vite OK,
+  `git diff --check` OK.
+- **Revue Q1-B2-R** (30/09) : « Compléter le contrôle » retiré (409 systématique depuis
+  `efficacite_a_verifier`) ; 403 contributeur sur action non assignée rendu « Action
+  introuvable » (pas de fuite d'existence) ; filtres d'URL inconnus/non numériques ignorés.
+  `actions-qualite.test.jsx` passe à 19 tests (3 nouveaux).
+- **Smoke local connecté** (PostgreSQL jetable + vrai serveur + cookies signés + Chrome
+  headless) : parcours admin complet (création → assignation → démarrage → réalisation →
+  contrôle efficacité → clôture → historique → réouverture) et contributeur (action seule,
+  aucune commande admin) — **0 erreur console** des deux côtés ; mobile 390 px sans
+  débordement horizontal (`scrollWidth == clientWidth == 390`).
+- **Captures** `/tmp/q1b2-*.png` (liste, formulaire, fiche en cours, fiche efficacité,
+  historique, liste mobile, fiche mobile) — validées visuellement.
+
+### État
+
+**LOCAL / VALIDÉ, non déployé.** Deux commits locaux (Q1-B2A `a829264` + Q1-B2 UI).
+Restant : Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive), Q1-B5 (tableau de bord).
+Veille / Audits / Preuves / Satisfaction / Accueil **non modifiés**.

@@ -8,14 +8,14 @@ const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) =>
 
 test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
   assert.deepEqual(liens("admin"), [
-    "/accueil", "/sessions", "/formations", "/indicateurs", "/preuves", "/veille", "/audits",
+    "/accueil", "/sessions", "/formations", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite",
     "/modeles", "/prescripteurs", "/versions", "/parametres/google",
   ]);
   assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));
 });
 
 test("contributeur : aucune entrée d'administration, aucun groupe Paramètres", () => {
-  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/indicateurs", "/preuves", "/veille", "/audits"]);
+  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite"]);
   assert.ok(!navigationPour("contributeur").some((g) => g.titre === "Paramètres"));
 });
 

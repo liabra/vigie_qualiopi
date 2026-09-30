@@ -2550,3 +2550,36 @@ Interface de pilotage des actions d'amélioration, en lecture sur Q1-B1 + Q1-B2A
 **LOCAL / VALIDÉ, non déployé.** Deux commits locaux (Q1-B2A `a829264` + Q1-B2 UI).
 Restant : Q1-B3 (UI signalements), Q1-B4 (liaison preuves/Drive), Q1-B5 (tableau de bord).
 Veille / Audits / Preuves / Satisfaction / Accueil **non modifiés**.
+
+---
+
+## 2026-09-30 — Sécurité : rotation du secret PostgreSQL + Reference Variable Railway
+
+Incident : une URL PostgreSQL (contenant le mot de passe de la base Railway) avait été affichée
+en clair dans une commande terminal lors du déploiement Q1-B2. Secret considéré compromis ⇒ rotation.
+
+### Actions (sans modification de code, sans migration)
+
+- `vigie_qualiopi.DATABASE_URL` : remplacée par une **Reference Variable Railway** vers
+  `Postgres-Vlqb.DATABASE_URL`. Vérifiée via `variables(..., unrendered: true)` — les lectures
+  normales (`railway variables --json`) résolvent la référence et ne permettent pas de distinguer
+  directe/référence.
+- **Mot de passe PostgreSQL régénéré** le 30/09/2026 (rotation côté dashboard Railway).
+- **Vigie redéployé** pour charger la `DATABASE_URL` actualisée via la référence.
+
+### Validation finale
+
+- deployment final : `dd758b16-16e0-40f4-93f2-6327d81cdb3f` — **SUCCESS**
+- commit applicatif inchangé : **`3558ef1`**
+- `GET /api/health` : **HTTP 200** `{"ok":true}`
+- connexion PostgreSQL validée (logs « Migrations : base déjà à jour », aucune erreur
+  d'authentification ; lecture seule DB OK)
+- migrations : **001 → 015**, aucune 016
+- données existantes accessibles ; `preuves.indicateur_id` toujours `NOT NULL`
+- arrêt gracieux de l'ancien conteneur confirmé (SIGTERM → serveur HTTP fermé → pool fermé)
+
+### Règle opérationnelle
+
+> Ne jamais copier ni afficher `DATABASE_URL`, `PGPASSWORD` ou un mot de passe PostgreSQL dans les
+> rapports agents. Pour déterminer si `DATABASE_URL` est une Reference Variable Railway, utiliser
+> `variables(..., unrendered: true)` et n'afficher que le type et la source de la référence.

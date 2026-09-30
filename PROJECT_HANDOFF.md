@@ -2312,6 +2312,7 @@ L4) traités ; point 3 tranché en L10 (lecture autorisée au contributeur) ; po
 - Ne jamais considérer un bouton caché comme une protection de droit.
 - Ne jamais travailler directement contre la base Railway lorsqu'une base jetable peut être utilisée.
 - Les tests hors dépôt sont utiles pour exploration, mais les protections essentielles doivent finir dans `npm test`.
+- Ne jamais copier ni afficher `DATABASE_URL`, `PGPASSWORD` ou un mot de passe PostgreSQL dans les rapports agents ; pour déterminer si `DATABASE_URL` est une Reference Variable Railway, utiliser `variables(..., unrendered: true)` et n'afficher que le type et la source de la référence.
 
 ---
 
@@ -2336,6 +2337,12 @@ Après le micro-lot « Tutoriel — navigation guidée » (§14 ter) :
 
 - `npm test` : **395/395 serveur + 146/146 client**
 - déploiement Railway : SUCCESS (commit `6ca742a`), `/api/health` 200
+
+Après la rotation du secret PostgreSQL (30/09/2026) :
+
+- `vigie_qualiopi.DATABASE_URL` est une **Reference Variable Railway** vers `Postgres-Vlqb.DATABASE_URL` ;
+- mot de passe PostgreSQL régénéré, Vigie redéployé : `dd758b16-16e0-40f4-93f2-6327d81cdb3f` (SUCCESS, commit applicatif inchangé `3558ef1`) ;
+- `/api/health` 200, connexion PostgreSQL validée, migrations 001→015, données accessibles.
 
 Ces valeurs sont des **repères de passation**. Toujours les revérifier au début d'un nouveau
 chantier.

@@ -8,7 +8,7 @@ const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) =>
 
 test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
   assert.deepEqual(liens("admin"), [
-    "/accueil", "/sessions", "/formations", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite",
+    "/accueil", "/sessions", "/formations", "/indicateurs", "/preuves", "/veille", "/audits", "/signalements-qualite", "/actions-qualite",
     "/modeles", "/prescripteurs", "/versions", "/parametres/google",
   ]);
   assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));

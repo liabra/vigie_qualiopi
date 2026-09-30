@@ -75,6 +75,7 @@ export function routesParDefaut(role) {
       ],
     },
     "GET /api/actions-qualite": { actions: [], total: 0 },
+    "GET /api/signalements": { signalements: [], total: 0 },
     "GET /api/actions-qualite/1": {
       action: {
         id: 1, reference: "AQ-2026-001", titre: "Relancer les convocations", constat: "Retard constaté",

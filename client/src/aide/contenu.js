@@ -176,6 +176,29 @@ const AIDE = {
       },
     ],
   },
+  signalements: {
+    titre: "Signalements",
+    sections: [
+      {
+        titre: "Réclamations, incidents et non-conformités",
+        lignes: [
+          "Vigie centralise les réclamations, les incidents et les non-conformités, et en suit le traitement qualité.",
+        ],
+      },
+      {
+        titre: "Les actions correctives",
+        lignes: [
+          "Les actions correctives issues d'un signalement sont pilotées dans « Actions qualité ».",
+        ],
+      },
+      {
+        titre: "Confidentialité",
+        lignes: [
+          "Les données du réclamant (nom, e-mail, entreprise) restent réservées aux administrateurs.",
+        ],
+      },
+    ],
+  },
   actions: {
     titre: "Actions qualité",
     sections: [
@@ -221,6 +244,7 @@ const CLES = [
   ["/preuves", "preuves"],
   ["/veille", "veille"],
   ["/audits", "audits"],
+  ["/signalements-qualite", "signalements"],
   ["/actions-qualite", "actions"],
   ["/formations", "formations"],
   ["/modeles", "modeles"],

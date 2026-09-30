@@ -25,6 +25,7 @@ import { VeilleFiche } from "./veille/VeilleFiche.jsx";
 import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
 import { ActionsListe } from "./qualite/ActionsListe.jsx";
 import { ActionFiche } from "./qualite/ActionFiche.jsx";
+import { SignalementsListe, SignalementBientot } from "./qualite/SignalementsListe.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -173,6 +174,8 @@ export default function App() {
         <Route path="audits" element={<EcranExistant><AuditsHistory admin={isAdmin} /></EcranExistant>} />
         <Route path="actions-qualite" element={<ActionsListe admin={isAdmin} />} />
         <Route path="actions-qualite/:actionId" element={<ActionPage admin={isAdmin} />} />
+        <Route path="signalements-qualite" element={admin(<SignalementsListe />)} />
+        <Route path="signalements-qualite/:signalementId" element={admin(<SignalementBientot />)} />
 
         <Route path="formations" element={admin(<FormationsPage />)} />
         <Route path="modeles" element={admin(<ModelesPage />)} />

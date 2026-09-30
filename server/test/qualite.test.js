@@ -20,7 +20,7 @@ import { seedReferentiel } from "../src/seed.js";
 import { createApp } from "../src/app.js";
 import { encode } from "../src/session.js";
 
-const PORT = 55446; // distinct de transversal (55445)
+const PORT = 55447; // distinct de transversal (55445, et 55446 = son serveur réel PORT + 1)
 const DATA = path.join(os.tmpdir(), "vq-q1-" + process.pid);
 const DIR_MIGRATIONS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../db/migrations");
 
@@ -521,4 +521,296 @@ test("historique : acteur lisible et aucune donnée réclamant", async () => {
   assert.equal(creation.acteur_nom, "Mme Stark", "auteur lisible");
   const brut = JSON.stringify(detail.corps.historique);
   assert.ok(!brut.includes("Jane Roe"), "aucune donnée réclamant dans l'historique");
+});
+
+// ── Q1-B3-B2-API : PATCH partiel, historique et noms du détail ─────
+// Absence d'un champ de collection = collection INCHANGÉE ; liste vide
+// explicite = vidage volontaire.
+
+async function deuxIndicateurs() {
+  const { rows } = await pool.query("SELECT id FROM indicateurs ORDER BY id LIMIT 2");
+  return rows.map((r) => r.id);
+}
+const causesDe = async (id) =>
+  (await pool.query("SELECT cause FROM signalements_qualite_causes WHERE signalement_id = $1 ORDER BY cause", [id])).rows.map((r) => r.cause);
+const indicateursDe = async (table, colonne, id) =>
+  (await pool.query(`SELECT indicateur_id FROM ${table} WHERE ${colonne} = $1 ORDER BY indicateur_id`, [id])).rows.map((r) => r.indicateur_id);
+const evenementsDe = async (type, id) =>
+  (await pool.query("SELECT evenement, champ FROM historique_qualite WHERE entite_type = $1 AND entite_id = $2 ORDER BY id", [type, id])).rows
+    .map((r) => `${r.evenement}:${r.champ}`);
+
+test("PATCH partiel signalement : causes, libellé « autre » et indicateurs conservés", async () => {
+  const [i1, i2] = await deuxIndicateurs();
+  const s = (await creerSignalement({
+    causes: ["organisation", "autre"], cause_autre_libelle: "salle indisponible",
+    indicateur_ids: [i1, i2], responsable_id: contribId,
+  })).corps.signalement;
+  const avantEvts = await evenementsDe("signalement", s.id);
+
+  const patch = await api("PATCH", `/api/signalements/${s.id}`, { responsable_id: adminId }, A());
+  assert.equal(patch.statut, 200);
+  assert.equal(patch.corps.signalement.responsable_id, adminId, "responsable modifié");
+  assert.deepEqual(await causesDe(s.id), ["autre", "organisation"], "causes strictement conservées");
+  assert.equal(patch.corps.signalement.cause_autre_libelle, "salle indisponible", "libellé « autre » conservé");
+  assert.deepEqual(await indicateursDe("signalements_qualite_indicateurs", "signalement_id", s.id), [i1, i2].sort((a, b) => a - b), "indicateurs conservés");
+
+  const nouveaux = (await evenementsDe("signalement", s.id)).slice(avantEvts.length);
+  assert.deepEqual(nouveaux, ["modification:responsable_id"], "seul le responsable est journalisé (ni retrait d'indicateur, ni causes)");
+});
+
+test("PATCH explicite causes=[] vide les causes et purge le libellé « autre »", async () => {
+  const s = (await creerSignalement({ causes: ["pedagogie", "autre"], cause_autre_libelle: "horaires" })).corps.signalement;
+  const patch = await api("PATCH", `/api/signalements/${s.id}`, { causes: [] }, A());
+  assert.equal(patch.statut, 200);
+  assert.deepEqual(await causesDe(s.id), []);
+  assert.equal(patch.corps.signalement.cause_autre_libelle, null);
+});
+
+test("PATCH explicite indicateur_ids=[] vide les indicateurs (retrait journalisé)", async () => {
+  const [i1] = await deuxIndicateurs();
+  const s = (await creerSignalement({ indicateur_ids: [i1] })).corps.signalement;
+  const patch = await api("PATCH", `/api/signalements/${s.id}`, { indicateur_ids: [] }, A());
+  assert.equal(patch.statut, 200);
+  assert.deepEqual(await indicateursDe("signalements_qualite_indicateurs", "signalement_id", s.id), []);
+  assert.ok((await evenementsDe("signalement", s.id)).includes("retrait_indicateur:indicateur_id"));
+});
+
+test("« autre » : explicitement retiré ⇒ libellé purgé ; renvoyé sans libellé ⇒ 400, rien n'est modifié", async () => {
+  const s = (await creerSignalement({ causes: ["autre", "logistique"], cause_autre_libelle: "transport" })).corps.signalement;
+  const refus = await api("PATCH", `/api/signalements/${s.id}`, { causes: ["autre"] }, A());
+  assert.equal(refus.statut, 400, "validation existante conservée");
+  assert.deepEqual(await causesDe(s.id), ["autre", "logistique"], "refus : causes intactes");
+  const retrait = await api("PATCH", `/api/signalements/${s.id}`, { causes: ["logistique"] }, A());
+  assert.equal(retrait.statut, 200);
+  assert.deepEqual(await causesDe(s.id), ["logistique"]);
+  assert.equal(retrait.corps.signalement.cause_autre_libelle, null);
+});
+
+test("PATCH partiel action : priorité modifiée, indicateurs conservés", async () => {
+  const [i1, i2] = await deuxIndicateurs();
+  const a = (await creerAction({ indicateur_ids: [i1, i2] })).corps.action;
+  const patch = await api("PATCH", `/api/actions-qualite/${a.id}`, { priorite: "haute" }, A());
+  assert.equal(patch.statut, 200);
+  assert.equal(patch.corps.action.priorite, "haute");
+  assert.deepEqual(await indicateursDe("actions_qualite_indicateurs", "action_id", a.id), [i1, i2].sort((x, y) => x - y), "indicateurs conservés");
+  assert.ok(!(await evenementsDe("action", a.id)).includes("retrait_indicateur:indicateur_id"), "aucun faux retrait");
+});
+
+test("PATCH explicite action indicateur_ids=[] vide les indicateurs", async () => {
+  const [i1] = await deuxIndicateurs();
+  const a = (await creerAction({ indicateur_ids: [i1] })).corps.action;
+  assert.equal((await api("PATCH", `/api/actions-qualite/${a.id}`, { indicateur_ids: [] }, A())).statut, 200);
+  assert.deepEqual(await indicateursDe("actions_qualite_indicateurs", "action_id", a.id), []);
+});
+
+test("création sans cause : aucun faux événement « modification des causes »", async () => {
+  const s = (await creerSignalement()).corps.signalement;
+  const evts = await evenementsDe("signalement", s.id);
+  assert.deepEqual(evts, ["creation:statut"]);
+  const avecCauses = (await creerSignalement({ causes: ["communication"] })).corps.signalement;
+  assert.ok((await evenementsDe("signalement", avecCauses.id)).includes("creation:statut"));
+  assert.deepEqual(await causesDe(avecCauses.id), ["communication"], "création avec causes inchangée");
+});
+
+test("GET détail : historique chronologique avec acteur lisible", async () => {
+  const [i1] = await deuxIndicateurs();
+  const s = (await creerSignalement()).corps.signalement;
+  await api("PATCH", `/api/signalements/${s.id}/qualifier`, {}, A());
+  await api("PATCH", `/api/signalements/${s.id}`, { indicateur_ids: [i1] }, A());
+  await api("PATCH", `/api/signalements/${s.id}/traiter`, {}, A());
+  const d = await api("GET", `/api/signalements/${s.id}`, undefined, A());
+  assert.equal(d.statut, 200);
+  assert.deepEqual(Object.keys(d.corps).sort(), ["actions", "historique", "signalement"]);
+  const h = d.corps.historique;
+  assert.deepEqual(h.map((e) => e.evenement), ["creation", "qualifier", "rattachement_indicateur", "traiter"], "ordre chronologique");
+  assert.ok(h.every((e, i) => i === 0 || e.id > h[i - 1].id), "trié par id croissant");
+  assert.ok(h.every((e) => e.acteur_nom === "Mme Stark" && e.par === adminId), "acteur lisible et identifiant conservé");
+  const q = h.find((e) => e.evenement === "qualifier");
+  assert.equal(q.ancienne_valeur, "ouverte");
+  assert.equal(q.nouvelle_valeur, "qualifiee");
+  assert.equal(h.find((e) => e.evenement === "rattachement_indicateur").nouvelle_valeur, String(i1), "identifiant d'indicateur conservé tel quel");
+  assert.ok(h.every((e) => e.cree_le), "horodatage présent");
+});
+
+test("GET détail : noms du responsable, de l'auteur, de la clôture et de l'annulation", async () => {
+  const [i1] = await deuxIndicateurs();
+  const s = (await creerSignalement({ responsable_id: contribId, indicateur_ids: [i1] })).corps.signalement;
+  let d = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.signalement;
+  assert.equal(d.responsable_id, contribId);
+  assert.equal(d.responsable_nom, "Tukui");
+  assert.equal(d.cree_par, adminId);
+  assert.equal(d.cree_par_nom, "Mme Stark");
+  assert.equal(d.cloture_par_nom, null);
+  assert.equal(d.annulee_par_nom, null);
+  for (const t of ["qualifier", "traiter", "resoudre", "cloturer"]) await api("PATCH", `/api/signalements/${s.id}/${t}`, {}, A());
+  d = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.signalement;
+  assert.equal(d.cloture_par_nom, "Mme Stark");
+
+  const s2 = (await creerSignalement()).corps.signalement;
+  await api("PATCH", `/api/signalements/${s2.id}/annuler`, {}, A());
+  const d2 = (await api("GET", `/api/signalements/${s2.id}`, undefined, A())).corps.signalement;
+  assert.equal(d2.annulee_par, adminId);
+  assert.equal(d2.annulee_par_nom, "Mme Stark");
+  assert.equal(d2.responsable_nom, null, "sans responsable : null");
+});
+
+test("utilisateur désactivé : son nom reste visible dans le détail et l'historique", async () => {
+  const { rows: [ancien] } = await pool.query("INSERT INTO utilisateurs (email, nom, role) VALUES ('ancien@q1.local','Mme Ancienne','admin') RETURNING id");
+  const cAncien = () => ({ cookie: cookie(ancien.id) });
+  const s = (await api("POST", "/api/signalements", { type: "incident", objet: "Panne", responsable_id: ancien.id }, cAncien())).corps.signalement;
+  await api("PATCH", `/api/signalements/${s.id}/qualifier`, {}, cAncien());
+  await pool.query("UPDATE utilisateurs SET actif = false WHERE id = $1", [ancien.id]);
+
+  const d = await api("GET", `/api/signalements/${s.id}`, undefined, A());
+  assert.equal(d.corps.signalement.responsable_nom, "Mme Ancienne");
+  assert.equal(d.corps.signalement.cree_par_nom, "Mme Ancienne");
+  assert.ok(d.corps.historique.length >= 2 && d.corps.historique.every((e) => e.acteur_nom === "Mme Ancienne"));
+  const actifs = (await api("GET", "/api/utilisateurs", undefined, A())).corps.utilisateurs;
+  assert.ok(!actifs.some((u) => u.id === ancien.id), "/api/utilisateurs reste limité aux actifs");
+});
+
+test("historique du détail : aucun contenu sensible recopié", async () => {
+  const sensibles = {
+    description: "Description très-confidentielle-A", reclamant_nom: "Réclamant-Secret-B",
+    reclamant_email: "secret-c@exemple.fr", reclamant_entreprise: "Entreprise-Secrète-D",
+    personne_concernee_libelle: "Personne-Secrète-E",
+  };
+  const s = (await creerSignalement(sensibles)).corps.signalement;
+  await api("PATCH", `/api/signalements/${s.id}`, {
+    description: "Nouvelle-description-F", reclamant_nom: "Réclamant-G", reclamant_email: "g@exemple.fr",
+    reclamant_entreprise: "Entreprise-H", personne_concernee_libelle: "Personne-I", synthese_reponse: "Réponse-J",
+  }, A());
+  for (const t of ["qualifier", "traiter"]) await api("PATCH", `/api/signalements/${s.id}/${t}`, {}, A());
+  await api("PATCH", `/api/signalements/${s.id}/resoudre`, { synthese_reponse: "Réponse-finale-K" }, A());
+  const h = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.historique;
+  const brut = JSON.stringify(h);
+  for (const v of [...Object.values(sensibles), "Nouvelle-description-F", "Réclamant-G", "g@exemple.fr", "Entreprise-H", "Personne-I", "Réponse-J", "Réponse-finale-K"]) {
+    assert.ok(!brut.includes(v), `contenu absent : ${v}`);
+  }
+  const modifs = h.filter((e) => e.evenement === "modification");
+  for (const champ of ["description", "reclamant_nom", "reclamant_email", "reclamant_entreprise", "personne_concernee_libelle", "synthese_reponse"]) {
+    const e = modifs.find((m) => m.champ === champ);
+    assert.ok(e, `modification de ${champ} tracée`);
+    assert.equal(e.ancienne_valeur, null);
+    assert.equal(e.nouvelle_valeur, null);
+  }
+});
+
+test("contributeur : détail signalement (avec historique) toujours refusé", async () => {
+  const s = (await creerSignalement()).corps.signalement;
+  const r = await api("GET", `/api/signalements/${s.id}`, undefined, C());
+  assert.equal(r.statut, 403);
+  assert.ok(!JSON.stringify(r.corps).includes("historique"));
+});
+
+// ── Q1-B3-B2-API-FINAL : invariants avant la fiche B2 ─────────────
+
+const etatSignalement = async (id) => {
+  const { rows: [s] } = await pool.query("SELECT statut, date_resolution, cause_autre_libelle, responsable_id, description FROM signalements_qualite WHERE id = $1", [id]);
+  return { ...s, causes: await causesDe(id), indicateurs: await indicateursDe("signalements_qualite_indicateurs", "signalement_id", id) };
+};
+
+test("date_resolution : refusée par le PATCH général (400), rien n'est modifié", async () => {
+  const s = (await creerSignalement({ description: "Avant" })).corps.signalement;
+  await api("PATCH", `/api/signalements/${s.id}/qualifier`, {}, A());
+  await api("PATCH", `/api/signalements/${s.id}/traiter`, {}, A());
+  const avant = await etatSignalement(s.id);
+  const r = await api("PATCH", `/api/signalements/${s.id}`, { date_resolution: "2026-09-30" }, A());
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /Résoudre/);
+  const combine = await api("PATCH", `/api/signalements/${s.id}`, { description: "Après", date_resolution: "2026-09-30" }, A());
+  assert.equal(combine.statut, 400, "même combiné à un champ valide");
+  assert.deepEqual(await etatSignalement(s.id), avant, "statut et données inchangés");
+  assert.equal(avant.statut, "en_traitement");
+  assert.equal(avant.date_resolution, null);
+});
+
+test("date_resolution : toujours renseignée par /resoudre ; réponse éditable avant résolution", async () => {
+  const s = (await creerSignalement()).corps.signalement;
+  const rep = await api("PATCH", `/api/signalements/${s.id}`, { synthese_reponse: "Réponse", date_reponse: "2026-09-29" }, A());
+  assert.equal(rep.statut, 200, "réponse et date de réponse éditables avant résolution");
+  for (const t of ["qualifier", "traiter"]) await api("PATCH", `/api/signalements/${s.id}/${t}`, {}, A());
+  const r = await api("PATCH", `/api/signalements/${s.id}/resoudre`, { date_resolution: "2026-09-30" }, A());
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.signalement.statut, "resolue");
+  assert.equal(String(r.corps.signalement.date_resolution).slice(0, 10), "2026-09-30");
+});
+
+test("« autre » : libellé vidé alors que « autre » reste présent ⇒ 400, rien n'est modifié", async () => {
+  const s = (await creerSignalement({ causes: ["autre"], cause_autre_libelle: "Salle trop petite" })).corps.signalement;
+  for (const vide of ["", null, "   "]) {
+    const r = await api("PATCH", `/api/signalements/${s.id}`, { cause_autre_libelle: vide }, A());
+    assert.equal(r.statut, 400, `libellé ${JSON.stringify(vide)} refusé`);
+  }
+  const combine = await api("PATCH", `/api/signalements/${s.id}`, { description: "X", cause_autre_libelle: "" }, A());
+  assert.equal(combine.statut, 400, "aucune modification partielle");
+  const e = await etatSignalement(s.id);
+  assert.deepEqual(e.causes, ["autre"]);
+  assert.equal(e.cause_autre_libelle, "Salle trop petite");
+  assert.equal(e.description, null, "le champ valide du même PATCH n'est pas appliqué");
+});
+
+test("« autre » : libellé envoyé sans cause « autre » ⇒ 400, aucun libellé orphelin", async () => {
+  const s = (await creerSignalement({ causes: ["organisation"] })).corps.signalement;
+  const r = await api("PATCH", `/api/signalements/${s.id}`, { cause_autre_libelle: "Texte orphelin" }, A());
+  assert.equal(r.statut, 400);
+  const retraitEtLibelle = await api("PATCH", `/api/signalements/${s.id}`, { causes: ["pedagogie"], cause_autre_libelle: "Texte orphelin" }, A());
+  assert.equal(retraitEtLibelle.statut, 400, "liste finale sans « autre » + libellé : incohérent");
+  const e = await etatSignalement(s.id);
+  assert.deepEqual(e.causes, ["organisation"]);
+  assert.equal(e.cause_autre_libelle, null);
+  const creation = (await creerSignalement({ causes: ["logistique"], cause_autre_libelle: "Orphelin à la création" })).corps.signalement;
+  assert.equal((await etatSignalement(creation.id)).cause_autre_libelle, null, "création : jamais de libellé orphelin persisté");
+});
+
+test("« autre » : règles effectives (inchangé, modification du libellé, ajout, retrait)", async () => {
+  const s = (await creerSignalement({ causes: ["autre"], cause_autre_libelle: "Salle trop petite" })).corps.signalement;
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { responsable_id: contribId }, A())).statut, 200);
+  assert.equal((await etatSignalement(s.id)).cause_autre_libelle, "Salle trop petite", "A. rien d'autre ne change");
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { cause_autre_libelle: "Salle bruyante" }, A())).statut, 200);
+  assert.equal((await etatSignalement(s.id)).cause_autre_libelle, "Salle bruyante", "libellé modifiable s'il reste non vide");
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { causes: ["organisation"] }, A())).statut, 200);
+  let e = await etatSignalement(s.id);
+  assert.deepEqual(e.causes, ["organisation"]);
+  assert.equal(e.cause_autre_libelle, null, "D. retrait de « autre » ⇒ libellé purgé");
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { causes: ["organisation", "autre"] }, A())).statut, 400, "E. ajout sans libellé refusé");
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { causes: ["organisation", "autre"], cause_autre_libelle: "Matériel" }, A())).statut, 200);
+  e = await etatSignalement(s.id);
+  assert.deepEqual(e.causes, ["autre", "organisation"]);
+  assert.equal(e.cause_autre_libelle, "Matériel");
+});
+
+test("historique de création : « creation » en premier, puis rattachements initiaux", async () => {
+  const [i1, i2] = await deuxIndicateurs();
+  const s = (await creerSignalement({ causes: ["communication"], indicateur_ids: [i1, i2] })).corps.signalement;
+  const h = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.historique;
+  assert.equal(h[0].evenement, "creation", "premier événement");
+  const suite = h.slice(1).map((e) => `${e.evenement}:${e.champ}`);
+  assert.equal(suite.filter((x) => x === "rattachement_indicateur:indicateur_id").length, 2, "indicateurs initiaux tracés");
+  assert.ok(suite.includes("modification:causes"), "causes initiales tracées");
+  const sansCause = (await creerSignalement()).corps.signalement;
+  assert.deepEqual((await api("GET", `/api/signalements/${sansCause.id}`, undefined, A())).corps.historique.map((e) => e.evenement), ["creation"]);
+});
+
+test("date_resolution : refusée à la création (400), aucun signalement créé", async () => {
+  const { rows: [{ n: avant }] } = await pool.query("SELECT count(*)::int AS n FROM signalements_qualite");
+  const { rows: [{ n: histAvant }] } = await pool.query("SELECT count(*)::int AS n FROM historique_qualite");
+  const r = await creerSignalement({ date_constat: "2026-09-28", date_resolution: "2026-09-30" });
+  assert.equal(r.statut, 400);
+  assert.equal(r.corps.error, "La date de résolution se renseigne uniquement avec l'action « Résoudre ».");
+  const { rows: [{ n: apres }] } = await pool.query("SELECT count(*)::int AS n FROM signalements_qualite");
+  const { rows: [{ n: histApres }] } = await pool.query("SELECT count(*)::int AS n FROM historique_qualite");
+  assert.equal(apres, avant, "aucun signalement créé");
+  assert.equal(histApres, histAvant, "aucune écriture d'historique");
+});
+
+test("date_resolution : invariant complet (POST 400, PATCH 400, /resoudre 200)", async () => {
+  assert.equal((await creerSignalement({ date_resolution: "2026-09-30" })).statut, 400, "POST");
+  const s = (await creerSignalement()).corps.signalement;
+  for (const t of ["qualifier", "traiter"]) await api("PATCH", `/api/signalements/${s.id}/${t}`, {}, A());
+  assert.equal((await api("PATCH", `/api/signalements/${s.id}`, { date_resolution: "2026-09-30" }, A())).statut, 400, "PATCH général");
+  const r = await api("PATCH", `/api/signalements/${s.id}/resoudre`, { date_resolution: "2026-09-30" }, A());
+  assert.equal(r.statut, 200, "/resoudre");
+  assert.equal(r.corps.signalement.statut, "resolue");
+  assert.equal(String(r.corps.signalement.date_resolution).slice(0, 10), "2026-09-30");
 });

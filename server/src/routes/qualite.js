@@ -141,7 +141,9 @@ async function synchroniserIndicateurs(client, table, colonne, id, ids, entiteTy
 }
 
 async function synchroniserCauses(client, id, causes, par) {
-  if (causes === null) return;
+  if (causes === null) return; // non fourni : causes inchangées
+  const { rows: actuelles } = await client.query("SELECT cause FROM signalements_qualite_causes WHERE signalement_id = $1", [id]);
+  const inchangees = actuelles.length === causes.length && actuelles.every((r) => causes.includes(r.cause));
   await client.query("DELETE FROM signalements_qualite_causes WHERE signalement_id = $1", [id]);
   for (const cause of causes) {
     await client.query("INSERT INTO signalements_qualite_causes (signalement_id, cause) VALUES ($1, $2)", [id, cause]);
@@ -150,7 +152,8 @@ async function synchroniserCauses(client, id, causes, par) {
   if (!causes.includes("autre")) {
     await client.query("UPDATE signalements_qualite SET cause_autre_libelle = NULL WHERE id = $1", [id]);
   }
-  await journaliser(client, { entiteType: "signalement", entiteId: id, evenement: "modification", champ: "causes" }, par);
+  // fix : pas de faux événement quand l'ensemble des causes ne change pas.
+  if (!inchangees) await journaliser(client, { entiteType: "signalement", entiteId: id, evenement: "modification", champ: "causes" }, par);
 }
 
 // ── Filtres de liste (actifs / clôturés / annulés / tous) ─────
@@ -168,8 +171,15 @@ const LIGNES_SIGNALEMENT = `
               WHERE si.signalement_id = s.id), '[]'::json) AS indicateurs,
     COALESCE((SELECT json_agg(c.cause ORDER BY c.cause)
               FROM signalements_qualite_causes c WHERE c.signalement_id = s.id), '[]'::json) AS causes,
-    (SELECT count(*)::int FROM actions_qualite a WHERE a.signalement_id = s.id) AS nb_actions
-  FROM signalements_qualite s`;
+    (SELECT count(*)::int FROM actions_qualite a WHERE a.signalement_id = s.id) AS nb_actions,
+    -- Noms lisibles, conservés même pour un compte désactivé (aucun filtre
+    -- sur « actif ») ; les identifiants restent renvoyés.
+    r.nom AS responsable_nom, cp.nom AS cree_par_nom, cl.nom AS cloture_par_nom, an.nom AS annulee_par_nom
+  FROM signalements_qualite s
+  LEFT JOIN utilisateurs r ON r.id = s.responsable_id
+  LEFT JOIN utilisateurs cp ON cp.id = s.cree_par
+  LEFT JOIN utilisateurs cl ON cl.id = s.cloture_par
+  LEFT JOIN utilisateurs an ON an.id = s.annulee_par`;
 
 // ── Utilisateurs actifs (assignation d'une action) ──────────
 // Admin uniquement : le contributeur n'a aucun accès à la liste des
@@ -209,11 +219,26 @@ router.get("/signalements/:id", requireAdmin, wrap(async (req, res) => {
   const { rows: actions } = await query(
     `SELECT id, reference, titre, statut FROM actions_qualite WHERE signalement_id = $1 ORDER BY id`, [id]
   );
-  res.json({ signalement: s, actions });
+  // Historique append-only du signalement (même forme que pour les actions).
+  // Les champs sensibles n'y sont journalisés que comme FAIT, sans contenu.
+  const { rows: historique } = await query(
+    `SELECT h.id, h.evenement, h.champ, h.ancienne_valeur, h.nouvelle_valeur, h.cree_le, h.par,
+            u.nom AS acteur_nom
+     FROM historique_qualite h
+     LEFT JOIN utilisateurs u ON u.id = h.par
+     WHERE h.entite_type = 'signalement' AND h.entite_id = $1
+     ORDER BY h.id`, [id]
+  );
+  res.json({ signalement: s, actions, historique });
 }));
 
 router.post("/signalements", requireAdmin, wrap(async (req, res) => {
   const corps = req.body || {};
+  // fix : même règle qu'au PATCH général — la date de résolution ne se pose
+  // qu'avec l'action « Résoudre » (refus explicite, rien n'est créé).
+  if (Object.prototype.hasOwnProperty.call(corps, "date_resolution")) {
+    return res.status(400).json({ error: "La date de résolution se renseigne uniquement avec l'action « Résoudre »." });
+  }
   const { champs, erreur } = champsSignalement(corps, {}, { creation: true });
   if (erreur) return res.status(400).json({ error: erreur });
   if (!champs.objet) return res.status(400).json({ error: "Objet obligatoire." });
@@ -244,9 +269,11 @@ router.post("/signalements", requireAdmin, wrap(async (req, res) => {
       `INSERT INTO signalements_qualite (${colonnes.join(", ")}) VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
       valeurs
     );
+    // fix : « creation » journalisée en premier, puis les rattachements initiaux
+    // (même transaction).
+    await journaliser(client, { entiteType: "signalement", entiteId: s.id, evenement: "creation", champ: "statut", nouvelle: s.statut }, req.user.id);
     await synchroniserIndicateurs(client, "signalements_qualite_indicateurs", "signalement_id", s.id, li.ids ?? [], "signalement", req.user.id);
     await synchroniserCauses(client, s.id, causes.causes ?? [], req.user.id);
-    await journaliser(client, { entiteType: "signalement", entiteId: s.id, evenement: "creation", champ: "statut", nouvelle: s.statut }, req.user.id);
     await client.query("COMMIT");
     res.status(201).json({ signalement: s });
   } catch (e) {
@@ -266,6 +293,12 @@ router.patch("/signalements/:id", requireAdmin, wrap(async (req, res) => {
     if (!avant) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Signalement introuvable." }); }
     if (avant.statut === "cloturee") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Un signalement clôturé est modifiable uniquement via les workflows autorisés." }); }
     if (avant.statut === "annulee") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Un signalement annulé n'est plus modifiable." }); }
+    // fix : la date de résolution ne se pose QUE via /resoudre (jamais
+    // ignorée silencieusement : refus explicite).
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "date_resolution")) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "La date de résolution se renseigne uniquement avec l'action « Résoudre »." });
+    }
     const { champs, erreur } = champsSignalement(req.body || {}, avant);
     if (erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: erreur }); }
     const li = lireIndicateurs(req.body || {});
@@ -274,6 +307,18 @@ router.patch("/signalements/:id", requireAdmin, wrap(async (req, res) => {
     if (causes.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: causes.erreur }); }
     if (!Object.keys(champs).length && li.ids === null && causes.causes === null) {
       await client.query("ROLLBACK"); return res.status(400).json({ error: "Rien à modifier." });
+    }
+    // fix : invariant « autre » sur l'état FINAL, vérifié avant toute écriture.
+    // « autre » présent ⇒ libellé non vide ; « autre » absent ⇒ aucun libellé.
+    const causesFinales = causes.causes !== null ? causes.causes
+      : (await client.query("SELECT cause FROM signalements_qualite_causes WHERE signalement_id = $1", [id])).rows.map((r) => r.cause);
+    const libelleEnvoye = Object.prototype.hasOwnProperty.call(champs, "cause_autre_libelle");
+    const libelleFinal = libelleEnvoye ? champs.cause_autre_libelle : avant.cause_autre_libelle;
+    if (causesFinales.includes("autre") && !libelleFinal) {
+      await client.query("ROLLBACK"); return res.status(400).json({ error: "La cause « autre » doit être explicitée." });
+    }
+    if (!causesFinales.includes("autre") && libelleEnvoye && champs.cause_autre_libelle) {
+      await client.query("ROLLBACK"); return res.status(400).json({ error: "Un libellé « autre » n'est possible que si la cause « autre » est retenue." });
     }
     await verifierIndicateurs(client, li.ids ?? []);
     await verifierResponsable(client, champs.responsable_id);
@@ -285,8 +330,9 @@ router.patch("/signalements/:id", requireAdmin, wrap(async (req, res) => {
       await client.query(`UPDATE signalements_qualite SET ${sets.join(", ")} WHERE id = $1`, params);
       await journaliserChamps(client, "signalement", id, avant, champs, req.user.id);
     }
-    await synchroniserIndicateurs(client, "signalements_qualite_indicateurs", "signalement_id", id, li.ids ?? [], "signalement", req.user.id);
-    await synchroniserCauses(client, id, causes.causes ?? [], req.user.id);
+    // fix : champ absent (null) = collection inchangée ; [] explicite = vidage.
+    await synchroniserIndicateurs(client, "signalements_qualite_indicateurs", "signalement_id", id, li.ids, "signalement", req.user.id);
+    await synchroniserCauses(client, id, causes.causes, req.user.id);
     await client.query("COMMIT");
     const { rows: [s] } = await query(`${LIGNES_SIGNALEMENT} WHERE s.id = $1`, [id]);
     res.json({ signalement: s });
@@ -489,7 +535,8 @@ router.patch("/actions-qualite/:id", requireAdmin, wrap(async (req, res) => {
       await client.query(`UPDATE actions_qualite SET ${sets.join(", ")} WHERE id = $1`, params);
       await journaliserChamps(client, "action", id, avant, champs, req.user.id);
     }
-    await synchroniserIndicateurs(client, "actions_qualite_indicateurs", "action_id", id, li.ids ?? [], "action", req.user.id);
+    // fix : champ absent (null) = indicateurs inchangés ; [] explicite = vidage.
+    await synchroniserIndicateurs(client, "actions_qualite_indicateurs", "action_id", id, li.ids, "action", req.user.id);
     await client.query("COMMIT");
     const { rows: [a] } = await query(`${LIGNES_ACTION} WHERE a.id = $1`, [id]);
     res.json({ action: actionPourRole(a, req.user.role) });

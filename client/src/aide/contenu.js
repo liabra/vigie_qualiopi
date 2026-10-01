@@ -186,9 +186,19 @@ const AIDE = {
         ],
       },
       {
+        titre: "Suivre un signalement",
+        lignes: [
+          "Ouvrez un signalement pour suivre son traitement : Qualifier, Démarrer le traitement, Résoudre, puis Clôturer.",
+          "La réponse apportée peut être enregistrée avant la résolution ; la date de résolution se renseigne avec « Résoudre ».",
+          "Au moins un indicateur Qualiopi doit être associé avant la clôture. Une annulation est définitive.",
+          "L'historique garde la trace de chaque étape et de son auteur, sans recopier le contenu confidentiel.",
+        ],
+      },
+      {
         titre: "Les actions correctives",
         lignes: [
           "Les actions correctives issues d'un signalement sont pilotées dans « Actions qualité ».",
+          "Les actions déjà liées à un signalement apparaissent sur sa fiche et s'ouvrent d'un clic.",
         ],
       },
       {

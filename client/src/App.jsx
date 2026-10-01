@@ -25,7 +25,8 @@ import { VeilleFiche } from "./veille/VeilleFiche.jsx";
 import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
 import { ActionsListe } from "./qualite/ActionsListe.jsx";
 import { ActionFiche } from "./qualite/ActionFiche.jsx";
-import { SignalementsListe, SignalementBientot } from "./qualite/SignalementsListe.jsx";
+import { SignalementsListe } from "./qualite/SignalementsListe.jsx";
+import { SignalementFiche } from "./qualite/SignalementFiche.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -82,6 +83,14 @@ function ActionPage({ admin }) {
   const { actionId } = useParams();
   const id = /^\d+$/.test(actionId) ? Number(actionId) : actionId;
   return <ActionFiche key={id} actionId={id} admin={admin} />;
+}
+
+// /signalements-qualite/:signalementId : même conversion ; le contrôle admin
+// (RequireAdmin) passe AVANT tout montage, donc avant tout appel API.
+function SignalementPage() {
+  const { signalementId } = useParams();
+  const id = /^\d+$/.test(signalementId) ? Number(signalementId) : signalementId;
+  return <SignalementFiche key={id} signalementId={id} />;
 }
 
 const VUES_REFERENTIEL = {
@@ -175,7 +184,7 @@ export default function App() {
         <Route path="actions-qualite" element={<ActionsListe admin={isAdmin} />} />
         <Route path="actions-qualite/:actionId" element={<ActionPage admin={isAdmin} />} />
         <Route path="signalements-qualite" element={admin(<SignalementsListe />)} />
-        <Route path="signalements-qualite/:signalementId" element={admin(<SignalementBientot />)} />
+        <Route path="signalements-qualite/:signalementId" element={admin(<SignalementPage />)} />
 
         <Route path="formations" element={admin(<FormationsPage />)} />
         <Route path="modeles" element={admin(<ModelesPage />)} />

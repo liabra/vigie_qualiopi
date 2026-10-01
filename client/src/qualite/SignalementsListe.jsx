@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Alert, Badge, Button, EmptyState, Field, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { useTexteUrl } from "../ui/useTexteUrl.js";
 import { formaterDate } from "../sessions/format.js";
 import { indicateursCompacts, indicateursPresents } from "./format.js";
+import { FormulaireSignalement } from "./FormulaireSignalement.jsx";
 import {
   SEGMENTS_SIGNALEMENT, STATUTS_SIGNALEMENT, TYPES_SIGNALEMENT,
   compteursSignalements, compterSegmentsSignalements, estEnRetardReclamation,
@@ -18,6 +19,8 @@ import {
 // (GET ?etat=tous), comme les Actions qualité.
 export function SignalementsListe() {
   useTitrePage("Signalements");
+  const naviguer = useNavigate();
+  const [creation, setCreation] = useState(false);
   const [params, setParams] = useSearchParams();
   const segment = SEGMENTS_SIGNALEMENT.some((s) => s.id === params.get("etat")) ? params.get("etat") : "actifs";
   const [q, setQ] = useTexteUrl("q");
@@ -72,7 +75,12 @@ export function SignalementsListe() {
 
   const formationParId = Object.fromEntries(formations.map((f) => [f.id, f.intitule]));
   const sessionParId = Object.fromEntries(sessions.map((s) => [s.id, s]));
-  const responsableParId = Object.fromEntries(utilisateurs.map((u) => [u.id, u.nom || u.email]));
+  // Noms : ceux fournis par le serveur (conservés même pour un compte
+  // désactivé), complétés par les utilisateurs actifs.
+  const responsableParId = {
+    ...Object.fromEntries(utilisateurs.map((u) => [u.id, u.nom || u.email])),
+    ...Object.fromEntries((signalements || []).filter((s) => s.responsable_id && s.responsable_nom).map((s) => [s.responsable_id, s.responsable_nom])),
+  };
 
   const affichees = signalements ? filtrerSignalements(signalements, { segment, ...filtres }) : [];
   const compteurs = signalements ? compteursSignalements(signalements) : {};
@@ -82,6 +90,8 @@ export function SignalementsListe() {
   const responsibles = signalements ? [...new Set(signalements.map((s) => s.responsable_id).filter(Boolean))].map((id) => ({ id, nom: responsableParId[id] || `#${id}` })) : [];
   const formationsFiltrables = signalements ? [...new Set(signalements.map((s) => s.formation_id).filter(Boolean))] : [];
   const sessionsFiltrables = signalements ? [...new Set(signalements.map((s) => s.session_id).filter(Boolean))] : [];
+
+  const nouveau = <Button variante="primary" onClick={() => setCreation(true)}>Nouveau signalement</Button>;
 
   const tuiles = [
     { cle: "a_traiter", n: compteurs.a_traiter || 0, libelle: "À traiter" },
@@ -96,12 +106,13 @@ export function SignalementsListe() {
         fil={[{ libelle: "Qualité" }, { libelle: "Signalements" }]}
         titre="Signalements"
         description="Réclamations, incidents et non-conformités : suivez leur traitement, sans exposer les données du réclamant."
+        actions={nouveau}
       />
       {err && <Alert ton="error" titre="Les signalements n'ont pas pu être chargés." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
       {!signalements && !err && <LoadingState texte="Chargement des signalements…" />}
 
       {signalements && signalements.length === 0 && (
-        <EmptyState titre="Aucun signalement pour le moment.">
+        <EmptyState titre="Aucun signalement pour le moment." action={nouveau}>
           Les réclamations, incidents et non-conformités apparaîtront ici.
         </EmptyState>
       )}
@@ -203,7 +214,7 @@ export function SignalementsListe() {
                   return (
                     <tr key={s.id}>
                       <td data-label="Signalement" className="sess-table__principal">
-                        <span className="sess-principal">{s.objet}</span>
+                        <Link to={`/signalements-qualite/${s.id}`}>{s.objet}</Link>
                         <span className="sess-secondaire">{s.reference}</span>
                         <span className="sess-secondaire">{ty.libelle}</span>
                         {retard && <Badge ton="error">En retard</Badge>}
@@ -230,23 +241,11 @@ export function SignalementsListe() {
           )}
         </section>
       )}
-    </>
-  );
-}
 
-// Placeholder neutre pour /signalements-qualite/:id : la fiche détaillée
-// arrive au lot suivant (Q1-B3-B2). Aucun lien ne pointe vers cette route.
-export function SignalementBientot() {
-  useTitrePage("Signalement");
-  return (
-    <>
-      <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Signalements", to: "/signalements-qualite" }, { libelle: "Signalement" }]}
-        titre="Signalement"
-      />
-      <EmptyState titre="La fiche détaillée arrive au prochain lot." action={<Button to="/signalements-qualite">Voir les signalements</Button>}>
-        Le suivi détaillé d'un signalement (causes, traitement, réponse, indicateurs, historique) sera disponible prochainement.
-      </EmptyState>
+      {creation && (
+        <FormulaireSignalement onFermer={() => setCreation(false)}
+          onEnregistre={(sig) => { setCreation(false); naviguer(`/signalements-qualite/${sig.id}`); }} />
+      )}
     </>
   );
 }

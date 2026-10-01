@@ -121,3 +121,25 @@
   .qualite-historique__item { grid-template-columns: 1fr; gap: 0.125rem; }
   .qualite-historique__date { order: -1; }
 }
+
+/* Q1-B3-B2 — Signalements : causes (cases), listes de la fiche */
+.signalement-causes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.signalement-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.signalement-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+.qualite-ligne__v { overflow-wrap: anywhere; }

@@ -2658,4 +2658,3 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   import CSV, abandon, assiduité, évaluations, satisfaction, EduSign, génération.
 - Tests : **490/490 serveur**, **272/272 client**, build OK ; smoke Chrome 21/21 (1440 / 390).
   Migrations : **001 → 017**.
-

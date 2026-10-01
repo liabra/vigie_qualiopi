@@ -73,9 +73,9 @@ function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], prescri
       const ok = params[0] === 7;
       return { rows: ok ? [{ id: 7, archivee_le: null }] : [], rowCount: ok ? 1 : 0 };
     }
-    if (sql.startsWith("SELECT s.archivee_le FROM inscriptions")) {
+    if (sql.startsWith("SELECT s.archivee_le, i.statut FROM inscriptions")) {
       const i = etat.inscriptions.find((x) => x.id === params[0]);
-      return { rows: i ? [{ archivee_le: null }] : [], rowCount: i ? 1 : 0 };
+      return { rows: i ? [{ archivee_le: null, statut: i.statut }] : [], rowCount: i ? 1 : 0 };
     }
     if (sql.startsWith("SELECT id, nom FROM groupes WHERE session_id = $1")) {
       const rows = etat.groupes.filter((g) => g.session_id === params[0]).map((g) => ({ id: g.id, nom: g.nom }));
@@ -180,7 +180,7 @@ function baseSimulee({ stagiaires = [], inscriptions = [], groupes = [], prescri
 
 let serveur, origine;
 before(async () => {
-  serveur = createApp().listen(0);
+  serveur = createApp().listen(0, "127.0.0.1"); // fix : même pile que l'origine (aucun port partagé avec un autre fichier)
   await new Promise((r) => serveur.once("listening", r));
   origine = "http://127.0.0.1:" + serveur.address().port;
 });

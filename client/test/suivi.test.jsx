@@ -7,6 +7,10 @@ import { attendre, cliquer, demonter, dialogue, monter, saisir, texte } from "./
 import { aujourdhuiISO } from "../src/qualite/format.js";
 import { corpsAbandon, corpsSuivi, erreursSuivi, issueInscription, resumeSuivi } from "../src/sessions/parcours-format.js";
 
+// Réponse retenue jusqu'à ouverture explicite : le double clic a lieu
+// PENDANT la requête, quelle que soit la charge de la machine.
+const vanne = () => { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { attendre: () => p, ouvrir }; };
+
 let natifs = 0;
 beforeEach(() => {
   natifs = 0;
@@ -87,8 +91,9 @@ test("abandon enrichi : aide, catégorie et précision envoyées ; explication d
 });
 
 test("abandon : erreur serveur ⇒ dialogue ouvert, saisie conservée ; double clic ⇒ un seul envoi", async () => {
+  const v = vanne();
   const appels = await monter("/sessions/1/stagiaires", "contributeur", {
-    "PATCH /api/inscriptions/12": () => new Promise((r) => setTimeout(() => r([400, { error: "Catégorie d'abandon inconnue." }]), 30)),
+    "PATCH /api/inscriptions/12": async () => { await v.attendre(); return [400, { error: "Catégorie d'abandon inconnue." }]; },
   });
   await attendre(() => texte().includes("Bernard Paul"));
   await cliquer(document.querySelector('button[aria-label="Déclarer l\'abandon de Paul Bernard"]'));
@@ -97,6 +102,7 @@ test("abandon : erreur serveur ⇒ dialogue ouvert, saisie conservée ; double c
   await saisir(champ("Précision"), "Prise en charge refusee");
   const b = [...document.querySelectorAll('[role="alertdialog"] button')].find((x) => x.textContent === "Déclarer l'abandon");
   await cliquer(b); await cliquer(b);
+  v.ouvrir();
   await attendre(() => document.querySelector('[role="alertdialog"]')?.textContent.includes("L'abandon n'a pas été enregistré."));
   assert.equal(appels.filter((a) => a.methode === "PATCH").length, 1);
   assert.equal(champ("Catégorie").value, "financement");
@@ -171,8 +177,9 @@ test("relance : canal obligatoire, note courte, corps exact ; correction d'un é
 });
 
 test("suivi : erreur serveur ⇒ saisie conservée ; double clic ⇒ un seul envoi", async () => {
+  const v = vanne();
   const appels = await ouvrirSuivi("Alice Martin", {
-    "POST /api/inscriptions/11/suivi": () => new Promise((r) => setTimeout(() => r([400, { error: "Indiquez la date de l'événement." }]), 30)),
+    "POST /api/inscriptions/11/suivi": async () => { await v.attendre(); return [400, { error: "Indiquez la date de l'événement." }]; },
   });
   await cliquer(boutonDialogue("Ajouter un signal"));
   await attendre(() => champ("Catégorie"));
@@ -180,6 +187,7 @@ test("suivi : erreur serveur ⇒ saisie conservée ; double clic ⇒ un seul env
   await saisir(champ("Note"), "Trois retards cette semaine");
   const b = document.querySelector('button[type="submit"][form="form-suivi"]');
   await cliquer(b); await cliquer(b);
+  v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("L'événement n'a pas été enregistré."));
   assert.equal(ecritures(appels).length, 1);
   assert.equal(champ("Note").value, "Trois retards cette semaine");
@@ -204,4 +212,49 @@ test("permissions : contributeur saisit ; session archivée en lecture seule (au
   assert.ok(dialogue().textContent.includes("Session archivée : suivi en lecture seule."));
   for (const l of ["Ajouter un signal", "Ajouter une relance", "Corriger"]) assert.ok(!boutonDialogue(l), l);
   assert.ok(dialogue().textContent.includes(NOTE), "lecture conservée");
+});
+
+test("compléter / corriger un abandon existant : PATCH sans statut ni date, liste rechargée ; absent pour une inscription active", async () => {
+  let complete = false;
+  const appels = await ouvrirSuivi("Paul Bernard", {
+    "PATCH /api/inscriptions/12": (c) => { complete = true; return { inscription: { id: 12, statut: "abandon", ...c } }; },
+    "GET /api/inscriptions/12/suivi": () => (complete
+      ? { ...SUIVI_PAUL, inscription: { ...SUIVI_PAUL.inscription, categorie_abandon: "financement", motif_abandon: null } }
+      : SUIVI_PAUL),
+  });
+  await cliquer(boutonDialogue("Corriger l'abandon"));
+  await attendre(() => champ("Catégorie"));
+  assert.ok(dialogue().textContent.includes("La date d'abandon et le statut ne changent pas."));
+  assert.equal(champ("Catégorie").value, "professionnel", "valeurs actuelles préremplies");
+  assert.equal(champ("Précision").value, MOTIF);
+  await saisir(champ("Catégorie"), "financement");
+  await saisir(champ("Précision"), "   ");
+  await cliquer(document.querySelector('button[type="submit"][form="form-abandon"]'));
+  await attendre(() => dialogue()?.textContent.includes("Catégorie : Financement") && !document.querySelector("#form-abandon"));
+  const patch = appels.filter((a) => a.methode === "PATCH");
+  assert.equal(patch.length, 1);
+  assert.deepEqual(patch[0], { methode: "PATCH", chemin: "/api/inscriptions/12", corps: { categorie_abandon: "financement", motif_abandon: null } });
+  await demonter();
+  await ouvrirSuivi("Alice Martin");
+  assert.ok(!boutonDialogue("Compléter l'abandon") && !boutonDialogue("Corriger l'abandon"), "inscription active : aucun complément");
+});
+
+test("complément d'abandon : erreur serveur ⇒ saisie conservée ; double clic ⇒ un seul envoi ; archivée ⇒ lecture seule", async () => {
+  const v = vanne();
+  const appels = await ouvrirSuivi("Paul Bernard", {
+    "PATCH /api/inscriptions/12": async () => { await v.attendre(); return [400, { error: "La catégorie d'abandon ne s'applique qu'à une inscription en abandon." }]; },
+  });
+  await cliquer(boutonDialogue("Corriger l'abandon"));
+  await attendre(() => champ("Précision"));
+  await saisir(champ("Précision"), "Changement de region");
+  const b = document.querySelector('button[type="submit"][form="form-abandon"]');
+  await cliquer(b); await cliquer(b);
+  v.ouvrir();
+  await attendre(() => dialogue()?.textContent.includes("L'abandon n'a pas été complété."));
+  assert.equal(appels.filter((a) => a.methode === "PATCH").length, 1);
+  assert.equal(champ("Précision").value, "Changement de region");
+  await demonter();
+  await ouvrirSuivi("Paul Bernard", { "GET /api/inscriptions/12/suivi": { ...SUIVI_PAUL, archivee: true } });
+  assert.ok(!boutonDialogue("Corriger l'abandon") && !boutonDialogue("Compléter l'abandon"));
+  assert.ok(dialogue().textContent.includes(`Précision : ${MOTIF}`), "lecture conservée");
 });

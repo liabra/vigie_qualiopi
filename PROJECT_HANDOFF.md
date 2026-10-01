@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q2-3** — abandon enrichi, suivi et relances, inventaire RGPD (onglet Parcours) |
+| **Dernier lot validé en production** | **Q2-3-CLOTURE** — invariant de la catégorie d'abandon, complément d'un abandon existant |
 | **Migration de production actuelle** | `019_suivi_inscriptions.sql` (19 migrations, aucune 020) |
-| **Suite de tests** | **518/518 serveur + 295/295 client** (déployés avec Q2-3) |
+| **Suite de tests** | **519/519 serveur + 297/297 client** (déployés avec la clôture Q2-3) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2709,6 +2709,37 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - Tests : 518/518 serveur (dont `suivi.test.js`, port 55452), 295/295 client (dont
   `suivi.test.jsx`) ; smoke Chrome 30/30 (1440 / 390, admin + contributeur, jusqu'à l'abandon,
   réponses réseau inspectées). Migrations : **001 → 019**.
+
+### Clôture Q2-3 — correctifs métier
+
+- **Invariant serveur** (`PATCH /api/inscriptions/:id`) : une `categorie_abandon` non nulle
+  n'est acceptée que si le statut EFFECTIF (corps, sinon base) est `abandon` ; sinon 400
+  « La catégorie d'abandon ne s'applique qu'à une inscription en abandon. », sans écriture.
+  PATCH partiels inchangés (`categorie_abandon: null`, autres champs). En sortie d'abandon
+  (transition existante vers un autre statut, possible par l'API seulement), la catégorie
+  est retirée dans la MÊME écriture ; `date_abandon` et `motif_abandon` restent conservés
+  comme avant. Aucune donnée existante modifiée (production : 0 catégorie renseignée).
+- **Compléter / corriger un abandon** : panneau Parcours › Suivi, bouton « Compléter
+  l'abandon » / « Corriger l'abandon » (inscription en abandon, droit de saisie, session
+  active). PATCH `{categorie_abandon, motif_abandon}` seulement : ni statut ni date, donc ni
+  nouvelle transition, ni recalcul des effectifs ou de l'assiduité. Archivée : 409.
+- **Tests** : les serveurs Express de test écoutent explicitement sur `127.0.0.1` (comme leur
+  origine) : un serveur sur `::` pouvait recevoir le même port éphémère qu'un serveur
+  `127.0.0.1` d'`exploitation.test.js`, d'où des 404 intermittents en suite complète. Les
+  tests de double soumission retiennent la réponse simulée jusqu'aux deux clics (plus de
+  dépendance à un délai de 30 ms).
+- **Date d'abandon par défaut / fuseau** (constat, **non modifié** — décision métier à prendre) :
+  le défaut serveur est `new Date().toISOString().slice(0, 10)`, soit la date **UTC** (service
+  applicatif sans `TZ`, base PostgreSQL en `Etc/UTC`, donc `current_date` aussi en UTC). La
+  Guyane est en UTC−3 : un abandon déclaré entre **21 h et minuit (heure de Cayenne)** reçoit la
+  date du **lendemain**. Même convention pour `date_inscription` (`current_date`), la date de
+  clôture / résolution Qualité et la révision de veille. Le client, lui, calcule la date du jour
+  en heure locale (`aujourdhuiISO`) et le tableau de bord Qualité la transmet déjà
+  (`?aujourdhui=`). Options à valider : (a) le client envoie `date_abandon` locale (même
+  convention que le tableau de bord) ; (b) `TZ=America/Cayenne` sur le service ; (c) statu quo
+  documenté.
+- Tests : **519/519 serveur**, **297/297 client** ; smoke Chrome 12/12 (390 px).
+  Migrations inchangées : **001 → 019**.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

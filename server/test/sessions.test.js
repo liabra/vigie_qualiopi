@@ -82,7 +82,7 @@ function baseSimulee({ session = {}, doublonReference = null, absences = [], eva
 
 let serveur, origine;
 before(async () => {
-  serveur = createApp().listen(0);
+  serveur = createApp().listen(0, "127.0.0.1"); // fix : même pile que l'origine (aucun port partagé avec un autre fichier)
   await new Promise((r) => serveur.once("listening", r));
   origine = "http://127.0.0.1:" + serveur.address().port;
 });

@@ -212,3 +212,9 @@ export function corpsAbandon({ categorie_abandon = "", motif_abandon = "" } = {}
   if (String(motif_abandon).trim()) corps.motif_abandon = String(motif_abandon).trim();
   return corps;
 }
+// Complément d'un abandon EXISTANT : jamais de statut ni de date (pas de
+// nouvelle transition) ; vide ⇒ null (correction possible).
+export function corpsComplementAbandon({ categorie_abandon = "", motif_abandon = "" } = {}) {
+  const motif = String(motif_abandon ?? "").trim();
+  return { categorie_abandon: categorie_abandon || null, motif_abandon: motif || null };
+}

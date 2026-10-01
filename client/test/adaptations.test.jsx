@@ -9,6 +9,10 @@ import { SESSION } from "./outils.jsx";
 import { aujourdhuiISO } from "../src/qualite/format.js";
 import { corpsAdaptation, erreursAdaptation, filtrerParcoursPar, resumeAdaptations } from "../src/sessions/parcours-format.js";
 
+// Réponse retenue jusqu'à ouverture explicite : le double clic a lieu
+// PENDANT la requête, quelle que soit la charge de la machine.
+const vanne = () => { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { attendre: () => p, ouvrir }; };
+
 let natifs = 0;
 beforeEach(() => {
   natifs = 0;
@@ -168,8 +172,9 @@ test("abandon de la mesure : confirmation explicite (Échap n'envoie rien), PATC
 });
 
 test("erreur serveur : formulaire ouvert, saisie conservée ; double clic ⇒ un seul envoi", async () => {
+  const v = vanne();
   const appels = await ouvrirAdaptations("Paul Bernard", {
-    "POST /api/inscriptions/12/adaptations": () => new Promise((r) => setTimeout(() => r([400, { error: "Indiquez la date de décision." }]), 30)),
+    "POST /api/inscriptions/12/adaptations": async () => { await v.attendre(); return [400, { error: "Indiquez la date de décision." }]; },
   });
   await cliquer(boutonDialogue("Ajouter une mesure"));
   await attendre(() => champ("Catégorie"));
@@ -177,6 +182,7 @@ test("erreur serveur : formulaire ouvert, saisie conservée ; double clic ⇒ un
   await saisir(champ("Mesure mise en place"), "Équipement adapté prêté");
   const b = document.querySelector('button[type="submit"][form="form-adaptation"]');
   await cliquer(b); await cliquer(b);
+  v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("La mesure n'a pas été enregistrée."));
   assert.equal(ecritures(appels).length, 1);
   assert.equal(champ("Mesure mise en place").value, "Équipement adapté prêté");

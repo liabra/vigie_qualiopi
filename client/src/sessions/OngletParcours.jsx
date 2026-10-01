@@ -3,10 +3,10 @@ import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
 import { aujourdhuiISO } from "../qualite/format.js";
 import {
-  AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
-  CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_NOTE_SUIVI, MAX_TEXTE,
+  AIDE_ABANDON, AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
+  CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_MOTIF_ABANDON, MAX_NOTE_SUIVI, MAX_TEXTE,
   PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL, TYPES_SUIVI,
-  corpsAdaptation, corpsRecueil, corpsSuivi, dateFr, erreursAdaptation, erreursRecueil, erreursSuivi, etatRecueil, filtrerParcoursPar,
+  corpsAdaptation, corpsComplementAbandon, corpsRecueil, corpsSuivi, dateFr, erreursAdaptation, erreursRecueil, erreursSuivi, etatRecueil, filtrerParcoursPar,
   issueInscription, libelleCategorieSuivi, libellePositionnement, resumeAdaptations, resumeSuivi, valeursAdaptation, valeursRecueil, valeursSuivi,
 } from "./parcours-format.js";
 
@@ -410,6 +410,7 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
   const [donnees, setDonnees] = useState(null);
   const [errChargement, setErrChargement] = useState(null);
   const [edition, setEdition] = useState(null); // { id|null, valeurs }
+  const [complement, setComplement] = useState(null); // { categorie_abandon, motif_abandon }
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
   const [enCours, setEnCours] = useState(false);
@@ -428,6 +429,30 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
     setEdition({ id: e?.id ?? null, valeurs: { ...valeursSuivi(e), ...(e ? {} : { date_evenement: aujourdhuiISO() }), ...sur } });
   };
   const champ = (cle) => (ev) => setEdition((ed) => ({ ...ed, valeurs: { ...ed.valeurs, [cle]: ev.target.value } }));
+  const ouvrirComplement = () => {
+    setErreurServeur(null);
+    setComplement({ categorie_abandon: donnees.inscription.categorie_abandon || "", motif_abandon: donnees.inscription.motif_abandon || "" });
+  };
+
+  // Complète / corrige un abandon EXISTANT : ni statut ni date envoyés
+  // (aucune nouvelle transition, effectifs et assiduité inchangés).
+  async function enregistrerComplement(ev) {
+    ev.preventDefault();
+    if (lecture || verrou.current) return; // fix : jamais de double soumission
+    verrou.current = true;
+    setEnCours(true);
+    setErreurServeur(null);
+    try {
+      await api(`/api/inscriptions/${ligne.inscription_id}`, { method: "PATCH", body: JSON.stringify(corpsComplementAbandon(complement)) });
+      await Promise.all([charger(), onChange?.()]);
+      setComplement(null);
+    } catch (err) {
+      setErreurServeur(err.message); // la saisie reste dans le formulaire
+    } finally {
+      verrou.current = false;
+      setEnCours(false);
+    }
+  }
 
   async function enregistrer(ev) {
     ev.preventDefault();
@@ -464,13 +489,18 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
           <Button onClick={() => setEdition(null)} disabled={enCours}>Annuler</Button>
           <Button variante="primary" type="submit" form="form-suivi" disabled={enCours}>{enCours ? "Enregistrement…" : edition.id ? "Enregistrer la correction" : "Enregistrer"}</Button>
         </>
+      ) : complement && !lecture ? (
+        <>
+          <Button onClick={() => setComplement(null)} disabled={enCours}>Annuler</Button>
+          <Button variante="primary" type="submit" form="form-abandon" disabled={enCours}>{enCours ? "Enregistrement…" : "Enregistrer l'abandon"}</Button>
+        </>
       ) : <Button onClick={onFermer} disabled={enCours}>Fermer</Button>}>
       {errChargement && <Alert ton="error" titre="Le suivi n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
       {!donnees && !errChargement && <LoadingState texte="Chargement du suivi…" />}
       {donnees && (
         <div className="ui-form">
           {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : suivi en lecture seule." : "Consultation seule."}</Alert>}
-          {erreurServeur && <Alert ton="error" titre="L'événement n'a pas été enregistré.">{erreurServeur}</Alert>}
+          {erreurServeur && <Alert ton="error" titre={complement ? "L'abandon n'a pas été complété." : "L'événement n'a pas été enregistré."}>{erreurServeur}</Alert>}
 
           <div className="suivi-inscription" aria-label="Inscription">
             <Badge ton={statut.ton}>{statut.libelle}</Badge>
@@ -481,9 +511,27 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
                 {insc.motif_abandon ? ` · Précision : ${insc.motif_abandon}` : ""}
               </span>
             )}
+            {insc.statut === "abandon" && !lecture && !edition && !complement && (
+              <Button compact onClick={ouvrirComplement}>{insc.categorie_abandon || insc.motif_abandon ? "Corriger l'abandon" : "Compléter l'abandon"}</Button>
+            )}
           </div>
 
-          {edition && !lecture ? (
+          {complement && !lecture ? (
+            <form id="form-abandon" onSubmit={enregistrerComplement} noValidate className="ui-form">
+              <Alert ton="info">La date d'abandon et le statut ne changent pas.</Alert>
+              <FormSection titre="Abandon" colonnes={2}>
+                <Field label="Catégorie" facultatif>
+                  <select value={complement.categorie_abandon} onChange={(ev) => setComplement((c) => ({ ...c, categorie_abandon: ev.target.value }))}>
+                    <option value="">Non précisée</option>
+                    {Object.entries(CATEGORIES_ABANDON).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </Field>
+                <Field label="Précision" facultatif aide={AIDE_ABANDON} className="ui-field--large">
+                  <textarea rows={2} maxLength={MAX_MOTIF_ABANDON} value={complement.motif_abandon} onChange={(ev) => setComplement((c) => ({ ...c, motif_abandon: ev.target.value }))} />
+                </Field>
+              </FormSection>
+            </form>
+          ) : edition && !lecture ? (
             <form id="form-suivi" onSubmit={enregistrer} noValidate className="ui-form">
               <Alert ton="info" titre="Faits observés uniquement"><p>{AIDE_SUIVI}</p></Alert>
               <FormSection titre={edition.id ? `Corriger : ${TYPES_SUIVI[v.type].libelle.toLowerCase()}` : TYPES_SUIVI[v.type].libelle} colonnes={2}>

@@ -2687,3 +2687,15 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   (14 nonies) ; aucune durée inventée, aucune suppression automatique.
 - Tests : **518/518 serveur**, **295/295 client**, build OK ; smoke Chrome 30/30 (1440 / 390).
   Migrations : **001 → 019**.
+
+## 2026-10-01 — Q2-3-CLOTURE : correctifs métier (déployé)
+
+- Invariant serveur : catégorie d'abandon refusée (400) si le statut effectif n'est pas
+  « abandon » ; retirée dans la même écriture en sortie d'abandon ; PATCH partiels inchangés.
+- Complément / correction d'un abandon existant depuis Parcours › Suivi (catégorie, précision),
+  sans statut ni date ; archivée 409.
+- Tests : serveurs de test liés à `127.0.0.1` (collision de port éphémère avec
+  `exploitation.test.js`) ; doubles soumissions testées sans délai arbitraire.
+- Date d'abandon par défaut en UTC (Guyane UTC−3 : 21 h–minuit ⇒ lendemain) : documenté, non
+  modifié, décision métier attendue.
+- Tests : **519/519 serveur**, **297/297 client**, build OK ; smoke 12/12. Migrations **001 → 019**.

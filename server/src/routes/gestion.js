@@ -640,11 +640,19 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
 
   const { rows: [lien] } = await query(
-    "SELECT s.archivee_le FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1",
+    "SELECT s.archivee_le, i.statut FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1",
     [id]
   );
   if (!lien) return res.status(404).json({ error: "Inscription introuvable." });
   if (lien.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  // fix : une catégorie d'abandon n'existe que sur une inscription dont le
+  // statut EFFECTIF (corps, sinon base) est « abandon ». En sortie d'abandon,
+  // la catégorie est retirée dans la même écriture (jamais d'état incohérent).
+  const statutFinal = statut ?? lien.statut;
+  if (abandon.champs.categorie_abandon && statutFinal !== "abandon") {
+    return res.status(400).json({ error: "La catégorie d'abandon ne s'applique qu'à une inscription en abandon." });
+  }
+  if (statutFinal !== "abandon" && lien.statut === "abandon" && abandon.champs.categorie_abandon === undefined) set("categorie_abandon", null);
 
   const { rows } = await query(`UPDATE inscriptions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
   if (!rows.length) return res.status(404).json({ error: "Inscription introuvable." });

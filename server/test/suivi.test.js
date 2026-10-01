@@ -47,7 +47,7 @@ before(async () => {
     const orig = console[m];
     console[m] = (...a) => { journal.push(a.map(String).join(" ")); orig.apply(console, a); };
   }
-  serveur = createApp().listen(0);
+  serveur = createApp().listen(0, "127.0.0.1"); // fix : même pile que l'origine (aucun port partagé avec un autre fichier)
   await new Promise((r) => serveur.once("listening", r));
   origine = "http://127.0.0.1:" + serveur.address().port;
 });
@@ -145,6 +145,41 @@ test("abandon enrichi : catégorie + précision, date explicite conservée ; cat
   ok(await api("PATCH", `/api/inscriptions/${F.paul}`, { categorie_abandon: "professionnel" }, A()));
   // Les autres transitions restent possibles comme avant.
   assert.equal((await api("PATCH", `/api/inscriptions/${F.paul}`, { statut: "inconnu" }, A())).statut, 400);
+});
+
+test("invariant : catégorie d'abandon seulement si le statut EFFECTIF est « abandon » ; complément sans rejouer la transition ; sortie d'abandon cohérente", async () => {
+  // Inscription active : refus, aucune écriture.
+  for (const corps of [{ categorie_abandon: "personnel" }, { statut: "en_cours", categorie_abandon: "autre" }, { statut: "termine", categorie_abandon: "autre", motif_abandon: "x" }]) {
+    const r = await api("PATCH", `/api/inscriptions/${F.alice}`, corps, C());
+    assert.equal(r.statut, 400, JSON.stringify(corps));
+    assert.equal(r.corps.error, "La catégorie d'abandon ne s'applique qu'à une inscription en abandon.");
+  }
+  assert.deepEqual({ ...(await insc(F.alice)) }, { statut: "inscrit", date_abandon: null, motif_abandon: null, categorie_abandon: null });
+  // PATCH partiels existants préservés.
+  ok(await api("PATCH", `/api/inscriptions/${F.alice}`, { categorie_abandon: null }, C()));
+  ok(await api("PATCH", `/api/inscriptions/${F.alice}`, { dossier_complet: true }, C()));
+  // Complément d'un abandon existant : date, statut et effectifs inchangés.
+  const avantInscrits = await nbInscritsSession();
+  const { date_abandon: dateLea } = await insc(F.lea);
+  const r = ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { categorie_abandon: "sans_nouvelles", motif_abandon: "Aucune reponse depuis deux semaines" }, C()));
+  assert.equal(r.inscription.statut, "abandon");
+  assert.deepEqual({ ...(await insc(F.lea)) }, { statut: "abandon", date_abandon: dateLea, motif_abandon: "Aucune reponse depuis deux semaines", categorie_abandon: "sans_nouvelles" });
+  assert.equal(await nbInscritsSession(), avantInscrits, "effectifs non recalculés");
+  // Correction puis effacement de la précision, catégorie conservée.
+  ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { motif_abandon: "" }, A()));
+  assert.equal((await insc(F.lea)).motif_abandon, null);
+  assert.equal((await insc(F.lea)).categorie_abandon, "sans_nouvelles");
+  // Sortie d'abandon (transition existante) : la catégorie est retirée dans la MÊME écriture.
+  ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { statut: "inscrit" }, A()));
+  const apres = await insc(F.lea);
+  assert.equal(apres.statut, "inscrit");
+  assert.equal(apres.categorie_abandon, null, "aucun état incohérent");
+  assert.equal(apres.date_abandon, dateLea, "date d'abandon conservée (comportement existant)");
+  assert.equal((await api("PATCH", `/api/inscriptions/${F.lea}`, { statut: "inscrit", categorie_abandon: "autre" }, A())).statut, 400);
+  // Retour en abandon : comportement existant, puis complément possible.
+  ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { statut: "abandon", date_abandon: dateLea }, A()));
+  ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { categorie_abandon: "autre" }, C()));
+  assert.equal((await insc(F.lea)).categorie_abandon, "autre");
 });
 
 test("signal factuel et relance : création (contributeur et admin), auteur conservé, ordre antéchronologique", async () => {

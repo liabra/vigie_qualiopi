@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Alert, Badge, Button, Checkbox, ConfirmDialog, Drawer, EmptyState, Field, FormSection } from "../ui/index.js";
 import { CIVILITES, formaterDate, libellePrescripteur } from "./format.js";
+import { AIDE_ABANDON, CATEGORIES_ABANDON, MAX_MOTIF_ABANDON, corpsAbandon } from "./parcours-format.js";
 
 // Onglet Stagiaires : groupes, inscriptions, ajout, import CSV, dossier,
 // abandon. Lecture d'abord : les formulaires s'ouvrent à la demande.
@@ -14,6 +15,8 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
   const [abandon, setAbandon] = useState(null);
   const [abandonEnCours, setAbandonEnCours] = useState(false);
   const [erreurAbandon, setErreurAbandon] = useState(null);
+  const [saisieAbandon, setSaisieAbandon] = useState({ categorie_abandon: "", motif_abandon: "" });
+  const verrouAbandon = useRef(false);
 
   const affiches = filtreGroupe === ""
     ? stagiaires
@@ -22,16 +25,19 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
   const dossierOuvert = drawer?.dossier ? stagiaires.find((s) => s.inscription_id === drawer.dossier) : null;
 
   async function confirmerAbandon() {
+    if (verrouAbandon.current) return; // fix : jamais de double soumission
+    verrouAbandon.current = true;
     setAbandonEnCours(true);
     setErreurAbandon(null);
     try {
-      await api(`/api/inscriptions/${abandon.inscription_id}`, { method: "PATCH", body: JSON.stringify({ statut: "abandon" }) });
+      await api(`/api/inscriptions/${abandon.inscription_id}`, { method: "PATCH", body: JSON.stringify(corpsAbandon(saisieAbandon)) });
       notifier({ ton: "success", titre: `${abandon.prenom} ${abandon.nom} : abandon enregistré.` });
       setAbandon(null);
       await recharger();
     } catch (e) {
-      setErreurAbandon(e.message);
+      setErreurAbandon(e.message); // la saisie reste dans le dialogue
     } finally {
+      verrouAbandon.current = false;
       setAbandonEnCours(false);
     }
   }
@@ -127,7 +133,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
                           Dossier
                         </Button>
                         {peutSaisir && !archivee && !abandonne && (
-                          <Button compact variante="ghost" onClick={() => { setErreurAbandon(null); setAbandon(st); }} aria-label={`Déclarer l'abandon de ${st.prenom} ${st.nom}`}>
+                          <Button compact variante="ghost" onClick={() => { setErreurAbandon(null); setSaisieAbandon({ categorie_abandon: "", motif_abandon: "" }); setAbandon(st); }} aria-label={`Déclarer l'abandon de ${st.prenom} ${st.nom}`}>
                             Abandon…
                           </Button>
                         )}
@@ -173,8 +179,21 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
       >
         {abandon && (
           <>
-            <p><strong>{abandon.prenom} {abandon.nom}</strong> passera en abandon à la date du jour. Il ne comptera plus dans les inscrits actifs ni dans le décompte des preuves par stagiaire.</p>
-            {erreurAbandon && <Alert ton="error">{erreurAbandon}</Alert>}
+            <p><strong>{abandon.prenom} {abandon.nom}</strong> passera en abandon à la date du jour. Le statut de l'inscription change : il ne comptera plus dans les inscrits actifs ni dans le décompte des preuves par stagiaire, et son suivi d'assiduité indiquera l'abandon.</p>
+            <div className="ui-form">
+              <Field label="Catégorie" facultatif>
+                <select value={saisieAbandon.categorie_abandon} disabled={abandonEnCours}
+                  onChange={(e) => setSaisieAbandon((v) => ({ ...v, categorie_abandon: e.target.value }))}>
+                  <option value="">Non précisée</option>
+                  {Object.entries(CATEGORIES_ABANDON).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </Field>
+              <Field label="Précision" facultatif aide={AIDE_ABANDON}>
+                <textarea rows={2} maxLength={MAX_MOTIF_ABANDON} value={saisieAbandon.motif_abandon} disabled={abandonEnCours}
+                  onChange={(e) => setSaisieAbandon((v) => ({ ...v, motif_abandon: e.target.value }))} />
+              </Field>
+            </div>
+            {erreurAbandon && <Alert ton="error" titre="L'abandon n'a pas été enregistré.">{erreurAbandon}</Alert>}
           </>
         )}
       </ConfirmDialog>

@@ -103,6 +103,8 @@ test("KPI : actions, signalements et preuves (chiffres du serveur)", async () =>
   const appels = await monter("/tableau-de-bord-qualite", "admin", { [URL_TDB()]: DONNEES });
   await attendre(() => tuile("Actions ouvertes") !== null);
   assert.equal(appelsTdb(appels).length, 1, "un seul appel agrégé");
+  const fil = [...document.querySelectorAll('nav[aria-label="Fil d\'Ariane"] li')].map((li) => li.textContent.replace(/[›/]/g, "").trim());
+  assert.deepEqual(fil, ["Qualité", "Tableau de bord qualité"], "fil d'Ariane harmonisé");
   assert.equal(document.querySelector("h1").textContent, "Tableau de bord qualité");
   const attendu = {
     "Actions ouvertes": "3", "Actions en retard": "1", "Efficacité à vérifier": "1", "Actions clôturées": "4",

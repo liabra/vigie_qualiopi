@@ -133,3 +133,82 @@ export function corpsAdaptation(v) {
     date_decision: n(v.date_decision), date_mise_en_oeuvre: n(v.date_mise_en_oeuvre), bilan: n(v.bilan),
   };
 }
+
+// ── Q2-3 : abandon enrichi et suivi factuel du décrochage ──────────
+export const CATEGORIES_ABANDON = {
+  personnel: "Raison personnelle",
+  professionnel: "Raison professionnelle",
+  financement: "Financement",
+  reorientation: "Réorientation",
+  sans_nouvelles: "Sans nouvelles",
+  autre: "Autre",
+};
+export const MAX_MOTIF_ABANDON = 300;
+export const AIDE_ABANDON = "Précision courte et factuelle. Ne saisissez aucune information médicale ni aucune justification intime.";
+
+export const TYPES_SUIVI = {
+  signal: { libelle: "Signal observé", ton: "warning" },
+  relance: { libelle: "Relance effectuée", ton: "info" },
+};
+export const CATEGORIES_SUIVI = {
+  signal: {
+    absences_repetees: "Absences répétées constatées",
+    retards_repetes: "Retards répétés constatés",
+    difficulte_pedagogique: "Difficulté pédagogique signalée",
+    sans_nouvelles: "Sans nouvelles",
+    autre: "Autre",
+  },
+  relance: {
+    sans_reponse: "Contact tenté, sans réponse",
+    echange_realise: "Échange réalisé",
+    entretien_realise: "Entretien de suivi réalisé",
+    autre: "Autre",
+  },
+};
+export const CANAUX_RELANCE = { email: "E-mail", telephone: "Téléphone", presentiel: "Présentiel", autre: "Autre" };
+export const MAX_NOTE_SUIVI = 300;
+export const AIDE_SUIVI = "Notez uniquement des faits observés. Ne recopiez pas le contenu des échanges ; aucun jugement personnel ni information médicale.";
+
+export const dateFr = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "");
+export const libelleCategorieSuivi = (type, cat) => CATEGORIES_SUIVI[type]?.[cat] || cat;
+
+// Issue du parcours d'après les statuts d'inscription RÉELS.
+export function issueInscription(l) {
+  if (l.statut_inscription === "abandon") return { libelle: `Abandon${l.date_abandon ? ` le ${dateFr(l.date_abandon)}` : ""}`, ton: "neutral" };
+  if (l.statut_inscription === "termine") return { libelle: "Terminée", ton: "success" };
+  return { libelle: "En cours", ton: "info" };
+}
+// Résumé de la vue d'ensemble : structuré seulement (jamais de note).
+export function resumeSuivi(l) {
+  const r = l.relances_total || 0;
+  const relances = `${r} relance${r > 1 ? "s" : ""}`;
+  if (!l.dernier_suivi_type) return { dernier: null, relances };
+  return { dernier: `${libelleCategorieSuivi(l.dernier_suivi_type, l.dernier_suivi_categorie)} (${dateFr(l.dernier_suivi_date)})`, relances };
+}
+
+export const SUIVI_VIDE = { type: "signal", date_evenement: "", categorie: "", canal: "", note: "" };
+export function valeursSuivi(e) {
+  if (!e) return { ...SUIVI_VIDE };
+  return { type: e.type, date_evenement: String(e.date_evenement || "").slice(0, 10), categorie: e.categorie, canal: e.canal || "", note: e.note || "" };
+}
+export function erreursSuivi(v) {
+  const e = {};
+  if (!v.date_evenement) e.date_evenement = "Indiquez la date.";
+  if (!CATEGORIES_SUIVI[v.type]?.[v.categorie]) e.categorie = "Choisissez une catégorie.";
+  if (v.type === "relance" && !CANAUX_RELANCE[v.canal]) e.canal = "Choisissez le canal de la relance.";
+  if (String(v.note || "").trim().length > MAX_NOTE_SUIVI) e.note = `${MAX_NOTE_SUIVI} caractères au plus.`;
+  return e;
+}
+// Corps complet de l'état voulu ; le type n'est envoyé qu'à la création.
+export function corpsSuivi(v, { creation = true } = {}) {
+  const n = (x) => (String(x ?? "").trim() === "" ? null : String(x).trim());
+  const corps = { date_evenement: n(v.date_evenement), categorie: v.categorie, canal: v.type === "relance" ? n(v.canal) : null, note: n(v.note) };
+  return creation ? { type: v.type, ...corps } : corps;
+}
+// Corps de l'abandon : catégorie et précision FACULTATIVES (absentes si vides).
+export function corpsAbandon({ categorie_abandon = "", motif_abandon = "" } = {}) {
+  const corps = { statut: "abandon" };
+  if (categorie_abandon) corps.categorie_abandon = categorie_abandon;
+  if (String(motif_abandon).trim()) corps.motif_abandon = String(motif_abandon).trim();
+  return corps;
+}

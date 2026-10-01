@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q2-2** — adaptations pédagogiques et confidentialité (onglet Parcours) |
-| **Migration de production actuelle** | `018_adaptations_parcours.sql` (18 migrations, aucune 019) |
-| **Suite de tests** | **506/506 serveur + 285/285 client** (déployés avec Q2-2) |
+| **Dernier lot validé en production** | **Q2-3** — abandon enrichi, suivi et relances, inventaire RGPD (onglet Parcours) |
+| **Migration de production actuelle** | `019_suivi_inscriptions.sql` (19 migrations, aucune 020) |
+| **Suite de tests** | **518/518 serveur + 295/295 client** (déployés avec Q2-3) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2680,6 +2680,88 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - Risques restants (P3) : les valeurs historiques de `besoins_adaptation` restent en texte libre
   (lecture admin seulement) ; pas de rôle « référent handicap » ; Q2-3 (abandon enrichi + RGPD)
   non commencé.
+
+## 14 nonies. Q2-3 — Abandon enrichi, suivi et relances, gouvernance RGPD
+
+- **Migration 019** (additive) : `inscriptions.categorie_abandon` (facultative, liste fermée
+  `personnel` / `professionnel` / `financement` / `reorientation` / `sans_nouvelles` / `autre`,
+  NULL pour tous les abandons historiques) et table `suivis_inscription` (type `signal` /
+  `relance`, date, catégorie fermée par type, canal `email` / `telephone` / `presentiel` /
+  `autre` obligatoire pour une relance et interdit pour un signal, note ≤ 300, auteurs et
+  horodatages, pas de suppression physique).
+- **Abandon** : `PATCH /api/inscriptions/:id` inchangé dans ses règles (date du jour par
+  défaut, exclusion des effectifs, assiduité « abandon », archivée ⇒ 409). Ajout de
+  `categorie_abandon` et limite de `motif_abandon` à 300 caractères (nettoyé des espaces) ;
+  les deux restent facultatifs, un client qui n'envoie que `{statut: "abandon"}` fonctionne
+  comme avant. Dialogue de l'onglet Stagiaires enrichi (catégorie, précision, aide :
+  aucune information médicale ni justification intime ; saisie conservée en cas d'erreur ;
+  verrou anti double soumission).
+- **Suivi** : `GET` / `POST /api/inscriptions/:id/suivi`, `PATCH
+  /api/inscriptions/:id/suivi/:evenementId` (correction ; type immuable ; événement d'une
+  autre inscription ⇒ 404). Droits = inscriptions ; archivée : lecture, écriture 409.
+  Le GET individuel est le **seul** endroit qui renvoie la catégorie et la précision
+  d'abandon, et les notes. Aucune prédiction, notification ni signalement Qualité automatique.
+- **Vue Parcours** : colonnes « Suivi » (dernier événement structuré + nombre de relances) et
+  « Issue » (En cours / Terminée / Abandon le …) ; agrégat sans note, motif ni catégorie
+  d'abandon ; requêtes en nombre constant. Panneau « Suivi et relances » (signal, relance,
+  correction, historique).
+- Fil d'Ariane harmonisé : « Qualité › Tableau de bord qualité ».
+- Tests : 518/518 serveur (dont `suivi.test.js`, port 55452), 295/295 client (dont
+  `suivi.test.jsx`) ; smoke Chrome 30/30 (1440 / 390, admin + contributeur, jusqu'à l'abandon,
+  réponses réseau inspectées). Migrations : **001 → 019**.
+
+### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
+
+Cet inventaire est une **étude technique** ; il ne garantit pas à lui seul la conformité
+RGPD. **Aucune durée de conservation n'a été validée** par le responsable du traitement :
+aucune suppression ni anonymisation automatique n'est programmée.
+
+| Donnée | Table / emplacement | Lien vers la personne | Effet d'une suppression du parent |
+| --- | --- | --- | --- |
+| Identité, contact, entreprise, financeur | `stagiaires` | personne | CASCADE vers `inscriptions` et `documents_generes` ; SET NULL sur `preuve_fichiers.stagiaire_id` |
+| Situation de handicap, besoins historiques (admin seul) | `stagiaires.situation_handicap`, `besoins_adaptation` | personne | — |
+| Inscription, statut, abandon (date, catégorie, précision) | `inscriptions` | `stagiaire_id` | CASCADE vers absences, évaluations, recueil, adaptations, suivis ; SET NULL sur `satisfactions` et `signalements_qualite` |
+| Recueil du besoin (attentes, objectifs) | `recueils_besoin` | `inscription_id` | CASCADE |
+| Adaptations pédagogiques | `adaptations_parcours` | `inscription_id` | CASCADE |
+| Signaux et relances (notes) | `suivis_inscription` | `inscription_id` | CASCADE |
+| Absences (motif libre) | `absences` | `inscription_id` | CASCADE |
+| Évaluations (commentaire, fichier Drive) | `resultats_qcm` (`drive_file_id`) | `inscription_id` | CASCADE (le fichier Drive **reste**) |
+| Satisfaction (commentaires, fichier Drive) | `satisfactions` (`drive_file_id`) | `inscription_id` facultatif | SET NULL (réponse conservée, dénominalisée) |
+| Documents générés (nom, lien Drive) | `documents_generes` (`drive_file_id`, `drive_url`, `nom`) | `stagiaire_id` | CASCADE en base ; **le fichier Drive reste** |
+| Pièces de preuve par stagiaire | `preuve_fichiers` (`drive_file_id`, `drive_nom`) | `stagiaire_id` facultatif | SET NULL ; **fichier Drive conservé** |
+| Signalements (réclamant, personne concernée) | `signalements_qualite` (`reclamant_nom`, `reclamant_email`, `personne_concernee_libelle`, `description`) | texte libre + `inscription_id` | SET NULL : le texte libre **reste** |
+| Historique Qualité | `historique_qualite` | auteurs (utilisateurs) ; pas de texte libre stagiaire | — |
+| Auteurs des saisies | `cree_par`, `mis_a_jour_par`, `realise_par`… | utilisateurs internes | SET NULL |
+
+**Catégories à distinguer** (classement proposé, à valider) :
+- *Suivi opérationnel* : contact, recueil, adaptations, signaux et relances, absences pendant la session.
+- *Justification administrative* (financeurs, Qualiopi) : inscription, dates, statut et date
+  d'abandon, assiduité, évaluations, documents signés, émargements EduSign.
+- *Documents hébergés sur Drive* : documents générés, preuves, fichiers d'évaluation et de
+  satisfaction — **hors base**, non supprimés par une cascade SQL.
+- *Durée à décider* : précision d'abandon, notes de suivi, besoins d'adaptation historiques,
+  commentaires libres, données de réclamation.
+
+**Proposition de procédure d'effacement / anonymisation (à faire valider avant tout code)** :
+1. Recevoir et tracer la demande (hors Vigie), vérifier l'identité, identifier le `stagiaires.id`.
+2. Lister en lecture seule : inscriptions, documents générés, fichiers de preuve, fichiers
+   d'évaluation / satisfaction (`drive_file_id`), signalements liés ou mentionnant la personne.
+3. Décider, par catégorie ci-dessus, entre conservation (obligation de justification encore en
+   cours), anonymisation ou suppression.
+4. **Anonymiser plutôt que supprimer** ce qui justifie une session : remplacer nom, prénom,
+   e-mail, téléphone, entreprise par une mention neutre ; vider `situation_handicap`,
+   `besoins_adaptation`, `motif_abandon`, notes de suivi, attentes / objectifs du recueil,
+   textes d'adaptation, motifs d'absence et commentaires — en gardant dates, statuts et
+   catégories pour les décomptes.
+5. Traiter **Drive à part** : renommer ou supprimer les fichiers concernés (une suppression SQL
+   ne les touche pas), puis retirer les liens.
+6. Signalements : anonymiser manuellement les champs de réclamant et de personne concernée.
+7. Consigner l'opération sans données personnelles (date, auteur, périmètre).
+
+Décisions restant à valider : durées de conservation par catégorie ; point de départ (fin de
+session ? fin de la certification ?) ; sort des documents Drive signés ; anonymisation vs
+suppression des inscriptions ; rôle habilité à exécuter la procédure ; traitement des
+sauvegardes PostgreSQL et Drive.
 
 ---
 

@@ -2672,3 +2672,18 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   panneau Adaptations avec aide « aucun diagnostic ».
 - Tests : **506/506 serveur**, **285/285 client**, build OK ; smoke Chrome 29/29 (1440 / 390,
   réponses réseau contributeur sans champ réservé, PATCH réservés ⇒ 403). Migrations : **001 → 018**.
+
+## 2026-10-01 — Q2-3 : abandon enrichi, suivi et relances, inventaire RGPD (déployé)
+
+- Migration **019** : `inscriptions.categorie_abandon` (facultative, NULL pour l'historique) et
+  `suivis_inscription` (signal / relance, catégories fermées par type, canal pour une relance,
+  note ≤ 300, auteurs, pas de suppression physique).
+- Abandon : mécanisme existant conservé (date par défaut, effectifs, assiduité, archivée 409) ;
+  catégorie et précision ≤ 300 facultatives ; dialogue enrichi avec aide à la minimisation.
+- API `GET` / `POST` / `PATCH /api/inscriptions/:id/suivi[/:evenementId]` ; vue Parcours : dernier
+  événement, relances, issue, sans note ni motif ni catégorie d'abandon ; panneau « Suivi et relances ».
+- Fil d'Ariane « Qualité › Tableau de bord qualité ».
+- Inventaire RGPD et proposition de procédure d'anonymisation dans `PROJECT_HANDOFF.md`
+  (14 nonies) ; aucune durée inventée, aucune suppression automatique.
+- Tests : **518/518 serveur**, **295/295 client**, build OK ; smoke Chrome 30/30 (1440 / 390).
+  Migrations : **001 → 019**.

@@ -38,7 +38,7 @@ export function TableauBordQualite() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Tableau de bord" }]}
+        fil={[{ libelle: "Qualité" }, { libelle: "Tableau de bord qualité" }]}
         titre="Tableau de bord qualité"
         description="Ce qui demande une action, ce qui est en retard, ce qui attend un contrôle — chaque élément renvoie à sa fiche."
       />

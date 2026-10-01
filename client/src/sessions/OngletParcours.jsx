@@ -3,10 +3,11 @@ import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
 import { aujourdhuiISO } from "../qualite/format.js";
 import {
-  AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, CATEGORIES_ADAPTATION, CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_TEXTE,
-  PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL,
-  corpsAdaptation, corpsRecueil, erreursAdaptation, erreursRecueil, etatRecueil, filtrerParcoursPar,
-  libellePositionnement, resumeAdaptations, valeursAdaptation, valeursRecueil,
+  AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
+  CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_NOTE_SUIVI, MAX_TEXTE,
+  PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL, TYPES_SUIVI,
+  corpsAdaptation, corpsRecueil, corpsSuivi, dateFr, erreursAdaptation, erreursRecueil, erreursSuivi, etatRecueil, filtrerParcoursPar,
+  issueInscription, libelleCategorieSuivi, libellePositionnement, resumeAdaptations, resumeSuivi, valeursAdaptation, valeursRecueil, valeursSuivi,
 } from "./parcours-format.js";
 
 // Onglet « Parcours » (Q2-1) : une ligne par inscription — état du recueil du
@@ -21,6 +22,7 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   const [filtre, setFiltre] = useState("tous"); // tous | recueil | adaptations
   const [ouvert, setOuvert] = useState(null); // ligne dont le recueil est ouvert
   const [adaptations, setAdaptations] = useState(null); // ligne dont les adaptations sont ouvertes
+  const [suivi, setSuivi] = useState(null); // ligne dont le suivi et les relances sont ouverts
 
   const charger = useCallback(async () => {
     try { setParcours(await api(`/api/sessions/${sessionId}/parcours`)); setErr(null); }
@@ -67,6 +69,8 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
                   <th scope="col">Positionnement</th>
                   <th scope="col">Conclusion</th>
                   <th scope="col">Adaptations</th>
+                  <th scope="col">Suivi</th>
+                  <th scope="col">Issue</th>
                   <th scope="col"><span className="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
@@ -76,6 +80,8 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
                   const insc = STATUTS_INSCRIPTION[l.statut_inscription] || { libelle: l.statut_inscription, ton: "neutral" };
                   const pos = l.positionnement_id ? positionnementParId.get(l.positionnement_id) : null;
                   const nom = `${l.prenom} ${l.nom}`;
+                  const issue = issueInscription(l);
+                  const rs = resumeSuivi(l);
                   return (
                     <tr key={l.inscription_id}>
                       <td data-label="Stagiaire" className="sess-table__principal">
@@ -91,7 +97,12 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
                       <td data-label="Adaptations">
                         {l.adaptations_total ? resumeAdaptations(l) : <span className="sess-secondaire">Aucune mesure</span>}
                       </td>
+                      <td data-label="Suivi">
+                        {rs.dernier ? <>{rs.dernier}<span className="sess-secondaire">{rs.relances}</span></> : <span className="sess-secondaire">Aucun suivi</span>}
+                      </td>
+                      <td data-label="Issue"><Badge ton={issue.ton}>{issue.libelle}</Badge></td>
                       <td className="sess-table__actions">
+                        <Button compact onClick={() => setSuivi(l)} aria-label={`Suivi et relances de ${nom}`}>Suivi</Button>
                         <Button compact onClick={() => setAdaptations(l)} aria-label={`Adaptations de ${nom}`}>Adaptations</Button>
                         <Button compact onClick={() => setOuvert(l)} aria-label={`${modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"} le recueil de ${nom}`}>
                           {modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"}
@@ -104,6 +115,10 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
             </table>
           )}
         </>
+      )}
+
+      {suivi && (
+        <PanneauSuivi ligne={suivi} modifiable={modifiable} onFermer={() => setSuivi(null)} onChange={charger} />
       )}
 
       {adaptations && (
@@ -383,6 +398,149 @@ function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
         ton="danger" enCours={enCours} onConfirmer={abandonner} onAnnuler={() => setAAbandonner(null)}>
         La mesure restera dans le suivi avec le statut « Mesure abandonnée ». Cela ne concerne pas l'inscription du stagiaire à la formation.
       </ConfirmDialog>
+    </Drawer>
+  );
+}
+
+// Panneau « Suivi et relances » d'une inscription (Q2-3) : espace de suivi
+// INDIVIDUEL — seul endroit où la catégorie et la précision d'abandon, et
+// les notes, sont affichées. Événements FACTUELS seulement ; aucune
+// suppression, aucune notification automatique.
+function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
+  const [donnees, setDonnees] = useState(null);
+  const [errChargement, setErrChargement] = useState(null);
+  const [edition, setEdition] = useState(null); // { id|null, valeurs }
+  const [erreurs, setErreurs] = useState({});
+  const [erreurServeur, setErreurServeur] = useState(null);
+  const [enCours, setEnCours] = useState(false);
+  const verrou = useRef(false);
+  const base = `/api/inscriptions/${ligne.inscription_id}/suivi`;
+
+  const charger = useCallback(async () => {
+    try { setDonnees(await api(base)); setErrChargement(null); }
+    catch (e) { setErrChargement(e.message); }
+  }, [base]);
+  useEffect(() => { charger(); }, [charger]);
+
+  const lecture = !modifiable || donnees?.archivee;
+  const ouvrir = (e, sur = {}) => {
+    setErreurs({}); setErreurServeur(null);
+    setEdition({ id: e?.id ?? null, valeurs: { ...valeursSuivi(e), ...(e ? {} : { date_evenement: aujourdhuiISO() }), ...sur } });
+  };
+  const champ = (cle) => (ev) => setEdition((ed) => ({ ...ed, valeurs: { ...ed.valeurs, [cle]: ev.target.value } }));
+
+  async function enregistrer(ev) {
+    ev.preventDefault();
+    if (lecture || verrou.current) return; // fix : jamais de double soumission
+    const trouvees = erreursSuivi(edition.valeurs);
+    setErreurs(trouvees);
+    if (Object.keys(trouvees).length) return;
+    verrou.current = true;
+    setEnCours(true);
+    setErreurServeur(null);
+    try {
+      const corps = corpsSuivi(edition.valeurs, { creation: !edition.id });
+      if (edition.id) await api(`${base}/${edition.id}`, { method: "PATCH", body: JSON.stringify(corps) });
+      else await api(base, { method: "POST", body: JSON.stringify(corps) });
+      await Promise.all([charger(), onChange?.()]);
+      setEdition(null);
+    } catch (err) {
+      setErreurServeur(err.message); // la saisie reste dans le formulaire
+    } finally {
+      verrou.current = false;
+      setEnCours(false);
+    }
+  }
+
+  const insc = donnees?.inscription;
+  const evenements = donnees?.evenements || [];
+  const statut = insc ? (STATUTS_INSCRIPTION[insc.statut] || { libelle: insc.statut, ton: "neutral" }) : null;
+  const v = edition?.valeurs;
+  return (
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Suivi et relances"
+      description={`${ligne.prenom} ${ligne.nom}`}
+      pied={edition && !lecture ? (
+        <>
+          <Button onClick={() => setEdition(null)} disabled={enCours}>Annuler</Button>
+          <Button variante="primary" type="submit" form="form-suivi" disabled={enCours}>{enCours ? "Enregistrement…" : edition.id ? "Enregistrer la correction" : "Enregistrer"}</Button>
+        </>
+      ) : <Button onClick={onFermer} disabled={enCours}>Fermer</Button>}>
+      {errChargement && <Alert ton="error" titre="Le suivi n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement du suivi…" />}
+      {donnees && (
+        <div className="ui-form">
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : suivi en lecture seule." : "Consultation seule."}</Alert>}
+          {erreurServeur && <Alert ton="error" titre="L'événement n'a pas été enregistré.">{erreurServeur}</Alert>}
+
+          <div className="suivi-inscription" aria-label="Inscription">
+            <Badge ton={statut.ton}>{statut.libelle}</Badge>
+            {insc.statut === "abandon" && (
+              <span className="sess-secondaire">
+                {insc.date_abandon ? `Abandon le ${dateFr(insc.date_abandon)}` : "Abandon"}
+                {` · Catégorie : ${CATEGORIES_ABANDON[insc.categorie_abandon] || "non précisée"}`}
+                {insc.motif_abandon ? ` · Précision : ${insc.motif_abandon}` : ""}
+              </span>
+            )}
+          </div>
+
+          {edition && !lecture ? (
+            <form id="form-suivi" onSubmit={enregistrer} noValidate className="ui-form">
+              <Alert ton="info" titre="Faits observés uniquement"><p>{AIDE_SUIVI}</p></Alert>
+              <FormSection titre={edition.id ? `Corriger : ${TYPES_SUIVI[v.type].libelle.toLowerCase()}` : TYPES_SUIVI[v.type].libelle} colonnes={2}>
+                <Field label="Date" erreur={erreurs.date_evenement}>
+                  <input type="date" value={v.date_evenement} onChange={champ("date_evenement")} required />
+                </Field>
+                <Field label="Catégorie" erreur={erreurs.categorie}>
+                  <select value={v.categorie} onChange={champ("categorie")} required>
+                    <option value="">Choisir une catégorie</option>
+                    {Object.entries(CATEGORIES_SUIVI[v.type]).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </Field>
+                {v.type === "relance" && (
+                  <Field label="Canal" erreur={erreurs.canal}>
+                    <select value={v.canal} onChange={champ("canal")} required>
+                      <option value="">Choisir un canal</option>
+                      {Object.entries(CANAUX_RELANCE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Note" facultatif erreur={erreurs.note} aide={AIDE_SUIVI} className="ui-field--large">
+                  <textarea rows={2} maxLength={MAX_NOTE_SUIVI} value={v.note} onChange={champ("note")} />
+                </Field>
+              </FormSection>
+            </form>
+          ) : (
+            <>
+              {!lecture && (
+                <div className="sess-actions">
+                  <Button variante="primary" compact onClick={() => ouvrir(null, { type: "signal" })}>Ajouter un signal</Button>
+                  <Button compact onClick={() => ouvrir(null, { type: "relance" })}>Ajouter une relance</Button>
+                </div>
+              )}
+              {evenements.length === 0 ? (
+                <EmptyState titre="Aucun suivi">Aucun signal ni aucune relance n'a été enregistré pour ce stagiaire.</EmptyState>
+              ) : (
+                <ul className="adaptations-liste" aria-label="Événements de suivi">
+                  {evenements.map((e) => (
+                    <li key={e.id} className="adaptation">
+                      <div className="adaptation__tete">
+                        <Badge ton={TYPES_SUIVI[e.type]?.ton || "neutral"}>{TYPES_SUIVI[e.type]?.libelle || e.type}</Badge>
+                        <span className="sess-secondaire">le {dateFr(e.date_evenement)}{e.canal ? ` · ${CANAUX_RELANCE[e.canal] || e.canal}` : ""}</span>
+                      </div>
+                      <p className="adaptation__mesure">{libelleCategorieSuivi(e.type, e.categorie)}</p>
+                      {e.note && <p className="adaptation__bilan">{e.note}</p>}
+                      <span className="sess-secondaire">
+                        {e.cree_par_nom ? `Saisi par ${e.cree_par_nom}` : ""}{e.mis_a_jour_par_nom && e.mis_a_jour_le !== e.cree_le ? ` · corrigé par ${e.mis_a_jour_par_nom}` : ""}
+                      </span>
+                      {!lecture && <div className="sess-actions"><Button compact onClick={() => ouvrir(e)} aria-label={`Corriger l'événement du ${dateFr(e.date_evenement)}`}>Corriger</Button></div>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </Drawer>
   );
 }

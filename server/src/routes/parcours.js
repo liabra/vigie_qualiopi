@@ -12,7 +12,7 @@ import { query } from "../db.js";
 import { requireAuth, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
-import { lireAdaptation, lireRecueil } from "../services/parcours.js";
+import { lireAdaptation, lireRecueil, lireSuivi } from "../services/parcours.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -33,7 +33,11 @@ router.get("/sessions/:id/parcours", requireAuth, wrap(async (req, res) => {
               r.positionnement_id, r.mis_a_jour_le,
               -- Q2-2 : comptages seulement (jamais les textes des mesures).
               COALESCE(a.total, 0) AS adaptations_total, COALESCE(a.prevues, 0) AS adaptations_prevues,
-              COALESCE(a.mises_en_oeuvre, 0) AS adaptations_mises_en_oeuvre, COALESCE(a.abandonnees, 0) AS adaptations_abandonnees
+              COALESCE(a.mises_en_oeuvre, 0) AS adaptations_mises_en_oeuvre, COALESCE(a.abandonnees, 0) AS adaptations_abandonnees,
+              -- Q2-3 : issue et suivi STRUCTURÉS seulement (jamais catégorie, motif ni note).
+              i.date_abandon,
+              COALESCE(sv.relances, 0) AS relances_total, COALESCE(sv.signaux, 0) AS signaux_total,
+              der.type AS dernier_suivi_type, der.categorie AS dernier_suivi_categorie, der.date_evenement AS dernier_suivi_date
        FROM inscriptions i
        JOIN stagiaires s ON s.id = i.stagiaire_id
        LEFT JOIN recueils_besoin r ON r.inscription_id = i.id
@@ -44,6 +48,15 @@ router.get("/sessions/:id/parcours", requireAuth, wrap(async (req, res) => {
                 count(*) FILTER (WHERE statut = 'abandonnee')::int AS abandonnees
          FROM adaptations_parcours GROUP BY inscription_id
        ) a ON a.inscription_id = i.id
+       LEFT JOIN (
+         SELECT inscription_id, count(*) FILTER (WHERE type = 'relance')::int AS relances,
+                count(*) FILTER (WHERE type = 'signal')::int AS signaux
+         FROM suivis_inscription GROUP BY inscription_id
+       ) sv ON sv.inscription_id = i.id
+       LEFT JOIN (
+         SELECT DISTINCT ON (inscription_id) inscription_id, type, categorie, date_evenement
+         FROM suivis_inscription ORDER BY inscription_id, date_evenement DESC, id DESC
+       ) der ON der.inscription_id = i.id
        WHERE i.session_id = $1
        ORDER BY s.nom, s.prenom, i.id`, [sessionId]),
     query(
@@ -177,6 +190,73 @@ router.patch("/inscriptions/:id/adaptations/:adaptationId", requireRedacteur, wr
   );
   const { rows: [a] } = await query(`${LIRE_ADAPTATIONS} WHERE a.id = $1`, [adaptationId]);
   res.json({ adaptation: a });
+}));
+
+// ── Q2-3 : suivi factuel du décrochage (signaux et relances) ───────
+// Droits = inscriptions : lecture authentifiée, écriture admin + contributeur.
+// Espace de suivi INDIVIDUEL : seul endroit où le motif d'abandon et les
+// notes sont renvoyés. Jamais situation_handicap ni besoins_adaptation.
+// Aucune suppression physique, aucune notification, aucun signalement
+// Qualité automatique.
+const LIRE_SUIVIS = `SELECT e.id, e.inscription_id, e.type, e.date_evenement, e.categorie, e.canal, e.note,
+    e.cree_le, e.mis_a_jour_le, uc.nom AS cree_par_nom, um.nom AS mis_a_jour_par_nom
+  FROM suivis_inscription e
+  LEFT JOIN utilisateurs uc ON uc.id = e.cree_par
+  LEFT JOIN utilisateurs um ON um.id = e.mis_a_jour_par`;
+
+router.get("/inscriptions/:id/suivi", requireAuth, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const { rows: [insc] } = await query(
+    `SELECT i.id AS inscription_id, i.statut, i.date_abandon, i.categorie_abandon, i.motif_abandon, s.archivee_le
+     FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1`, [id]);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  const { rows } = await query(`${LIRE_SUIVIS} WHERE e.inscription_id = $1 ORDER BY e.date_evenement DESC, e.id DESC`, [id]);
+  const { archivee_le, ...inscription } = insc;
+  res.json({ inscription, evenements: rows, archivee: !!archivee_le });
+}));
+
+router.post("/inscriptions/:id/suivi", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const { champs, erreur } = lireSuivi(req.body || {});
+  if (erreur) return res.status(400).json({ error: erreur });
+  const insc = await inscriptionAvecSession(id);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  if (insc.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  const { rows: [cree] } = await query(
+    `INSERT INTO suivis_inscription (inscription_id, type, date_evenement, categorie, canal, note, cree_par, mis_a_jour_par)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$7) RETURNING id`,
+    [id, champs.type, champs.date_evenement, champs.categorie, champs.canal, champs.note, req.user.id]
+  );
+  const { rows: [e] } = await query(`${LIRE_SUIVIS} WHERE e.id = $1`, [cree.id]);
+  res.status(201).json({ evenement: e });
+}));
+
+// Correction d'un événement (rectification) : état final validé, une seule
+// écriture ; l'événement doit appartenir à CETTE inscription (sinon 404).
+router.patch("/inscriptions/:id/suivi/:evenementId", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  const evenementId = parseIdPositif(req.params.evenementId);
+  if (!id || !evenementId) return res.status(400).json({ error: "Identifiant invalide." });
+  const insc = await inscriptionAvecSession(id);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  if (insc.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  const { rows: [avant] } = await query(
+    "SELECT type, date_evenement, categorie, canal, note FROM suivis_inscription WHERE id = $1 AND inscription_id = $2",
+    [evenementId, id]
+  );
+  if (!avant) return res.status(404).json({ error: "Événement de suivi introuvable pour cette inscription." });
+  const { champs, erreur } = lireSuivi(req.body || {}, avant);
+  if (erreur) return res.status(400).json({ error: erreur });
+  await query(
+    `UPDATE suivis_inscription SET date_evenement = $3, categorie = $4, canal = $5, note = $6,
+       mis_a_jour_par = $7, mis_a_jour_le = now()
+     WHERE id = $1 AND inscription_id = $2`,
+    [evenementId, id, champs.date_evenement, champs.categorie, champs.canal, champs.note, req.user.id]
+  );
+  const { rows: [e] } = await query(`${LIRE_SUIVIS} WHERE e.id = $1`, [evenementId]);
+  res.json({ evenement: e });
 }));
 
 export default router;

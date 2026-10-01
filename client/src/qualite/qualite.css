@@ -172,3 +172,6 @@
 .adaptation { display: grid; gap: 0.25rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); min-width: 0; }
 .adaptation__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .adaptation__mesure, .adaptation__bilan { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* Q2-3 — Suivi et relances */
+.suivi-inscription { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }

@@ -50,6 +50,7 @@ const AIDE = {
           "Stagiaires : inscrire un stagiaire, l'importer en CSV, compléter son dossier, déclarer un abandon.",
           "Assiduité : saisir les absences (présent par défaut), le taux est calculé par Vigie.",
           "Évaluations : enregistrer les résultats (QCM, positionnement…) ou les importer.",
+          "Parcours : recueil du besoin, adaptations pédagogiques, suivi et relances (faits observés) de chaque stagiaire.",
           "Satisfaction : recueillir les questionnaires, anonymes ou nominatifs.",
           "Documents : générer les documents Vigie ou rattacher un fichier externe (EduSign).",
         ],
@@ -325,6 +326,7 @@ export const RUBRIQUES_GUIDE = [
     sections: [
       { titre: "Inscription", lignes: ["Dans l'onglet Stagiaires, ajoutez un stagiaire un par un ou importez un CSV. L'inscription porte le groupe, le prescripteur et l'état du dossier."] },
       { titre: "Dossier", lignes: ["Le dossier réunit le contact, l'entreprise et le financeur. La situation de handicap et les besoins d'adaptation historiques sont réservés à l'administrateur ; les mesures pédagogiques se suivent dans l'onglet Parcours."] },
+      { titre: "Abandon et relances", lignes: ["L'abandon change le statut de l'inscription ; une catégorie et une précision courte sont facultatives, sans information médicale ni justification intime. Les signaux observés et les relances s'enregistrent dans Parcours › Suivi, en faits seulement."] },
     ],
   },
   {

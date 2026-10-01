@@ -27,6 +27,7 @@ import {
 import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
+import { lireAbandon } from "../services/parcours.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -592,6 +593,9 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   if (dateOptionnelleInvalide(date_abandon)) { // fix
     return res.status(400).json({ error: "Date d'abandon invalide : format attendu AAAA-MM-JJ." });
   }
+  // Q2-3 : catégorie (liste fermée) et précision courte, toutes deux FACULTATIVES.
+  const abandon = lireAbandon(req.body || {});
+  if (abandon.erreur) return res.status(400).json({ error: abandon.erreur });
 
   // Un groupe ne se rattache qu'à SA session : le corps ne doit pas pouvoir
   // déplacer une inscription vers un groupe d'une autre session.
@@ -628,7 +632,8 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
     // Un abandon sans date reçoit celle du jour : le décompte doit savoir quand.
     if (statut === "abandon") set("date_abandon", date_abandon || new Date().toISOString().slice(0, 10));
   } else if (date_abandon !== undefined) set("date_abandon", date_abandon || null);
-  if (motif_abandon !== undefined) set("motif_abandon", motif_abandon || null);
+  if (motif_abandon !== undefined) set("motif_abandon", abandon.champs.motif_abandon);
+  if (abandon.champs.categorie_abandon !== undefined) set("categorie_abandon", abandon.champs.categorie_abandon);
   if (groupe_id !== undefined) set("groupe_id", gid);
   if (prescripteur !== undefined) set("prescripteur", prescripteur || null);
   if (dossier_complet !== undefined) set("dossier_complet", dossier_complet === true);

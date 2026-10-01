@@ -75,17 +75,20 @@ test("pur : liens vers les fiches, libellés d'activité, recherche et tri des i
 
 // ── Navigation et droits ─────────────────────────────────────
 
-test("navigation : « Tableau de bord » avant Actions qualité et Signalements pour l'admin ; absent pour le contributeur", async () => {
+test("navigation : « Tableau de bord qualité » en tête du groupe Qualité pour l'admin ; absent pour le contributeur", async () => {
   await monter("/accueil", "admin");
   await attendre(() => liensNavigation().length > 0);
   const liens = liensNavigation();
-  const i = liens.indexOf("Tableau de bord");
+  const i = liens.indexOf("Tableau de bord qualité");
   assert.ok(i >= 0);
-  assert.deepEqual(liens.slice(i, i + 3), ["Tableau de bord", "Actions qualité", "Signalements"]);
+  assert.deepEqual(liens.slice(i, i + 8), ["Tableau de bord qualité", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Signalements", "Modèles de documents"]);
+  assert.ok(!liens.includes("Tableau de bord"), "ancien libellé retiré");
+  const lien = [...document.querySelectorAll("nav a")].find((a) => a.textContent.trim() === "Tableau de bord qualité");
+  assert.equal(lien.getAttribute("href"), "/tableau-de-bord-qualite", "route conservée");
   await demonter();
   await monter("/accueil", "contributeur");
   await attendre(() => liensNavigation().length > 0);
-  assert.ok(!liensNavigation().includes("Tableau de bord"));
+  assert.ok(!liensNavigation().includes("Tableau de bord qualité"));
 });
 
 test("contributeur : accès direct bloqué AVANT tout appel à l'API", async () => {

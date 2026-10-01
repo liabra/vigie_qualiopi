@@ -22,11 +22,11 @@ export const NAVIGATION = [
     id: "qualite",
     titre: "Qualité",
     entrees: [
+      { to: "/tableau-de-bord-qualite", libelle: "Tableau de bord qualité", admin: true },
       { to: "/indicateurs", libelle: "Indicateurs" },
       { to: "/preuves", libelle: "Preuves" },
       { to: "/veille", libelle: "Veille" },
       { to: "/audits", libelle: "Audits" },
-      { to: "/tableau-de-bord-qualite", libelle: "Tableau de bord", admin: true },
       { to: "/actions-qualite", libelle: "Actions qualité" },
       { to: "/signalements-qualite", libelle: "Signalements", admin: true },
     ],

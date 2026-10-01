@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q1-B4** — preuves liées aux actions et signalements qualité (01/10/2026) |
+| **Dernier lot validé en production** | **Q1-B5** — tableau de bord qualité ; **chantier Q1 complet** (01/10/2026) |
 | **Migration de production actuelle** | `016_liens_preuves_qualite.sql` (16 migrations, aucune 017) |
-| **Suite de tests** | **471/471 serveur + 251/251 client** (déployés avec Q1-B4) |
+| **Suite de tests** | **479/479 serveur + 261/261 client** (déployés avec Q1-B5) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2578,7 +2578,7 @@ focalisable ; personne concernée effacée sans message quand une inscription es
 homonymes de responsables ; règle CSS `.qualite-ligne__v` globale ; titre très long ;
 ancienne date de résolution affichée après réouverture ; ancien responsable historique sans
 nom ; message réseau brut « Failed to fetch » ; chargements doublés fiche / formulaire.
-Reste hors Q1 : Q1-B5 (tableau de bord qualité).
+Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 
 ### Q1-B4 — Preuves liées aux actions et signalements (01/10/2026)
 
@@ -2601,6 +2601,28 @@ Reste hors Q1 : Q1-B5 (tableau de bord qualité).
   recherche serveur existante (preuves déjà liées exclues), lien « Créer / importer une
   preuve » vers l'écran Preuves (aucun second formulaire), retrait confirmé.
 - Tests : 471/471 serveur, 251/251 client ; smoke Chrome 1440 / 390.
+
+### Q1-B5 — Tableau de bord qualité (01/10/2026)
+
+- **Page** `/tableau-de-bord-qualite` (admin ; menu Qualité : Tableau de bord, Actions
+  qualité, Signalements) ; contributeur : aucune entrée, accès direct bloqué avant appel.
+- **Endpoint agrégé** `GET /api/qualite/tableau-de-bord?aujourdhui=AAAA-MM-JJ` (admin ;
+  date LOCALE du navigateur pour des retards identiques aux fiches) : `kpis`, `priorites`,
+  `indicateurs`, `activite_recente` ; nombre de requêtes SQL constant ; aucune migration.
+- **KPI factuels** : actions ouvertes / en retard / efficacité à vérifier / clôturées ;
+  signalements à traiter / réclamations en retard (en cours seulement) / résolus à
+  clôturer / clôturés ; preuves enregistrées ; actions et signalements actifs avec / sans
+  preuve liée (repère de pilotage, PAS une non-conformité).
+- **Priorités du moment** (10 max, ordre fixe : action en retard, réclamation en retard,
+  efficacité à vérifier, résolu à clôturer, sans preuve liée ; un objet une seule fois),
+  chacune avec raison, référence, échéance et lien vers sa fiche.
+- **Vue par indicateur** (référentiel actif) : preuves, actions et signalements ACTIFS liés ;
+  recherche et tri ; « Aucune preuve enregistrée » sans jugement.
+- **Activité récente** : création, clôture, annulation, réouverture, preuve rattachée /
+  retirée — référence, acteur, date, lien ; jamais de contenu ni de donnée personnelle.
+- **Aucun score Qualiopi, taux de conformité ni diagnostic inventé.**
+- Tests : 479/479 serveur (dont `tableau-bord-qualite.test.js`, base vierge, port 55449),
+  261/261 client ; smoke Chrome 1440 / 390. Migrations inchangées : **001 → 016**.
 
 ---
 

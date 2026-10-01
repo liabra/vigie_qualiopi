@@ -729,4 +729,118 @@ router.post("/signalements/:id/preuves", requireAdmin, wrap((req, res) => lierPr
 router.delete("/actions-qualite/:id/preuves/:preuveId", requireAdmin, wrap((req, res) => delierPreuve(req, res, "action")));
 router.delete("/signalements/:id/preuves/:preuveId", requireAdmin, wrap((req, res) => delierPreuve(req, res, "signalement")));
 
+// ── Tableau de bord qualité (Q1-B5) ──────────────────────────
+// Admin uniquement. FAITS opérationnels seulement : aucun score ni taux de
+// conformité, aucun diagnostic. Règles IDENTIQUES à celles des écrans :
+//  · action en retard : échéance < aujourd'hui, ni clôturée ni annulée ;
+//  · réclamation en retard : réclamation ouverte / qualifiée / en
+//    traitement, échéance < aujourd'hui (une résolue n'est jamais en retard).
+// « Aujourd'hui » = date LOCALE du navigateur (?aujourdhui=AAAA-MM-JJ, comme
+// les fiches) ; à défaut, date du serveur. Quelques requêtes, aucun N+1.
+// Aucune donnée personnelle : ni réclamant, ni description, ni contenu.
+const ACTION_OUVERTE = "a.statut NOT IN ('cloturee', 'annulee')";
+const SIGNALEMENT_ACTIF = "s.statut NOT IN ('cloturee', 'annulee')";
+const RECLAMATION_EN_RETARD = "s.type = 'reclamation' AND s.statut IN ('ouverte', 'qualifiee', 'en_traitement') AND s.date_echeance_cible < $1";
+const ACTION_EN_RETARD = `a.echeance < $1 AND ${ACTION_OUVERTE}`;
+const PREUVE_LIEE_ACTION = "EXISTS (SELECT 1 FROM liens_preuves_qualite l WHERE l.action_qualite_id = a.id)";
+const PREUVE_LIEE_SIGNALEMENT = "EXISTS (SELECT 1 FROM liens_preuves_qualite l WHERE l.signalement_qualite_id = s.id)";
+const RAISONS = {
+  action_en_retard: "Action en retard",
+  reclamation_en_retard: "Réclamation en retard",
+  efficacite_a_verifier: "Efficacité à vérifier",
+  resolu_a_cloturer: "Résolu, à clôturer",
+  action_sans_preuve: "Action ouverte sans preuve liée",
+  signalement_sans_preuve: "Signalement actif sans preuve liée",
+};
+const EVENEMENTS_ACTIVITE = ["creation", "cloturer", "annuler", "rouvrir", "preuve_rattachee", "preuve_detachee"];
+const MAX_PRIORITES = 10;
+
+router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
+  const brute = String(req.query.aujourdhui || "");
+  if (brute && !estDateValide(brute)) return res.status(400).json({ error: "Date invalide (aujourdhui) : format attendu AAAA-MM-JJ." });
+  const jour = brute || new Date().toISOString().slice(0, 10);
+
+  const [{ rows: [ka] }, { rows: [ks] }, { rows: [kp] }] = await Promise.all([
+    query(`SELECT count(*) FILTER (WHERE ${ACTION_OUVERTE})::int AS ouvertes,
+                  count(*) FILTER (WHERE ${ACTION_EN_RETARD})::int AS en_retard,
+                  count(*) FILTER (WHERE a.statut = 'efficacite_a_verifier')::int AS efficacite_a_verifier,
+                  count(*) FILTER (WHERE a.statut = 'cloturee')::int AS cloturees,
+                  count(*) FILTER (WHERE ${ACTION_OUVERTE} AND ${PREUVE_LIEE_ACTION})::int AS ouvertes_avec_preuve,
+                  count(*) FILTER (WHERE ${ACTION_OUVERTE} AND NOT ${PREUVE_LIEE_ACTION})::int AS ouvertes_sans_preuve
+           FROM actions_qualite a`, [jour]),
+    query(`SELECT count(*) FILTER (WHERE s.statut IN ('ouverte', 'qualifiee', 'en_traitement'))::int AS a_traiter,
+                  count(*) FILTER (WHERE ${RECLAMATION_EN_RETARD})::int AS reclamations_en_retard,
+                  count(*) FILTER (WHERE s.statut = 'resolue')::int AS resolus_a_cloturer,
+                  count(*) FILTER (WHERE s.statut = 'cloturee')::int AS clotures,
+                  count(*) FILTER (WHERE ${SIGNALEMENT_ACTIF} AND ${PREUVE_LIEE_SIGNALEMENT})::int AS actifs_avec_preuve,
+                  count(*) FILTER (WHERE ${SIGNALEMENT_ACTIF} AND NOT ${PREUVE_LIEE_SIGNALEMENT})::int AS actifs_sans_preuve
+           FROM signalements_qualite s`, [jour]),
+    query("SELECT count(*)::int AS total FROM preuves"),
+  ]);
+
+  // Priorités : catégories dans un ordre FIXE, chacune triée de façon
+  // déterministe ; un objet n'apparaît qu'une fois (première raison).
+  const [r1, r2, r3, r4, r5, r6] = await Promise.all([
+    query(`SELECT 'action' AS type, a.id, a.reference, a.titre, a.echeance FROM actions_qualite a
+           WHERE ${ACTION_EN_RETARD} ORDER BY a.echeance, a.id LIMIT ${MAX_PRIORITES}`, [jour]),
+    query(`SELECT 'signalement' AS type, s.id, s.reference, s.objet AS titre, s.date_echeance_cible AS echeance FROM signalements_qualite s
+           WHERE ${RECLAMATION_EN_RETARD} ORDER BY s.date_echeance_cible, s.id LIMIT ${MAX_PRIORITES}`, [jour]),
+    query(`SELECT 'action' AS type, a.id, a.reference, a.titre, a.echeance FROM actions_qualite a
+           WHERE a.statut = 'efficacite_a_verifier' ORDER BY a.echeance NULLS LAST, a.id LIMIT ${MAX_PRIORITES}`),
+    query(`SELECT 'signalement' AS type, s.id, s.reference, s.objet AS titre, NULL::date AS echeance FROM signalements_qualite s
+           WHERE s.statut = 'resolue' ORDER BY s.date_resolution NULLS LAST, s.id LIMIT ${MAX_PRIORITES}`),
+    query(`SELECT 'action' AS type, a.id, a.reference, a.titre, a.echeance FROM actions_qualite a
+           WHERE ${ACTION_OUVERTE} AND NOT ${PREUVE_LIEE_ACTION} ORDER BY a.echeance NULLS LAST, a.id LIMIT ${MAX_PRIORITES}`),
+    query(`SELECT 'signalement' AS type, s.id, s.reference, s.objet AS titre, s.date_echeance_cible AS echeance FROM signalements_qualite s
+           WHERE ${SIGNALEMENT_ACTIF} AND NOT ${PREUVE_LIEE_SIGNALEMENT} ORDER BY s.date_echeance_cible NULLS LAST, s.id LIMIT ${MAX_PRIORITES}`),
+  ]);
+  const vus = new Set();
+  const priorites = [];
+  for (const [raison, { rows }] of [["action_en_retard", r1], ["reclamation_en_retard", r2], ["efficacite_a_verifier", r3],
+    ["resolu_a_cloturer", r4], ["action_sans_preuve", r5], ["signalement_sans_preuve", r6]]) {
+    for (const o of rows) {
+      const cle = `${o.type}:${o.id}`;
+      if (vus.has(cle) || priorites.length >= MAX_PRIORITES) continue;
+      vus.add(cle);
+      priorites.push({ ...o, raison, raison_libelle: RAISONS[raison] });
+    }
+  }
+
+  // Vue par indicateur du référentiel ACTIF (une requête, sous-comptes).
+  const { rows: indicateurs } = await query(
+    `SELECT i.id, i.numero, i.libelle, c.numero AS critere,
+            (SELECT count(*)::int FROM preuves p WHERE p.indicateur_id = i.id) AS preuves,
+            (SELECT count(*)::int FROM actions_qualite_indicateurs ai JOIN actions_qualite a ON a.id = ai.action_id
+              WHERE ai.indicateur_id = i.id AND ${ACTION_OUVERTE}) AS actions_actives,
+            (SELECT count(*)::int FROM signalements_qualite_indicateurs si JOIN signalements_qualite s ON s.id = si.signalement_id
+              WHERE si.indicateur_id = i.id AND ${SIGNALEMENT_ACTIF}) AS signalements_actifs
+     FROM indicateurs i
+     JOIN criteres c ON c.id = i.critere_id
+     JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+     ORDER BY i.numero`
+  );
+
+  // Activité récente : événements de cycle de vie seulement (jamais les
+  // valeurs des champs), avec la référence de l'objet et l'acteur.
+  const { rows: activite } = await query(
+    `SELECT h.id, h.entite_type AS type, h.entite_id AS objet_id, h.evenement, h.cree_le, u.nom AS acteur_nom,
+            COALESCE(a.reference, s.reference) AS reference
+     FROM historique_qualite h
+     LEFT JOIN utilisateurs u ON u.id = h.par
+     LEFT JOIN actions_qualite a ON h.entite_type = 'action' AND a.id = h.entite_id
+     LEFT JOIN signalements_qualite s ON h.entite_type = 'signalement' AND s.id = h.entite_id
+     WHERE h.evenement = ANY($1::text[])
+     ORDER BY h.cree_le DESC, h.id DESC
+     LIMIT 15`, [EVENEMENTS_ACTIVITE]
+  );
+
+  res.json({
+    aujourdhui: jour,
+    kpis: { actions: ka, signalements: ks, preuves: { total: kp.total } },
+    priorites,
+    indicateurs,
+    activite_recente: activite,
+  });
+}));
+
 export default router;

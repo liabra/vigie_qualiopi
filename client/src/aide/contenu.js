@@ -176,6 +176,25 @@ const AIDE = {
       },
     ],
   },
+  tableauBordQualite: {
+    titre: "Tableau de bord qualité",
+    sections: [
+      {
+        titre: "À quoi sert ce tableau de bord",
+        lignes: [
+          "Il rassemble les faits du système qualité : actions et signalements à traiter, retards, contrôles d'efficacité, éléments résolus à clôturer.",
+          "Chaque priorité et chaque activité ouvre sa fiche source.",
+        ],
+      },
+      {
+        titre: "Lire les chiffres",
+        lignes: [
+          "Aucun score ni taux de conformité n'est calculé : les chiffres sont des comptages factuels.",
+          "« Sans preuve liée » et « Aucune preuve enregistrée » sont des repères de pilotage, pas des non-conformités.",
+        ],
+      },
+    ],
+  },
   signalements: {
     titre: "Signalements",
     sections: [
@@ -254,6 +273,7 @@ const CLES = [
   ["/preuves", "preuves"],
   ["/veille", "veille"],
   ["/audits", "audits"],
+  ["/tableau-de-bord-qualite", "tableauBordQualite"],
   ["/signalements-qualite", "signalements"],
   ["/actions-qualite", "actions"],
   ["/formations", "formations"],

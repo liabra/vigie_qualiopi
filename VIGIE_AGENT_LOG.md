@@ -2628,3 +2628,22 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - P3 : recherche limitée aux titres et au référentiel actif ; titre d'une preuve détachée
   affiché « Preuve (ID interne X) » dans l'historique ; libellés de statut de preuve
   dupliqués entre l'écran Preuves et `preuves/format.js`.
+
+## 2026-10-01 — Q1-B5 : tableau de bord qualité (déployé)
+
+- Page admin `/tableau-de-bord-qualite` + endpoint agrégé `GET /api/qualite/tableau-de-bord`
+  (KPI, priorités du moment, vue par indicateur, activité récente) ; menu Qualité réordonné :
+  Tableau de bord, Actions qualité, Signalements.
+- Faits opérationnels seulement (aucun score ni diagnostic) ; règles de retard identiques
+  aux fiches (date locale transmise) ; « sans preuve liée » = repère, pas non-conformité.
+- Aucune donnée personnelle (ni réclamant, ni description, ni valeur d'historique) ;
+  contributeur : 403 / accès bloqué avant appel ; requêtes SQL en nombre constant.
+- Tests : **479/479 serveur**, **261/261 client**, build OK ; smoke Chrome (PG jetable,
+  1440 / 390) 48/48 sans erreur. Aucune migration : **001 → 016**.
+- P3 : tuiles KPI non cliquables (pas de filtre « en retard » dans les listes) ; priorités
+  plafonnées à 10 sans lien « voir tout » ; activité limitée à 15 événements.
+
+### État
+
+**Chantier Q1 Qualité complet et déployé (B1 → B5).**
+

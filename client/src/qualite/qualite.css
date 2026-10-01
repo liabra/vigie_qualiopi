@@ -151,3 +151,18 @@
 .preuve-liee__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
 .preuve-liee__fichiers { margin: 0; padding-left: 1.1rem; overflow-wrap: anywhere; }
 .preuve-choix { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; overflow-wrap: anywhere; }
+
+/* Q1-B5 — Tableau de bord qualité */
+.tdb { display: grid; gap: 0.25rem; min-width: 0; }
+.qualite-compteur--alerte .qualite-compteur__n { color: var(--color-error); }
+.tdb-compteurs--5 { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 1100px) { .tdb-compteurs--5 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 600px) { .tdb-compteurs--5 { grid-template-columns: repeat(2, 1fr); } }
+.tdb-priorites { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+.tdb-priorite { display: grid; gap: 0.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--color-border); overflow-wrap: anywhere; }
+.tdb-priorite:last-child { border-bottom: 0; padding-bottom: 0; }
+.tdb-priorite__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.tdb-outils { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0.75rem; margin-bottom: 0.75rem; }
+@media (max-width: 600px) { .tdb-outils { grid-template-columns: minmax(0, 1fr); } }
+.tdb-libelle { display: block; overflow-wrap: anywhere; }
+.tdb-table td { overflow-wrap: break-word; }

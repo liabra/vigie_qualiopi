@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **TIME-1** — dates métier au jour civil de Cayenne |
-| **Migration de production actuelle** | `019_suivi_inscriptions.sql` (19 migrations, aucune 020) |
-| **Suite de tests** | **528/528 serveur + 298/298 client** (déployés avec TIME-1) |
+| **Dernier lot validé en production** | **TIME-2** — péremption des preuves au jour civil de Cayenne |
+| **Migration de production actuelle** | `020_dates_metier_preuves.sql` (20 migrations, aucune 021) |
+| **Suite de tests** | **534/534 serveur + 298/298 client** (déployés avec TIME-2) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2787,14 +2787,35 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - **Aucune modification rétroactive**, aucune migration. Le défaut de colonne
   `inscriptions.date_inscription DEFAULT current_date` reste en base mais n'est plus utilisé
   par l'application (les deux insertions passent la date explicitement).
-- **Reste en UTC (identifié, non modifié)** : la vue `preuves_enrichies` (migration 006) calcule
-  la péremption avec `current_date` / `now()` côté PostgreSQL : entre 21 h et minuit à Cayenne,
-  une preuve à échéance du lendemain peut apparaître « périmée » 3 h trop tôt. Correction
-  possible plus tard par une migration de vue (`(now() AT TIME ZONE 'America/Cayenne')::date`),
-  non faite ici (aucune migration demandée).
+- **Péremption des preuves** : corrigée par TIME-2 (migration 020, ci-dessous).
 - Tests de frontière (`datesMetier.test.js`, port 55453) : 2026-10-02T00:30Z ⇒ 2026-10-01 ;
   23:59:59 / 00:00:00 / 00:00:01 à Cayenne ; réveillon (année des références) ; machine en UTC,
   Tokyo, Kiritimati, Los Angeles ; dates saisies préservées ; `updated_at` = instant réel.
+
+### TIME-2 — Péremption des preuves au jour civil de Cayenne (migration 020)
+
+- **Constat** : la vue `preuves_enrichies` (004, remplacée en 006, sans autre modification)
+  jugeait `alerte_statut` avec la date de la **session** PostgreSQL : `CURRENT_DATE` pour
+  l'échéance fixe, et comparaison de `date + mois` (sans fuseau) à `now()` pour la révision
+  périodique, avec `created_at::date` comme base. Base Railway en UTC ⇒ preuve « périmée »
+  dès 21 h la veille à Cayenne ; le résultat variait aussi selon le fuseau de session.
+- **Migration 020** `020_dates_metier_preuves.sql` : `CREATE OR REPLACE VIEW` reprenant 006 à
+  l'identique, seule la date de référence change : `(now() AT TIME ZONE 'America/Cayenne')::date`
+  (et `(created_at AT TIME ZONE 'America/Cayenne')::date` pour une preuve jamais révisée).
+  Règles inchangées (`<=`, fenêtre de 30 jours, périodicité en mois) ; 34 colonnes, types et
+  ordre identiques ; aucune vue dépendante, aucun droit spécifique ; aucune donnée touchée.
+- **Audit SQL** : plus aucun calcul de date métier dépendant du fuseau de session. Restent :
+  `set_updated_at()` (horodatage technique), le défaut `inscriptions.date_inscription DEFAULT
+  current_date` (plus utilisé par l'application depuis TIME-1) et des tris
+  `ORDER BY COALESCE(…, created_at::date)` dans les listes Qualité (ordre d'affichage seulement,
+  P3).
+- **Tests** `peremption.test.js` (port 55454) : la définition RÉELLEMENT installée
+  (`pg_get_viewdef`) est réévaluée à instants fixes (`now()` figé, `CURRENT_DATE` = date de
+  l'instant dans le fuseau de session) — 2026-10-02 00:30Z et 02:59:59Z ⇒ 01/10, 03:00:00Z ⇒
+  02/10 — pour cinq fuseaux de session (UTC, Tokyo, Kiritimati, Cayenne, Los Angeles) ; vue
+  réelle avec session en Kiritimati ; colonnes et consommateurs (`/api/preuves`, filtre
+  `alerte`, détail, `/api/indicateurs`). Rouge avant 020, vert après. Aucun crochet de test en
+  production.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

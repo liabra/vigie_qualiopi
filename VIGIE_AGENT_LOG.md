@@ -2721,3 +2721,13 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   donnée modifiée. Vue `preuves_enrichies` (péremption) encore en UTC : documenté.
 - Tests : **528/528 serveur** (dont `datesMetier.test.js`), **298/298 client**, build OK ;
   smoke serveur réel lancé en `TZ=Asia/Tokyo`.
+
+## 2026-10-01 — TIME-2 : péremption des preuves au jour civil de Cayenne (déployé)
+
+- Migration **020** `020_dates_metier_preuves.sql` : `CREATE OR REPLACE VIEW preuves_enrichies`
+  identique à 006 sauf la date de référence, `(now() AT TIME ZONE 'America/Cayenne')::date`
+  (échéance fixe et révision périodique, base de création au jour de Cayenne).
+- Colonnes, types, règles et dépendances inchangés ; aucune donnée modifiée.
+- Tests : `peremption.test.js` (instants fixes 00:30Z / 02:59:59Z / 03:00Z, cinq fuseaux de
+  session), rouge puis vert ; **534/534 serveur**, build OK ; smoke avec base en
+  Pacific/Kiritimati. Migrations : **001 → 020**.

@@ -14,7 +14,7 @@ import { Router } from "express";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
-import { estDateValide } from "../services/dates.js";
+import { dateMetierAujourdhui, estDateValide } from "../services/dates.js";
 import {
   CANAUX, CAUSES, PRIORITES, STATUTS_ACTION, STATUTS_SIGNALEMENT, TYPES_SIGNALEMENT,
   TRANSITIONS_ACTION, TRANSITIONS_SIGNALEMENT,
@@ -109,7 +109,7 @@ async function reconcilierSessionFormation(client, champs, avant) {
 }
 
 async function referenceSuivante(client, prefixe) {
-  const annee = new Date().getUTCFullYear();
+  const annee = Number(dateMetierAujourdhui().slice(0, 4)); // fix : année civile de Cayenne
   const { rows: [c] } = await client.query(
     `INSERT INTO compteurs_qualite (annee, type, dernier) VALUES ($1, $2, 1)
      ON CONFLICT (annee, type) DO UPDATE SET dernier = compteurs_qualite.dernier + 1
@@ -384,7 +384,7 @@ async function transitionSignalement(req, res, action) {
     const champs = { statut: vers };
     const par = req.user.id;
     if (action === "resoudre") {
-      const aujourdhui = new Date().toISOString().slice(0, 10);
+      const aujourdhui = dateMetierAujourdhui(); // fix : jour civil de Cayenne
       const dr = corps.date_resolution === undefined || corps.date_resolution === null || corps.date_resolution === "" ? aujourdhui : corps.date_resolution;
       if (!estDateValide(String(dr).trim())) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Date de résolution invalide : format attendu AAAA-MM-JJ." }); }
       champs.date_resolution = String(dr).trim();
@@ -399,7 +399,7 @@ async function transitionSignalement(req, res, action) {
     if (action === "cloturer") {
       const n = await compterIndicateurs(client, "signalements_qualite_indicateurs", "signalement_id", id);
       if (n === 0) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Au moins un indicateur est requis avant clôture." }); }
-      champs.date_cloture = new Date().toISOString().slice(0, 10);
+      champs.date_cloture = dateMetierAujourdhui(); // fix : jour civil de Cayenne
       champs.cloture_par = par;
     }
     if (action === "rouvrir") {
@@ -618,7 +618,7 @@ async function transitionAction(req, res, action) {
     if (action === "cloturer") {
       const n = await compterIndicateurs(client, "actions_qualite_indicateurs", "action_id", id);
       if (n === 0) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Au moins un indicateur est requis avant clôture." }); }
-      champs.date_cloture = new Date().toISOString().slice(0, 10);
+      champs.date_cloture = dateMetierAujourdhui(); // fix : jour civil de Cayenne
       champs.cloture_par = par;
     }
     if (action === "rouvrir") { champs.date_cloture = null; champs.cloture_par = null; }
@@ -758,7 +758,7 @@ const MAX_PRIORITES = 10;
 router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
   const brute = String(req.query.aujourdhui || "");
   if (brute && !estDateValide(brute)) return res.status(400).json({ error: "Date invalide (aujourdhui) : format attendu AAAA-MM-JJ." });
-  const jour = brute || new Date().toISOString().slice(0, 10);
+  const jour = brute || dateMetierAujourdhui(); // fix : défaut = jour civil de Cayenne
 
   const [{ rows: [ka] }, { rows: [ks] }, { rows: [kp] }] = await Promise.all([
     query(`SELECT count(*) FILTER (WHERE ${ACTION_OUVERTE})::int AS ouvertes,

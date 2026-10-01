@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **UX-Q2** — onglet « Accompagnement » et dossier d'accompagnement |
+| **Dernier lot validé en production** | **TIME-1** — dates métier au jour civil de Cayenne |
 | **Migration de production actuelle** | `019_suivi_inscriptions.sql` (19 migrations, aucune 020) |
-| **Suite de tests** | **519/519 serveur + 298/298 client** (déployés avec UX-Q2) |
+| **Suite de tests** | **528/528 serveur + 298/298 client** (déployés avec TIME-1) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2737,7 +2737,7 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
   en heure locale (`aujourdhuiISO`) et le tableau de bord Qualité la transmet déjà
   (`?aujourdhui=`). Options à valider : (a) le client envoie `date_abandon` locale (même
   convention que le tableau de bord) ; (b) `TZ=America/Cayenne` sur le service ; (c) statu quo
-  documenté.
+  documenté. **→ Tranché par TIME-1 (option fuseau métier côté serveur), voir ci-dessous.**
 - Tests : **519/519 serveur**, **297/297 client** ; smoke Chrome 12/12 (390 px).
   Migrations inchangées : **001 → 019**.
 
@@ -2766,6 +2766,35 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - Aucun changement d'API, de droits, de migration ni de données ; confidentialité Q2-2
   inchangée (vérifiée sur les réponses réseau du contributeur). Tests : 519/519 serveur,
   298/298 client ; smoke Chrome 34/34 (1440 / 390).
+
+### TIME-1 — Convention des dates métier (fuseau America/Cayenne)
+
+- **Convention** : toute date métier « aujourd'hui » posée AUTOMATIQUEMENT par le serveur est le
+  jour civil de l'organisme, fuseau **`America/Cayenne`** (UTC−3, sans heure d'été), quel que
+  soit le fuseau de la machine (Railway = UTC). Helper unique :
+  `dateMetierAujourdhui()` dans `server/src/services/dates.js` (`Intl.DateTimeFormat` avec
+  `timeZone` explicite ; horloge injectable `fixerHorlogeMetier()` réservée aux tests).
+- **Appliqué à** : date d'inscription par défaut (ajout unitaire et import CSV, au lieu du
+  `current_date` PostgreSQL en UTC), date d'abandon par défaut, date de résolution par défaut
+  et date de clôture des signalements, date de clôture des actions, année des références
+  Qualité (`REC-2026-…`), jour par défaut du tableau de bord Qualité, « marquer révisée » d'une
+  preuve, classement « future » d'une version de référentiel (et son avertissement à
+  l'activation).
+- **Inchangé** : une date saisie par l'utilisateur n'est jamais remplacée ; les horodatages
+  techniques restent en UTC (`now()`, `timestamptz`, `toISOString()`, jetons, journaux) ; les
+  validateurs et formateurs de dates (`estDateValide`, échéances en jours ouvrés) ne dépendent
+  pas du fuseau. Le client calcule déjà la date du jour en heure locale (`aujourdhuiISO`).
+- **Aucune modification rétroactive**, aucune migration. Le défaut de colonne
+  `inscriptions.date_inscription DEFAULT current_date` reste en base mais n'est plus utilisé
+  par l'application (les deux insertions passent la date explicitement).
+- **Reste en UTC (identifié, non modifié)** : la vue `preuves_enrichies` (migration 006) calcule
+  la péremption avec `current_date` / `now()` côté PostgreSQL : entre 21 h et minuit à Cayenne,
+  une preuve à échéance du lendemain peut apparaître « périmée » 3 h trop tôt. Correction
+  possible plus tard par une migration de vue (`(now() AT TIME ZONE 'America/Cayenne')::date`),
+  non faite ici (aucune migration demandée).
+- Tests de frontière (`datesMetier.test.js`, port 55453) : 2026-10-02T00:30Z ⇒ 2026-10-01 ;
+  23:59:59 / 00:00:00 / 00:00:01 à Cayenne ; réveillon (année des références) ; machine en UTC,
+  Tokyo, Kiritimati, Los Angeles ; dates saisies préservées ; `updated_at` = instant réel.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

@@ -2710,3 +2710,14 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Compteurs 7 / 8 expliqués : inscrits actifs (Stagiaires) vs toutes les inscriptions
   (Accompagnement) ; infobulle du compteur et phrase de population ajoutées.
 - Frontend uniquement. Tests : **519/519 serveur**, **298/298 client**, build OK ; smoke 34/34.
+
+## 2026-10-01 — TIME-1 : dates métier au jour civil de Cayenne (déployé)
+
+- Helper `dateMetierAujourdhui()` (`services/dates.js`, `Intl.DateTimeFormat`, fuseau
+  `America/Cayenne`) appliqué aux seules dates métier automatiques : inscription (unitaire et
+  import), abandon, résolution / clôture Qualité, année des références Qualité, jour du tableau
+  de bord, révision de preuve, classement des versions de référentiel.
+- Dates saisies jamais écrasées ; horodatages techniques en UTC ; aucune migration, aucune
+  donnée modifiée. Vue `preuves_enrichies` (péremption) encore en UTC : documenté.
+- Tests : **528/528 serveur** (dont `datesMetier.test.js`), **298/298 client**, build OK ;
+  smoke serveur réel lancé en `TZ=Asia/Tokyo`.

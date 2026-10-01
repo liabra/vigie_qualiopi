@@ -7,6 +7,9 @@ import assert from "node:assert/strict";
 import { attendre, bouton, cliquer, demonter, dialogue, monter, saisir, texte, touche } from "./outils.jsx";
 import { aujourdhuiISO } from "../src/qualite/format.js";
 
+// Réponse retenue jusqu'à ouverture explicite : le double clic a lieu
+// PENDANT la requête, quelle que soit la charge de la machine.
+const vanne = () => { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { attendre: () => p, ouvrir }; };
 let natifs = 0;
 beforeEach(() => {
   natifs = 0;
@@ -644,12 +647,14 @@ test("action liée : POST avec signalement_id, formulaire fermé, détail rechar
 
 test("action liée : erreur POST ⇒ formulaire ouvert, saisie conservée ; double clic ⇒ un seul POST", async () => {
   let n = 0;
+  const v = vanne();
   const appels = await ouvrirActionLiee({
-    "POST /api/actions-qualite": () => new Promise((r) => setTimeout(() => r(n++ === 0 ? [400, { error: "Responsable introuvable ou inactif." }] : [201, { action: { id: 4 } }]), 30)),
+    "POST /api/actions-qualite": async () => { if (n++ === 0) { await v.attendre(); return [400, { error: "Responsable introuvable ou inactif." }]; } return [201, { action: { id: 4 } }]; },
   });
   await saisir(champ("Titre"), "Titre conservé");
   const btn = document.querySelector('button[type="submit"][form="form-action-qualite"]');
   await cliquer(btn); await cliquer(btn);
+  v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("Responsable introuvable ou inactif."));
   assert.equal(postsAction(appels).length, 1, "un seul POST malgré le double clic");
   assert.equal(champ("Titre").value, "Titre conservé", "saisie conservée");

@@ -24,7 +24,7 @@ import {
   parserCsv, construireMapping, lireBooleen, normaliserEmail, validerEmail,
   normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
-import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
+import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
@@ -567,11 +567,11 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
     }
     const { rows: [inscription] } = await cx.query(
       `INSERT INTO inscriptions (stagiaire_id, session_id, groupe_id, prescripteur, dossier_complet, date_inscription)
-       VALUES ($1,$2,$3,$4,$5, COALESCE($6::date, current_date))
+       VALUES ($1,$2,$3,$4,$5, COALESCE($6::date, $7::date))
        ON CONFLICT (stagiaire_id, session_id) DO UPDATE SET groupe_id = EXCLUDED.groupe_id,
          prescripteur = EXCLUDED.prescripteur, dossier_complet = EXCLUDED.dossier_complet
        RETURNING *`,
-      [personneId, sessionId, gid, prescripteur || null, dossier_complet === true, date_inscription || null]
+      [personneId, sessionId, gid, prescripteur || null, dossier_complet === true, date_inscription || null, dateMetierAujourdhui()] // fix : jour civil de Cayenne
     );
     await cx.query("COMMIT");
     res.status(201).json({ inscription });
@@ -630,7 +630,7 @@ router.patch("/inscriptions/:id", requireRedacteur, wrap(async (req, res) => {
   if (statut !== undefined) {
     set("statut", statut);
     // Un abandon sans date reçoit celle du jour : le décompte doit savoir quand.
-    if (statut === "abandon") set("date_abandon", date_abandon || new Date().toISOString().slice(0, 10));
+    if (statut === "abandon") set("date_abandon", date_abandon || dateMetierAujourdhui()); // fix : jour civil de Cayenne
   } else if (date_abandon !== undefined) set("date_abandon", date_abandon || null);
   if (motif_abandon !== undefined) set("motif_abandon", abandon.champs.motif_abandon);
   if (abandon.champs.categorie_abandon !== undefined) set("categorie_abandon", abandon.champs.categorie_abandon);
@@ -1118,9 +1118,9 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
 
     const bilan = { crees: 0, reutilises: 0, inscrits: 0, dejaInscrits: 0, ignores: [] };
     const inscrire = (stagiaireId, ligne) => cx.query(
-      `INSERT INTO inscriptions (stagiaire_id, session_id, groupe_id, prescripteur, dossier_complet)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (stagiaire_id, session_id) DO NOTHING`,
-      [stagiaireId, sessionId, ligne.groupeId ?? null, ligne.prescripteur ?? null, ligne.dossier_complet === true]
+      `INSERT INTO inscriptions (stagiaire_id, session_id, groupe_id, prescripteur, dossier_complet, date_inscription)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (stagiaire_id, session_id) DO NOTHING`,
+      [stagiaireId, sessionId, ligne.groupeId ?? null, ligne.prescripteur ?? null, ligne.dossier_complet === true, dateMetierAujourdhui()] // fix : jour civil de Cayenne
     );
 
     for (const ligne of r.resultats) {

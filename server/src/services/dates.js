@@ -20,3 +20,24 @@ export function estDateValide(valeur) {
 export function dateOptionnelleInvalide(valeur) {
   return !!valeur && !estDateValide(valeur);
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Date MÉTIER « aujourd'hui » (TIME-1) : jour civil de l'organisme,
+//  fuseau America/Cayenne (UTC−3, sans heure d'été), quel que soit le
+//  fuseau de la machine (Railway = UTC). Réservée aux dates métier
+//  posées automatiquement (inscription, abandon, résolution / clôture
+//  Qualité, révision de preuve…). Les horodatages techniques restent en
+//  UTC (now(), toISOString()). Une date saisie par l'utilisateur n'est
+//  jamais remplacée : ce défaut ne s'applique qu'en son absence.
+// ─────────────────────────────────────────────────────────────
+export const FUSEAU_METIER = "America/Cayenne";
+const formatJourMetier = new Intl.DateTimeFormat("en-CA", { timeZone: FUSEAU_METIER, year: "numeric", month: "2-digit", day: "2-digit" });
+
+// Horloge injectable pour les tests de frontière (jamais utilisée en production).
+let horloge = () => new Date();
+export function fixerHorlogeMetier(fn) { horloge = fn || (() => new Date()); }
+
+export function dateMetierAujourdhui(instant = horloge()) {
+  const p = Object.fromEntries(formatJourMetier.formatToParts(instant).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}

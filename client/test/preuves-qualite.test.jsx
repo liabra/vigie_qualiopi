@@ -6,6 +6,9 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { attendre, bouton, cliquer, demonter, dialogue, monter, saisir, texte, touche } from "./outils.jsx";
 
+// Réponse retenue jusqu'à ouverture explicite : le double clic a lieu
+// PENDANT la requête, quelle que soit la charge de la machine.
+const vanne = () => { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { attendre: () => p, ouvrir }; };
 let natifs = 0;
 beforeEach(() => {
   natifs = 0;
@@ -88,10 +91,11 @@ test("action : rattacher via la recherche serveur ; preuve déjà liée exclue ;
 });
 
 test("action : double clic ⇒ un seul rattachement ; erreur 409 affichée dans le panneau", async () => {
+  const v = vanne();
   const appels = await monter("/actions-qualite/1", "admin", {
     "GET /api/actions-qualite/1": detailAction(),
     "GET /api/preuves?q=emarg": RESULTATS,
-    "POST /api/actions-qualite/1/preuves": () => new Promise((r) => setTimeout(() => r([409, { error: "Cette preuve est déjà liée." }]), 30)),
+    "POST /api/actions-qualite/1/preuves": async () => { await v.attendre(); return [409, { error: "Cette preuve est déjà liée." }]; },
   });
   await attendre(() => lienRattacher());
   await cliquer(lienRattacher());
@@ -100,6 +104,7 @@ test("action : double clic ⇒ un seul rattachement ; erreur 409 affichée dans 
   await attendre(() => dialogue().querySelector('button[aria-label="Rattacher la preuve Émargement session B"]'));
   const b = dialogue().querySelector('button[aria-label="Rattacher la preuve Émargement session B"]');
   await cliquer(b); await cliquer(b);
+  v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("Cette preuve est déjà liée."));
   assert.equal(appelsDe(appels, "POST", "/api/actions-qualite/1/preuves").length, 1);
   assert.ok(dialogue(), "panneau resté ouvert");

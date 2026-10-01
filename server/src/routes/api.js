@@ -6,7 +6,7 @@ import { parseIdPositif } from "../services/ids.js";
 import { disconnectDrive, driveStatus, getDrive } from "../services/google.js";
 import { importerClasseur } from "../services/import.js";
 import { champsAudit } from "../services/audits.js";
-import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
+import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
 
 const router = Router();
@@ -95,7 +95,7 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
 // L'activation est EXPLICITE (on n'infère jamais le passage en vigueur).
 function classerVersion(v) {
   if (v.est_active) return "active";
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const aujourdhui = dateMetierAujourdhui(); // fix : jour civil de Cayenne
   if (v.date_application && v.date_application > aujourdhui) return "future";
   return "historique";
 }
@@ -177,7 +177,7 @@ router.post("/referentiel/versions/:id/activer", requireAdmin, wrap(async (req, 
     await client.query("UPDATE referentiel_versions SET est_active = false WHERE est_active AND id <> $1", [id]);
     await client.query("UPDATE referentiel_versions SET est_active = true WHERE id = $1", [id]);
     await client.query("COMMIT");
-    const avertissement = version.date_application && version.date_application > new Date().toISOString().slice(0, 10)
+    const avertissement = version.date_application && version.date_application > dateMetierAujourdhui()
       ? "Cette version a une date d'application future." : null;
     res.json({ ok: true, version: { ...version, est_active: true }, avertissement });
   } catch (e) {
@@ -661,7 +661,7 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   if (periodicite_mois !== undefined) set("periodicite_mois", periodicite_mois === "" || periodicite_mois === null ? null : parseIdPositif(periodicite_mois));
   if (date_echeance !== undefined) set("date_echeance", date_echeance || null);
   if (date_derniere_revision !== undefined) set("date_derniere_revision", date_derniere_revision || null);
-  else if (marquer_revise) set("date_derniere_revision", new Date().toISOString().slice(0, 10));
+  else if (marquer_revise) set("date_derniere_revision", dateMetierAujourdhui()); // fix : jour civil de Cayenne
   if (confirmer) {
     sets.push("a_confirmer = false", "motif_confirmation = NULL", "validee_le = now()");
     params.push(req.user.id); sets.push(`validee_par = $${params.length}`);

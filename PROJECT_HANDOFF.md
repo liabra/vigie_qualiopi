@@ -4,10 +4,10 @@
 | --- | --- |
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
-| **État validé au** | 30/09/2026 |
-| **Dernier lot validé en production** | Tutoriel — **navigation guidée entre les pages** (déployé le 29/09/2026) |
-| **Migration de production actuelle** | `014_archivage_sessions.sql` (14 migrations) — `015` encore **locale** |
-| **Suite de tests** | **441/441 serveur + 165/165 client** (local ; production = 395/395 + 146/146) |
+| **État validé au** | 01/10/2026 |
+| **Dernier lot validé en production** | **Q1 Qualité terminé** — signalements + actions qualité liées (Q1-B3-B3, 01/10/2026) |
+| **Migration de production actuelle** | `015_qualite_actions_signalements.sql` (15 migrations, aucune 016) |
+| **Suite de tests** | **463/463 serveur + 240/240 client** (déployés avec Q1-B3-B3) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2542,6 +2542,43 @@ Interface de pilotage des actions d'amélioration, en lecture sur le socle Q1-B1
 **LOCAL / VALIDÉ, non déployé.** Restant : Q1-B3 (UI signalements), Q1-B4 (liaison
 preuves/Drive), Q1-B5 (tableau de bord). Veille / Audits / Preuves / Satisfaction / Accueil
 non modifiés.
+
+## 14 sexies. Q1 — Qualité : TERMINÉ et DÉPLOYÉ (01/10/2026)
+
+Chantier Q1 « cœur qualité » complet en production (migrations toujours **001 → 015**) :
+
+- **Actions qualité** (`/actions-qualite`) : liste, filtres, création / modification, fiche,
+  cycle à faire → en cours → réalisée → efficacité à vérifier → clôturée (+ annulée,
+  réouverture), échéances et retard, indicateurs (≥ 1 avant clôture), historique lisible ;
+  contributeur limité à SES actions, sans données du signalement source.
+- **Signalements** (`/signalements-qualite`, admin uniquement) : réclamations, incidents,
+  non-conformités ; création / modification ; fiche ; contexte session → inscription
+  (seuls nom / prénom des stagiaires conservés côté interface) ; réclamant (réclamation
+  seulement) ; causes multiples avec « Autre » explicité ; indicateurs ; délai indicatif de
+  15 jours ouvrés et échéance ; réponse avant résolution ; workflow qualifier → traiter →
+  résoudre → clôturer, réouverture, annulation définitive ; « En retard » pour une
+  réclamation en cours dont l'échéance est dépassée.
+- **Action liée depuis un signalement** : bouton « Créer une action qualité liée » sur la
+  fiche (formulaire Actions réutilisé) ; signalement source non modifiable, session /
+  formation reprises, responsable repris seulement s'il est actif ; l'action apparaît
+  aussitôt dans la fiche.
+- **Contrat backend fiabilisé** : PATCH partiel réellement partiel (causes / indicateurs
+  conservés si absents) ; invariant « Autre » ; `date_resolution` posée uniquement par
+  « Résoudre » ; historique du signalement exposé avec noms d'acteurs conservés même pour
+  un compte désactivé ; événement `creation` toujours premier (signalements ET actions) ;
+  aucun contenu sensible recopié dans l'historique.
+- **Confidentialité** : aucune page ni API signalement accessible au contributeur.
+- **Responsive / accessibilité** : 1440 / 390 px sans défilement horizontal ; panneaux et
+  confirmations accessibles (focus, Échap) ; aucune boîte native.
+- **Tests finaux** : 463/463 serveur, 240/240 client ; smokes Chrome sur PostgreSQL jetable.
+
+**Backlog P3 (non bloquant)** : rechargement de la fiche en échec après une transition
+réussie ; `aria-label` du bouton « Annuler » de la fiche ; bouton « Clôturer » désactivé non
+focalisable ; personne concernée effacée sans message quand une inscription est liée ;
+homonymes de responsables ; règle CSS `.qualite-ligne__v` globale ; titre très long ;
+ancienne date de résolution affichée après réouverture ; ancien responsable historique sans
+nom ; message réseau brut « Failed to fetch » ; chargements doublés fiche / formulaire.
+Restent hors Q1 : Q1-B4 (liaison preuves / Drive) et Q1-B5 (tableau de bord qualité).
 
 ---
 

@@ -251,7 +251,7 @@ test("fiche incident : pas de section réclamant", async () => {
   assert.ok(texte().includes("Date de constat"));
 });
 
-test("fiche : actions qualité liées, lien vers leur fiche, pas de bouton de création", async () => {
+test("fiche : actions qualité liées, lien vers leur fiche, bouton de création liée", async () => {
   await monter("/signalements-qualite/1", "admin", routes({
     "GET /api/signalements/1": detail({}, { actions: [{ id: 3, reference: "AQ-2026-003", titre: "Revoir le délai des convocations", statut: "en_cours" }] }),
   }));
@@ -259,7 +259,7 @@ test("fiche : actions qualité liées, lien vers leur fiche, pas de bouton de cr
   const lien = [...document.querySelectorAll("a")].find((a) => a.textContent === "Revoir le délai des convocations");
   assert.equal(lien.getAttribute("href"), "/actions-qualite/3");
   assert.ok(texte().includes("AQ-2026-003") && texte().includes("En cours"));
-  assert.ok(![...document.querySelectorAll("button, a")].some((b) => /créer une action/i.test(b.textContent)), "création d'action liée réservée à B3");
+  assert.ok(bouton("Créer une action qualité liée"), "création d'action liée disponible (Q1-B3-B3)");
 });
 
 test("historique : libellés lisibles, acteur désactivé conservé, contenu sensible jamais affiché, indicateur de repli", async () => {
@@ -575,4 +575,97 @@ test("R7 / P2-2 date de réception modifiée : avertissement, échéance existan
   await attendre(() => patchs(appels).length === 1);
   assert.equal(patchs(appels)[0].corps.date_constat, "2026-09-01");
   assert.equal(patchs(appels)[0].corps.date_echeance_cible, "2099-10-19", "échéance conservée tant qu'elle n'est pas modifiée");
+});
+
+// ── Q1-B3-B3 : action qualité liée depuis la fiche ───────────────
+const soumettreAction = () => cliquer(document.querySelector('button[type="submit"][form="form-action-qualite"]'));
+const postsAction = (appels) => appels.filter((a) => a.methode === "POST" && a.chemin === "/api/actions-qualite");
+const getsDetail = (appels) => appels.filter((a) => a.methode === "GET" && a.chemin === "/api/signalements/1").length;
+const ouvrirActionLiee = async (sur = {}) => {
+  const appels = await monter("/signalements-qualite/1", "admin", routes(sur));
+  await attendre(() => bouton("Créer une action qualité liée"));
+  await cliquer(bouton("Créer une action qualité liée"));
+  await attendre(() => dialogue()?.textContent.includes("Action qualité liée") && champ("Responsable") && champ("Session")?.options.length > 1);
+  return appels;
+};
+
+test("action liée : bouton sur la fiche admin, formulaire Actions réutilisé, contexte prérempli", async () => {
+  await ouvrirActionLiee();
+  assert.ok(dialogue().textContent.includes("Signalement lié : REC-2026-001"), "référence source affichée");
+  assert.ok(dialogue().textContent.includes("non modifiable ici"));
+  assert.ok(document.getElementById("form-action-qualite"), "FormulaireAction réutilisé");
+  assert.equal(champ("Session").value, "5", "session reprise");
+  assert.equal(champ("Formation"), null, "formation déduite de la session");
+  assert.equal(champ("Responsable").value, "2", "responsable actif repris");
+  assert.equal(champ("Titre").value, "");
+  assert.equal(champ("Priorité").value, "", "priorité non préremplie");
+  assert.ok(![...dialogue().querySelectorAll("input, select")].some((e) => /signalement/i.test(e.getAttribute("name") || e.id || "")), "aucun champ signalement modifiable");
+});
+
+test("action liée : formation seule reprise si pas de session ; responsable désactivé non repris", async () => {
+  const appels = await ouvrirActionLiee({
+    "GET /api/signalements/1": detail({ session_id: null, formation_id: 7, responsable_id: 9, responsable_nom: "Mme Ancienne" }),
+    "POST /api/actions-qualite": (corps) => [201, { action: { id: 3, reference: "AQ-2026-003", ...corps } }],
+  });
+  assert.equal(champ("Formation").value, "7");
+  assert.equal(champ("Responsable").value, "", "responsable désactivé non présélectionné");
+  await saisir(champ("Titre"), "Action");
+  await soumettreAction();
+  await attendre(() => postsAction(appels).length === 1);
+  const c = postsAction(appels)[0].corps;
+  assert.equal(c.responsable_id, null, "ID du responsable désactivé jamais envoyé");
+  assert.equal(c.formation_id, 7);
+  assert.equal(c.session_id, null);
+});
+
+test("action liée : POST avec signalement_id, formulaire fermé, détail rechargé une fois, action affichée avec son lien", async () => {
+  let creee = false;
+  const appels = await ouvrirActionLiee({
+    "GET /api/signalements/1": () => detail({}, creee ? { actions: [{ id: 3, reference: "AQ-2026-003", titre: "Revoir les convocations", statut: "a_faire" }] } : {}),
+    "POST /api/actions-qualite": (corps) => { creee = true; return [201, { action: { id: 3, reference: "AQ-2026-003", origine: "signalement", ...corps } }]; },
+  });
+  const avant = getsDetail(appels);
+  await saisir(champ("Titre"), "Revoir les convocations");
+  await soumettreAction();
+  await attendre(() => !dialogue());
+  const c = postsAction(appels)[0].corps;
+  assert.equal(c.signalement_id, 1);
+  assert.equal(c.session_id, 5);
+  assert.equal(c.formation_id, null);
+  assert.equal(c.responsable_id, 2);
+  assert.ok(!("origine" in c), "origine jamais saisie : le serveur la déduit du signalement");
+  await attendre(() => texte().includes("Revoir les convocations"));
+  assert.equal(getsDetail(appels) - avant, 1, "détail rechargé une seule fois");
+  assert.equal(window.location.pathname, "/signalements-qualite/1", "on reste sur la fiche");
+  const lien = [...document.querySelectorAll("a")].find((a) => a.textContent === "Revoir les convocations");
+  assert.equal(lien.getAttribute("href"), "/actions-qualite/3");
+  assert.ok(texte().includes("AQ-2026-003") && texte().includes("À faire"));
+});
+
+test("action liée : erreur POST ⇒ formulaire ouvert, saisie conservée ; double clic ⇒ un seul POST", async () => {
+  let n = 0;
+  const appels = await ouvrirActionLiee({
+    "POST /api/actions-qualite": () => new Promise((r) => setTimeout(() => r(n++ === 0 ? [400, { error: "Responsable introuvable ou inactif." }] : [201, { action: { id: 4 } }]), 30)),
+  });
+  await saisir(champ("Titre"), "Titre conservé");
+  const btn = document.querySelector('button[type="submit"][form="form-action-qualite"]');
+  await cliquer(btn); await cliquer(btn);
+  await attendre(() => dialogue()?.textContent.includes("Responsable introuvable ou inactif."));
+  assert.equal(postsAction(appels).length, 1, "un seul POST malgré le double clic");
+  assert.equal(champ("Titre").value, "Titre conservé", "saisie conservée");
+  assert.ok(dialogue(), "formulaire ouvert");
+  await soumettreAction();
+  await attendre(() => !dialogue());
+  assert.equal(postsAction(appels).length, 2, "nouvel essai = un seul POST supplémentaire, pas de doublon");
+});
+
+test("action liée : pas de bouton sur un signalement annulé ; contributeur sans fiche ni appel", async () => {
+  await monter("/signalements-qualite/1", "admin", routes({ "GET /api/signalements/1": detail({ statut: "annulee" }) }));
+  await attendre(() => document.querySelector("h1")?.textContent === "Convocation tardive");
+  assert.ok(!bouton("Créer une action qualité liée"));
+  await demonter();
+  const appels = await monter("/signalements-qualite/1", "contributeur", routes());
+  await attendre(() => texte().includes("Cette page est réservée aux administrateurs."));
+  assert.ok(!bouton("Créer une action qualité liée"));
+  assert.ok(!appels.some((a) => a.chemin.startsWith("/api/signalements") || a.chemin === "/api/actions-qualite"));
 });

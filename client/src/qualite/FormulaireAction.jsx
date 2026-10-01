@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Alert, Button, Drawer, Field, FormSection, LoadingState } from "../ui/index.js";
 import { SelecteurIndicateurs } from "../veille/SelecteurIndicateurs.jsx";
@@ -13,10 +13,13 @@ function libelleUtilisateur(u, tous = []) {
 }
 
 // Formulaire de création / modification d'une action qualité, dans un Drawer.
-// L'origine est toujours MANUELLE depuis cette UI (le lien signalement
-// viendra en Q1-B3). `action = null` → création ; sinon modification.
-export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
+// `action = null` → création ; sinon modification. `signalementSource`
+// (création depuis la fiche d'un signalement) : signalement_id envoyé et
+// non modifiable — le serveur en déduit l'origine « signalement » ; session
+// / formation reprises du signalement, responsable seulement s'il est actif.
+export function FormulaireAction({ action = null, signalementSource = null, onFermer, onEnregistre }) {
   const modification = action !== null;
+  const source = modification ? null : signalementSource;
   const [valeurs, setValeurs] = useState(() => action ? {
     titre: action.titre || "",
     constat: action.constat || "",
@@ -29,7 +32,9 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
     indicateur_ids: (action.indicateurs || []).map((i) => i.id),
   } : {
     titre: "", constat: "", priorite: "", responsable_id: "", echeance: "",
-    action_prevue: "", formation_id: "", session_id: "", indicateur_ids: [],
+    action_prevue: "", indicateur_ids: [],
+    session_id: source?.session_id ? String(source.session_id) : "",
+    formation_id: !source?.session_id && source?.formation_id ? String(source.formation_id) : "",
   });
 
   const [utilisateurs, setUtilisateurs] = useState(null);
@@ -39,9 +44,18 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
   const [enCours, setEnCours] = useState(false);
+  const envoiEnCours = useRef(false); // verrou synchrone (double clic, Entrée répétée)
 
   useEffect(() => {
-    api("/api/utilisateurs").then((r) => setUtilisateurs(r.utilisateurs)).catch(() => setUtilisateurs([]));
+    api("/api/utilisateurs").then((r) => {
+      setUtilisateurs(r.utilisateurs);
+      // Responsable du signalement repris UNIQUEMENT s'il est encore actif
+      // (présent dans la liste des utilisateurs assignables).
+      const resp = source?.responsable_id;
+      if (resp && (r.utilisateurs || []).some((u) => u.id === resp)) {
+        setValeurs((v) => (v.responsable_id === "" ? { ...v, responsable_id: String(resp) } : v));
+      }
+    }).catch(() => setUtilisateurs([]));
     api("/api/formations").then((r) => setFormations(r.formations || [])).catch(() => setFormations([]));
     Promise.all([api("/api/sessions"), api("/api/sessions?etat=archivees")])
       .then(([a, b]) => setSessions([...(a.sessions || []), ...(b.sessions || [])]))
@@ -54,10 +68,12 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
 
   async function enregistrer(e) {
     e.preventDefault();
+    if (envoiEnCours.current) return; // fix : jamais de double soumission
     const trouvees = {};
     if (!String(valeurs.titre).trim()) trouvees.titre = "Indiquez un titre.";
     setErreurs(trouvees);
     if (Object.keys(trouvees).length) return;
+    envoiEnCours.current = true;
     setEnCours(true);
     setErreurServeur(null);
     try {
@@ -73,6 +89,7 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
         // Session choisie ⇒ la formation est dérivée côté serveur.
         formation_id: valeurs.session_id ? null : (valeurs.formation_id ? Number(valeurs.formation_id) : null),
       };
+      if (source) corps.signalement_id = source.id;
       const r = modification
         ? await api(`/api/actions-qualite/${action.id}`, { method: "PATCH", body: JSON.stringify(corps) })
         : await api("/api/actions-qualite", { method: "POST", body: JSON.stringify(corps) });
@@ -80,14 +97,15 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
     } catch (err) {
       setErreurServeur(err.message);
       setEnCours(false);
+      envoiEnCours.current = false;
     }
   }
 
   return (
     <Drawer
       ouvert onFermer={onFermer} fermable={!enCours}
-      titre={modification ? "Modifier l'action" : "Nouvelle action qualité"}
-      description={modification ? action.reference : "Une action à mener pour améliorer ou corriger la situation."}
+      titre={modification ? "Modifier l'action" : source ? "Action qualité liée" : "Nouvelle action qualité"}
+      description={modification ? action.reference : source ? `Signalement lié : ${source.reference}` : "Une action à mener pour améliorer ou corriger la situation."}
       pied={
         <>
           <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
@@ -99,6 +117,9 @@ export function FormulaireAction({ action = null, onFermer, onEnregistre }) {
     >
       <form id="form-action-qualite" onSubmit={enregistrer} noValidate>
         {erreurServeur && <Alert ton="error" titre="L'action n'a pas été enregistrée.">{erreurServeur}</Alert>}
+        {source && (
+          <p className="sess-secondaire">Signalement lié : <strong>{source.reference}</strong>{source.objet ? ` — ${source.objet}` : ""} (non modifiable ici)</p>
+        )}
         <FormSection titre="Définition" colonnes={2}>
           <Field label="Titre" erreur={erreurs.titre} className="ui-field--large">
             <input value={valeurs.titre} onChange={champ("titre")} required placeholder="Ex. Relancer les convocations" />

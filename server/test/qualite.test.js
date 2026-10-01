@@ -814,3 +814,28 @@ test("date_resolution : invariant complet (POST 400, PATCH 400, /resoudre 200)",
   assert.equal(r.corps.signalement.statut, "resolue");
   assert.equal(String(r.corps.signalement.date_resolution).slice(0, 10), "2026-09-30");
 });
+
+// ── Q1-B3-B3 : historique de création d'une action ────────────────
+
+test("création d'action : « creation » en premier, puis les rattachements d'indicateurs (même transaction)", async () => {
+  const [i1, i2] = await deuxIndicateurs();
+  const a = (await creerAction({ indicateur_ids: [i1, i2] })).corps.action;
+  const h = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.historique;
+  assert.equal(h[0].evenement, "creation", "premier événement");
+  assert.deepEqual(h.slice(1).map((e) => e.evenement), ["rattachement_indicateur", "rattachement_indicateur"], "indicateurs initiaux toujours tracés, après la création");
+  assert.ok(h.every((e) => e.acteur_nom === "Mme Stark"));
+});
+
+test("action liée à un signalement : origine « signalement », historique ordonné, contributeur toujours refusé à la création", async () => {
+  const [i1] = await deuxIndicateurs();
+  const s = (await creerSignalement()).corps.signalement;
+  const r = await creerAction({ signalement_id: s.id, indicateur_ids: [i1], responsable_id: contribId });
+  assert.equal(r.statut, 201);
+  assert.equal(r.corps.action.origine, "signalement");
+  assert.equal(r.corps.action.signalement_id, s.id);
+  const h = (await api("GET", `/api/actions-qualite/${r.corps.action.id}`, undefined, A())).corps.historique;
+  assert.deepEqual(h.map((e) => e.evenement), ["creation", "rattachement_indicateur"]);
+  const d = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.actions;
+  assert.deepEqual(d.map((x) => x.id), [r.corps.action.id], "visible dans le détail du signalement");
+  assert.equal((await api("POST", "/api/actions-qualite", { titre: "X", signalement_id: s.id }, C())).statut, 403, "droits inchangés");
+});

@@ -497,8 +497,10 @@ router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {
       `INSERT INTO actions_qualite (${colonnes.join(", ")}) VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
       valeurs
     );
-    await synchroniserIndicateurs(client, "actions_qualite_indicateurs", "action_id", a.id, li.ids ?? [], "action", req.user.id);
+    // fix : « creation » journalisée en premier, puis les rattachements
+    // initiaux (même transaction).
     await journaliser(client, { entiteType: "action", entiteId: a.id, evenement: "creation", champ: "statut", nouvelle: a.statut }, req.user.id);
+    await synchroniserIndicateurs(client, "actions_qualite_indicateurs", "action_id", a.id, li.ids ?? [], "action", req.user.id);
     await client.query("COMMIT");
     res.status(201).json({ action: a });
   } catch (e) {

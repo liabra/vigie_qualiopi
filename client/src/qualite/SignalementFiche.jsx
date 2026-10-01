@@ -5,6 +5,7 @@ import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSec
 import { useTitrePage } from "../pages/titre.js";
 import { formaterDate, formaterDateHeure } from "../sessions/format.js";
 import { FormulaireSignalement } from "./FormulaireSignalement.jsx";
+import { FormulaireAction } from "./FormulaireAction.jsx";
 import { STATUTS_ACTION, aujourdhuiISO } from "./format.js";
 import {
   CANAUX_SIGNALEMENT, CAUSES_SIGNALEMENT, STATUTS_SIGNALEMENT, TYPES_SIGNALEMENT,
@@ -31,7 +32,7 @@ export function SignalementFiche({ signalementId }) {
   const [err, setErr] = useState(null);
   const [erreurAction, setErreurAction] = useState(null);
   const [enCours, setEnCours] = useState(false);
-  const [dialogue, setDialogue] = useState(null); // modifier|resoudre|cloturer|rouvrir|annuler
+  const [dialogue, setDialogue] = useState(null); // modifier|resoudre|cloturer|rouvrir|annuler|action
   const [erreurResolution, setErreurResolution] = useState(null);
   const [criteres, setCriteres] = useState([]);
   const [utilisateurs, setUtilisateurs] = useState([]);
@@ -221,6 +222,9 @@ export function SignalementFiche({ signalementId }) {
         <section className="qualite-section" aria-labelledby="sig-actions">
           <h2 id="sig-actions" className="qualite-section__titre">Actions qualité liées</h2>
           <div className="qualite-fiche">
+            {s.statut !== "annulee" && (
+              <div><Button compact onClick={() => setDialogue("action")}>Créer une action qualité liée</Button></div>
+            )}
             {actions.length === 0 ? <p className="sess-secondaire">Aucune action qualité liée.</p> : (
               <ul className="signalement-liste">
                 {actions.map((a) => {
@@ -263,6 +267,10 @@ export function SignalementFiche({ signalementId }) {
       {dialogue === "modifier" && (
         <FormulaireSignalement signalement={s} onFermer={() => setDialogue(null)}
           onEnregistre={() => { setDialogue(null); setErreurAction(null); charger(); }} />
+      )}
+      {dialogue === "action" && (
+        <FormulaireAction signalementSource={s} onFermer={() => setDialogue(null)}
+          onEnregistre={() => { setDialogue(null); charger(); }} />
       )}
       {dialogue === "resoudre" && (
         <DialogueResolution signalement={s} enCours={enCours} erreurServeur={erreurResolution} onFermer={() => setDialogue(null)}

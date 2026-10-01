@@ -2583,3 +2583,31 @@ en clair dans une commande terminal lors du déploiement Q1-B2. Secret considér
 > Ne jamais copier ni afficher `DATABASE_URL`, `PGPASSWORD` ou un mot de passe PostgreSQL dans les
 > rapports agents. Pour déterminer si `DATABASE_URL` est une Reference Variable Railway, utiliser
 > `variables(..., unrendered: true)` et n'afficher que le type et la source de la référence.
+
+## 2026-10-01 — Q1 Qualité terminé : signalements complets + action liée (déployé)
+
+Lots déployés depuis la rotation du secret PostgreSQL :
+
+- **Q1-B3-B1** (`9b34734`) : liste des signalements, compteurs, segments, filtres ; règle PO
+  « En retard » = réclamation en cours (ouverte / qualifiée / en traitement) à échéance dépassée.
+- **Q1-B2-FIX-RESET** (`25d65c9`) : « Réinitialiser les filtres » des Actions ne réinjecte plus
+  un filtre supprimé (une seule navigation).
+- **Q1-B3-B2-API** (`25eea3c`) : PATCH partiel réellement partiel (signalements et actions) ;
+  invariant « Autre » ; `date_resolution` refusée hors « Résoudre » (POST et PATCH) ; détail
+  signalement = `{ signalement, actions, historique }` avec noms persistants ; `creation` en
+  premier ; collision de ports de test corrigée (`qualite.test.js` → 55447).
+- **Q1-B3-B2** (`5390a70`) : formulaire et fiche complets des signalements (contexte session →
+  inscription minimal, réclamant, causes, indicateurs, réponse, transitions, historique
+  lisible) ; revue contradictoire : 3 P2 corrigés (panneau Résoudre conservé sur échec,
+  avertissement d'échéance, échec de chargement des inscriptions explicite).
+- **Q1-B3-B3** (ce lot) : bouton « Créer une action qualité liée » sur la fiche (FormulaireAction
+  réutilisé, signalement source non modifiable, responsable repris seulement s'il est actif,
+  verrou contre la double soumission) ; historique d'une action : `creation` en premier.
+
+Tests finaux : **463/463 serveur**, **240/240 client**, build OK ; smokes Chrome sur PostgreSQL
+jetable (desktop 1440, mobile 390) sans erreur. Migrations : **001 → 015**, aucune 016.
+Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
+
+### État
+
+**Q1 Qualité TERMINÉ et DÉPLOYÉ.**

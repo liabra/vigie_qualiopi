@@ -2611,3 +2611,20 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 ### État
 
 **Q1 Qualité TERMINÉ et DÉPLOYÉ.**
+
+## 2026-10-01 — Q1-B4 : preuves liées aux actions et signalements (déployé)
+
+- **Migration 016** `liens_preuves_qualite` (additive, vraies FK, une seule cible par lien,
+  pas de doublon) ; `preuves.indicateur_id` inchangé (NOT NULL).
+- API : `preuves` dans les détails action / signalement ; `POST` / `DELETE
+  …/:id/preuves[/:preuveId]` (admin) ; objet clôturé / annulé ⇒ 409 ; historique
+  `preuve_rattachee` / `preuve_detachee`.
+- Retirer le lien ne supprime jamais la preuve ni un fichier Drive ; aucun duplicata.
+- Droits : contributeur en lecture seule sur les preuves de SON action ; RBAC inchangé.
+- UI : section « Preuves » (fiches action et signalement), sélecteur par recherche serveur,
+  renvoi vers l'écran Preuves pour créer / importer.
+- Tests : **471/471 serveur**, **251/251 client**, build OK ; smoke Chrome (PG jetable,
+  1440 / 390) 26/26 sans erreur. Migrations : **001 → 016**.
+- P3 : recherche limitée aux titres et au référentiel actif ; titre d'une preuve détachée
+  affiché « Preuve (ID interne X) » dans l'historique ; libellés de statut de preuve
+  dupliqués entre l'écran Preuves et `preuves/format.js`.

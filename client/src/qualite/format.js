@@ -127,8 +127,15 @@ const statut = (v) => STATUTS_ACTION[v]?.libelle || v || "—";
 const priorite = (v) => PRIORITES[v]?.libelle || v || "—";
 const date = (v) => formaterDate(v) || "—";
 
+// Preuve citée par l'historique : titre si elle est encore liée (donc
+// connue de la fiche), sinon mention neutre — jamais de contenu de fichier.
+export function libellePreuve(id, preuves = []) {
+  const p = preuves.find((x) => x.id === Number(id));
+  return p ? p.titre : `Preuve (ID interne ${id})`;
+}
+
 // Retourne { titre, avant?, apres? } ou { titre } pour un événement.
-export function decrireEvenement(ev, { indicateurs = [], utilisateurs = [] } = {}) {
+export function decrireEvenement(ev, { indicateurs = [], utilisateurs = [], preuves = [] } = {}) {
   const ind = (id) => {
     const i = indicateurs.find((x) => x.id === Number(id));
     return i ? `Indicateur ${i.numero} — ${i.libelle}` : `Indicateur ${id}`;
@@ -139,6 +146,8 @@ export function decrireEvenement(ev, { indicateurs = [], utilisateurs = [] } = {
   };
 
   if (ev.evenement === "creation") return { titre: "Action créée" };
+  if (ev.evenement === "preuve_rattachee") return { titre: "Preuve rattachée", apres: libellePreuve(ev.nouvelle_valeur, preuves) };
+  if (ev.evenement === "preuve_detachee") return { titre: "Lien avec une preuve retiré", apres: libellePreuve(ev.ancienne_valeur, preuves) };
 
   if (ev.evenement === "rattachement_indicateur") return { titre: "Indicateur ajouté", apres: ind(ev.nouvelle_valeur) };
   if (ev.evenement === "retrait_indicateur") return { titre: "Indicateur retiré", apres: ind(ev.ancienne_valeur) };

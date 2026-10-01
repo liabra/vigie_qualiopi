@@ -143,3 +143,11 @@
   gap: 0.25rem 0.75rem;
 }
 .qualite-ligne__v { overflow-wrap: anywhere; }
+
+/* Q1-B4 — Preuves liées aux fiches qualité */
+.preuves-liees__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.preuve-liee { display: grid; gap: 0.25rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); min-width: 0; }
+.preuve-liee:last-child { border-bottom: 0; padding-bottom: 0; }
+.preuve-liee__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
+.preuve-liee__fichiers { margin: 0; padding-left: 1.1rem; overflow-wrap: anywhere; }
+.preuve-choix { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; overflow-wrap: anywhere; }

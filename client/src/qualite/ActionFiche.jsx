@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { FormulaireAction } from "./FormulaireAction.jsx";
+import { PreuvesLiees } from "./PreuvesLiees.jsx";
 import { ORIGINES, PRIORITES, STATUTS_ACTION, decrireEvenement, estEnRetard } from "./format.js";
 import { formaterDate, formaterDateHeure } from "../sessions/format.js";
 
@@ -53,6 +54,7 @@ export function ActionFiche({ actionId, admin }) {
 
   const action = donnees?.action;
   const historique = donnees?.historique || [];
+  const preuves = donnees?.preuves || [];
 
   async function transition(chemin, corps, libelle) {
     setEnCours(true); setErreurAction(null);
@@ -164,6 +166,11 @@ export function ActionFiche({ actionId, admin }) {
         </section>
       </div>
 
+      {/* Preuves liées : visibles à tout statut (dont efficacité à vérifier et
+          clôturée) ; rattacher / retirer : admin, action ni clôturée ni annulée. */}
+      <PreuvesLiees base={`/api/actions-qualite/${action.id}`} preuves={preuves} idTitre="action-preuves"
+        modifiable={admin && action.statut !== "cloturee" && action.statut !== "annulee"} onChange={charger} />
+
       <section className="qualite-section" aria-labelledby="historique">
         <h2 id="historique" className="qualite-section__titre">Historique</h2>
         {historique.length === 0 ? (
@@ -171,7 +178,7 @@ export function ActionFiche({ actionId, admin }) {
         ) : (
           <ol className="qualite-historique">
             {historique.map((ev) => {
-              const d = decrireEvenement(ev, { indicateurs: tousIndicateurs, utilisateurs });
+              const d = decrireEvenement(ev, { indicateurs: tousIndicateurs, utilisateurs, preuves });
               return (
                 <li key={ev.id} className="qualite-historique__item">
                   <time className="qualite-historique__date">{formaterDateHeure(ev.cree_le)}</time>

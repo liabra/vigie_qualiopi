@@ -418,7 +418,7 @@ test("cohérence origine / signalement_id garantie par la base (CHECK)", async (
   );
 });
 
-test("installation existante 001→014 + données : 015 appliquée sans perte, preuves intactes", async () => {
+test("installation existante 001→014 + données : 015 et 016 appliquées sans perte, preuves intactes", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_pre");
@@ -432,7 +432,7 @@ test("installation existante 001→014 + données : 015 appliquée sans perte, p
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015", "016"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-PRE'");
   assert.equal(n, 1, "la session antérieure a survécu à 015");
@@ -620,7 +620,7 @@ test("GET détail : historique chronologique avec acteur lisible", async () => {
   await api("PATCH", `/api/signalements/${s.id}/traiter`, {}, A());
   const d = await api("GET", `/api/signalements/${s.id}`, undefined, A());
   assert.equal(d.statut, 200);
-  assert.deepEqual(Object.keys(d.corps).sort(), ["actions", "historique", "signalement"]);
+  assert.deepEqual(Object.keys(d.corps).sort(), ["actions", "historique", "preuves", "signalement"]);
   const h = d.corps.historique;
   assert.deepEqual(h.map((e) => e.evenement), ["creation", "qualifier", "rattachement_indicateur", "traiter"], "ordre chronologique");
   assert.ok(h.every((e, i) => i === 0 || e.id > h[i - 1].id), "trié par id croissant");
@@ -838,4 +838,147 @@ test("action liée à un signalement : origine « signalement », historique ord
   const d = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.actions;
   assert.deepEqual(d.map((x) => x.id), [r.corps.action.id], "visible dans le détail du signalement");
   assert.equal((await api("POST", "/api/actions-qualite", { titre: "X", signalement_id: s.id }, C())).statut, 403, "droits inchangés");
+});
+
+// ── Q1-B4 : liens preuve ↔ action / signalement ───────────────────
+
+async function creerPreuve(titre = "Preuve liée") {
+  const { rows: [p] } = await pool.query(
+    "INSERT INTO preuves (indicateur_id, titre, description, type_alerte, periodicite_mois, statut) VALUES ($1, $2, 'Description interne à ne pas exposer', 'revision_periodique', 12, 'maitrise') RETURNING id",
+    [indicateurId, titre]
+  );
+  await pool.query("INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom) VALUES ($1, 'FICHIER_DRIVE_1', 'https://drive.google.com/file/d/FICHIER_DRIVE_1/view', 'Feuille.pdf')", [p.id]);
+  return p.id;
+}
+const etatPreuve = async (id) => {
+  const { rows: [p] } = await pool.query("SELECT id, titre, indicateur_id, statut FROM preuves WHERE id = $1", [id]);
+  const { rows: f } = await pool.query("SELECT drive_file_id FROM preuve_fichiers WHERE preuve_id = $1", [id]);
+  return { preuve: p || null, fichiers: f.map((x) => x.drive_file_id) };
+};
+
+test("migration 016 : contraintes (une seule cible, pas de doublon, indicateur_id toujours NOT NULL)", async () => {
+  const pid = await creerPreuve();
+  const a = (await creerAction()).corps.action;
+  const s = (await creerSignalement()).corps.signalement;
+  await assert.rejects(pool.query("INSERT INTO liens_preuves_qualite (preuve_id) VALUES ($1)", [pid]), "aucune cible refusée");
+  await assert.rejects(pool.query("INSERT INTO liens_preuves_qualite (preuve_id, action_qualite_id, signalement_qualite_id) VALUES ($1, $2, $3)", [pid, a.id, s.id]), "deux cibles refusées");
+  await pool.query("INSERT INTO liens_preuves_qualite (preuve_id, action_qualite_id) VALUES ($1, $2)", [pid, a.id]);
+  await assert.rejects(pool.query("INSERT INTO liens_preuves_qualite (preuve_id, action_qualite_id) VALUES ($1, $2)", [pid, a.id]), "doublon refusé");
+  await pool.query("INSERT INTO liens_preuves_qualite (preuve_id, signalement_qualite_id) VALUES ($1, $2)", [pid, s.id]);
+  const { rows: [col] } = await pool.query("SELECT is_nullable FROM information_schema.columns WHERE table_name='preuves' AND column_name='indicateur_id'");
+  assert.equal(col.is_nullable, "NO");
+});
+
+test("rattacher une preuve à une action et à un signalement ; détails enrichis ; une même preuve partagée", async () => {
+  const pid = await creerPreuve("Émargement session");
+  const s = (await creerSignalement()).corps.signalement;
+  const a = (await creerAction({ signalement_id: s.id })).corps.action;
+  const ra = await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A());
+  assert.equal(ra.statut, 201);
+  assert.deepEqual(ra.corps.preuves.map((p) => p.id), [pid]);
+  const rs = await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, A());
+  assert.equal(rs.statut, 201, "la même preuve peut soutenir le signalement ET l'action");
+  const da = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.preuves;
+  const ds = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.preuves;
+  for (const liste of [da, ds]) {
+    assert.equal(liste.length, 1);
+    assert.equal(liste[0].titre, "Émargement session");
+    assert.equal(typeof liste[0].indicateur, "number", "indicateur propre de la preuve");
+    assert.equal(liste[0].fichiers[0].url, "https://drive.google.com/file/d/FICHIER_DRIVE_1/view", "lien Drive existant");
+    assert.ok(!("description" in liste[0]), "aucune description renvoyée");
+  }
+  const { rows: [{ n }] } = await pool.query("SELECT count(*)::int AS n FROM preuves WHERE titre = 'Émargement session'");
+  assert.equal(n, 1, "aucune copie de preuve");
+});
+
+test("rattachement : doublon 409, preuve / action / signalement inexistants 404, identifiants invalides 400", async () => {
+  const pid = await creerPreuve();
+  const a = (await creerAction()).corps.action;
+  const s = (await creerSignalement()).corps.signalement;
+  assert.equal((await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A())).statut, 201);
+  const doublon = await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A());
+  assert.equal(doublon.statut, 409);
+  assert.equal(doublon.corps.error, "Cette preuve est déjà liée.");
+  assert.equal((await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: 999999 }, A())).corps.error, "Preuve introuvable.");
+  assert.equal((await api("POST", "/api/actions-qualite/999999/preuves", { preuve_id: pid }, A())).statut, 404);
+  assert.equal((await api("POST", "/api/signalements/999999/preuves", { preuve_id: pid }, A())).statut, 404);
+  assert.equal((await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: "abc" }, A())).statut, 400);
+  assert.equal((await api("POST", "/api/signalements/abc/preuves", { preuve_id: pid }, A())).statut, 400);
+});
+
+test("retirer le lien : supprime UNIQUEMENT la relation (preuve, fichiers Drive et indicateur intacts)", async () => {
+  const pid = await creerPreuve("Preuve à conserver");
+  const avant = await etatPreuve(pid);
+  const a = (await creerAction()).corps.action;
+  const s = (await creerSignalement()).corps.signalement;
+  await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A());
+  await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, A());
+  const da = await api("DELETE", `/api/actions-qualite/${a.id}/preuves/${pid}`, undefined, A());
+  assert.equal(da.statut, 200);
+  assert.deepEqual(da.corps.preuves, []);
+  const ds = await api("DELETE", `/api/signalements/${s.id}/preuves/${pid}`, undefined, A());
+  assert.equal(ds.statut, 200);
+  assert.deepEqual(await etatPreuve(pid), avant, "preuve, indicateur et fichiers Drive inchangés");
+  assert.equal((await api("DELETE", `/api/signalements/${s.id}/preuves/${pid}`, undefined, A())).statut, 404, "lien déjà retiré");
+  const { rows: [{ n }] } = await pool.query("SELECT count(*)::int AS n FROM liens_preuves_qualite WHERE preuve_id = $1", [pid]);
+  assert.equal(n, 0);
+});
+
+test("historique : preuve_rattachee / preuve_detachee (identifiant seul, aucun contenu)", async () => {
+  const pid = await creerPreuve("Titre de preuve confidentiel");
+  const a = (await creerAction()).corps.action;
+  const s = (await creerSignalement()).corps.signalement;
+  await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A());
+  await api("DELETE", `/api/actions-qualite/${a.id}/preuves/${pid}`, undefined, A());
+  await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, A());
+  await api("DELETE", `/api/signalements/${s.id}/preuves/${pid}`, undefined, A());
+  const ha = (await api("GET", `/api/actions-qualite/${a.id}`, undefined, A())).corps.historique;
+  const hs = (await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.historique;
+  for (const h of [ha, hs]) {
+    const r = h.find((e) => e.evenement === "preuve_rattachee");
+    const d = h.find((e) => e.evenement === "preuve_detachee");
+    assert.equal(r.nouvelle_valeur, String(pid));
+    assert.equal(d.ancienne_valeur, String(pid));
+    assert.equal(r.acteur_nom, "Mme Stark");
+    assert.ok(!JSON.stringify(h).includes("confidentiel") && !JSON.stringify(h).includes("Feuille.pdf"));
+  }
+});
+
+test("liens : objet clôturé ou annulé ⇒ 409 (même règle que le PATCH), preuves toujours visibles", async () => {
+  const pid = await creerPreuve();
+  const s = (await creerSignalement()).corps.signalement;
+  await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, A());
+  await api("PATCH", `/api/signalements/${s.id}/annuler`, {}, A());
+  assert.equal((await api("DELETE", `/api/signalements/${s.id}/preuves/${pid}`, undefined, A())).statut, 409);
+  assert.equal((await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: await creerPreuve("Autre") }, A())).statut, 409);
+  assert.equal((await api("GET", `/api/signalements/${s.id}`, undefined, A())).corps.preuves.length, 1, "toujours visible");
+});
+
+test("droits : contributeur lit les preuves de SON action seulement, ne lie ni ne délie rien", async () => {
+  const pid = await creerPreuve("Preuve partagée");
+  const sienne = (await creerAction({ responsable_id: contribId })).corps.action;
+  const autre = (await creerAction({ responsable_id: adminId })).corps.action;
+  const s = (await creerSignalement()).corps.signalement;
+  await api("POST", `/api/actions-qualite/${sienne.id}/preuves`, { preuve_id: pid }, A());
+  await api("POST", `/api/actions-qualite/${autre.id}/preuves`, { preuve_id: pid }, A());
+  await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, A());
+  const vue = await api("GET", `/api/actions-qualite/${sienne.id}`, undefined, C());
+  assert.equal(vue.statut, 200);
+  assert.deepEqual(vue.corps.preuves.map((p) => p.id), [pid], "lecture seule, comme GET /api/preuves");
+  assert.equal((await api("GET", `/api/actions-qualite/${autre.id}`, undefined, C())).statut, 403, "action d'autrui : aucune fuite");
+  assert.equal((await api("GET", `/api/signalements/${s.id}`, undefined, C())).statut, 403);
+  assert.equal((await api("POST", `/api/actions-qualite/${sienne.id}/preuves`, { preuve_id: pid }, C())).statut, 403);
+  assert.equal((await api("DELETE", `/api/actions-qualite/${sienne.id}/preuves/${pid}`, undefined, C())).statut, 403);
+  assert.equal((await api("POST", `/api/signalements/${s.id}/preuves`, { preuve_id: pid }, C())).statut, 403);
+  assert.equal((await api("DELETE", `/api/signalements/${s.id}/preuves/${pid}`, undefined, C())).statut, 403);
+});
+
+test("supprimer une preuve (route existante) nettoie ses liens sans toucher l'action", async () => {
+  const pid = await creerPreuve();
+  const a = (await creerAction()).corps.action;
+  await api("POST", `/api/actions-qualite/${a.id}/preuves`, { preuve_id: pid }, A());
+  assert.equal((await api("DELETE", `/api/preuves/${pid}`, undefined, A())).statut, 200);
+  const d = await api("GET", `/api/actions-qualite/${a.id}`, undefined, A());
+  assert.equal(d.statut, 200);
+  assert.deepEqual(d.corps.preuves, []);
 });

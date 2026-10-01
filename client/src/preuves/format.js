@@ -61,3 +61,12 @@ export function compterParIndicateur(referentiel, preuves) {
     c.indicateurs.map((i) => [i.id, compte.get(i.id) || 0])
   );
 }
+
+// Statut d'une preuve (libellé + ton de badge), pour les écrans qui
+// AFFICHENT des preuves sans être l'écran Preuves (fiches qualité).
+export const STATUTS_PREUVE = {
+  maitrise: { libelle: "Maîtrisé", ton: "success" },
+  a_consolider: { libelle: "À consolider", ton: "warning" },
+  a_risque: { libelle: "À risque", ton: "error" },
+  non_applicable: { libelle: "Non applicable", ton: "neutral" },
+};

@@ -181,6 +181,29 @@ const LIGNES_SIGNALEMENT = `
   LEFT JOIN utilisateurs cl ON cl.id = s.cloture_par
   LEFT JOIN utilisateurs an ON an.id = s.annulee_par`;
 
+// ── Preuves liées (Q1-B4) ────────────────────────────────────
+// Métadonnées utiles seulement (jamais la description) ; les fichiers
+// restent sur Drive, on ne renvoie que leurs liens déjà connus. Une seule
+// requête par fiche (pas de N+1). L'indicateur propre de la preuve est
+// conservé tel quel (y compris d'une ancienne version du référentiel).
+async function preuvesLiees(colonne, id) {
+  const { rows } = await query(
+    `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.indicateur_id, i.numero AS indicateur,
+            i.libelle AS indicateur_libelle, p.session_id, s.reference AS session_reference,
+            p.alerte_statut, l.cree_le AS lie_le,
+            COALESCE((SELECT json_agg(json_build_object('id', f.id, 'url', f.drive_url, 'nom', f.drive_nom, 'mime', f.drive_mime)
+                                ORDER BY f.ajoute_le, f.id)
+                      FROM preuve_fichiers f WHERE f.preuve_id = p.id), '[]'::json) AS fichiers
+     FROM liens_preuves_qualite l
+     JOIN preuves_enrichies p ON p.id = l.preuve_id
+     JOIN indicateurs i ON i.id = p.indicateur_id
+     LEFT JOIN sessions s ON s.id = p.session_id
+     WHERE l.${colonne} = $1
+     ORDER BY l.cree_le, l.id`, [id]
+  );
+  return rows;
+}
+
 // ── Utilisateurs actifs (assignation d'une action) ──────────
 // Admin uniquement : le contributeur n'a aucun accès à la liste des
 // comptes. Champs réduits au strict nécessaire (id, nom, email, rôle) —
@@ -229,7 +252,7 @@ router.get("/signalements/:id", requireAdmin, wrap(async (req, res) => {
      WHERE h.entite_type = 'signalement' AND h.entite_id = $1
      ORDER BY h.id`, [id]
   );
-  res.json({ signalement: s, actions, historique });
+  res.json({ signalement: s, actions, historique, preuves: await preuvesLiees("signalement_qualite_id", id) });
 }));
 
 router.post("/signalements", requireAdmin, wrap(async (req, res) => {
@@ -472,7 +495,9 @@ router.get("/actions-qualite/:id", requireRedacteur, wrap(async (req, res) => {
      WHERE h.entite_type = 'action' AND h.entite_id = $1
      ORDER BY h.id`, [id]
   );
-  res.json({ action: actionPourRole(a, req.user.role), historique });
+  // Preuves liées : lisibles par tout utilisateur connecté (comme
+  // GET /api/preuves) ; un contributeur ne les voit que sur SON action.
+  res.json({ action: actionPourRole(a, req.user.role), historique, preuves: await preuvesLiees("action_qualite_id", id) });
 }));
 
 router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {
@@ -629,5 +654,79 @@ router.patch("/actions-qualite/:id/controle-efficacite", requireAdmin, wrap((req
 router.patch("/actions-qualite/:id/cloturer", requireAdmin, wrap((req, res) => transitionAction(req, res, "cloturer")));
 router.patch("/actions-qualite/:id/rouvrir", requireAdmin, wrap((req, res) => transitionAction(req, res, "rouvrir")));
 router.patch("/actions-qualite/:id/annuler", requireAdmin, wrap((req, res) => transitionAction(req, res, "annuler")));
+
+// ── Liens preuve ↔ action / signalement (Q1-B4) ──────────────
+// Admin uniquement. Seule la RELATION est créée ou retirée : jamais la
+// preuve, jamais un fichier ni un dossier Drive, jamais son indicateur.
+// Même règle de modifiabilité que le PATCH de l'objet (clôturé / annulé :
+// 409). Chaque lien est tracé dans l'historique (identifiant seul).
+const CIBLES_LIEN = {
+  action: { table: "actions_qualite", colonne: "action_qualite_id", libelle: "Action", feminin: true },
+  signalement: { table: "signalements_qualite", colonne: "signalement_qualite_id", libelle: "Signalement", feminin: false },
+};
+
+async function lierPreuve(req, res, type) {
+  const cible = CIBLES_LIEN[type];
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: `Identifiant ${type === "action" ? "d'action" : "de signalement"} invalide.` });
+  const preuveId = parseIdPositif(req.body?.preuve_id);
+  if (!preuveId) return res.status(400).json({ error: "Identifiant de preuve invalide." });
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [objet] } = await client.query(`SELECT statut FROM ${cible.table} WHERE id = $1 FOR UPDATE`, [id]);
+    if (!objet) { await client.query("ROLLBACK"); return res.status(404).json({ error: `${cible.libelle} introuvable${cible.feminin ? "e" : ""}.` }); }
+    if (objet.statut === "cloturee" || objet.statut === "annulee") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: `${cible.libelle} ${objet.statut === "cloturee" ? "clôturé" : "annulé"}${cible.feminin ? "e" : ""} : les preuves liées ne sont plus modifiables.` });
+    }
+    const { rows: [preuve] } = await client.query("SELECT id FROM preuves WHERE id = $1", [preuveId]);
+    if (!preuve) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Preuve introuvable." }); }
+    const { rowCount } = await client.query(
+      `INSERT INTO liens_preuves_qualite (preuve_id, ${cible.colonne}, cree_par) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [preuveId, id, req.user.id]
+    );
+    if (!rowCount) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Cette preuve est déjà liée." }); }
+    await journaliser(client, { entiteType: type, entiteId: id, evenement: "preuve_rattachee", champ: "preuve_id", nouvelle: String(preuveId) }, req.user.id);
+    await client.query("COMMIT");
+    res.status(201).json({ preuves: await preuvesLiees(cible.colonne, id) });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally { client.release(); }
+}
+
+async function delierPreuve(req, res, type) {
+  const cible = CIBLES_LIEN[type];
+  const id = parseIdPositif(req.params.id);
+  const preuveId = parseIdPositif(req.params.preuveId);
+  if (!id || !preuveId) return res.status(400).json({ error: "Identifiant invalide." });
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: [objet] } = await client.query(`SELECT statut FROM ${cible.table} WHERE id = $1 FOR UPDATE`, [id]);
+    if (!objet) { await client.query("ROLLBACK"); return res.status(404).json({ error: `${cible.libelle} introuvable${cible.feminin ? "e" : ""}.` }); }
+    if (objet.statut === "cloturee" || objet.statut === "annulee") {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: `${cible.libelle} ${objet.statut === "cloturee" ? "clôturé" : "annulé"}${cible.feminin ? "e" : ""} : les preuves liées ne sont plus modifiables.` });
+    }
+    // Uniquement la relation : la preuve et ses fichiers Drive sont intacts.
+    const { rowCount } = await client.query(
+      `DELETE FROM liens_preuves_qualite WHERE preuve_id = $1 AND ${cible.colonne} = $2`, [preuveId, id]
+    );
+    if (!rowCount) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Cette preuve n'est pas liée." }); }
+    await journaliser(client, { entiteType: type, entiteId: id, evenement: "preuve_detachee", champ: "preuve_id", ancienne: String(preuveId) }, req.user.id);
+    await client.query("COMMIT");
+    res.json({ preuves: await preuvesLiees(cible.colonne, id) });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally { client.release(); }
+}
+
+router.post("/actions-qualite/:id/preuves", requireAdmin, wrap((req, res) => lierPreuve(req, res, "action")));
+router.post("/signalements/:id/preuves", requireAdmin, wrap((req, res) => lierPreuve(req, res, "signalement")));
+router.delete("/actions-qualite/:id/preuves/:preuveId", requireAdmin, wrap((req, res) => delierPreuve(req, res, "action")));
+router.delete("/signalements/:id/preuves/:preuveId", requireAdmin, wrap((req, res) => delierPreuve(req, res, "signalement")));
 
 export default router;

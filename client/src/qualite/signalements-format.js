@@ -1,7 +1,7 @@
 // Qualité — Signalements : libellés, compteurs, segments, filtres et retard.
 // Module PUR (aucun React, aucun réseau) : testable seul. Les valeurs
 // viennent du serveur ; jamais de valeur technique affichée.
-import { aujourdhuiISO } from "./format.js";
+import { aujourdhuiISO, libellePreuve } from "./format.js";
 
 export const TYPES_SIGNALEMENT = {
   reclamation: { libelle: "Réclamation", ton: "warning" },
@@ -271,7 +271,7 @@ const dateLisible = (v) => {
 // `indicateurs` : indicateurs connus (référentiel actif + liés au
 // signalement). `noms` : Map id → nom (utilisateurs actifs + noms fournis
 // par le détail). Retourne { titre, avant?, apres? }.
-export function decrireEvenementSignalement(ev, { indicateurs = [], noms = new Map() } = {}) {
+export function decrireEvenementSignalement(ev, { indicateurs = [], noms = new Map(), preuves = [] } = {}) {
   const ind = (id) => {
     const i = indicateurs.find((x) => x.id === Number(id));
     return i ? `Indicateur ${i.numero} — ${i.libelle}` : `Indicateur historique (ID interne ${id})`;
@@ -281,6 +281,8 @@ export function decrireEvenementSignalement(ev, { indicateurs = [], noms = new M
   if (EVENEMENTS_STATUT[ev.evenement]) return { titre: EVENEMENTS_STATUT[ev.evenement] };
   if (ev.evenement === "rattachement_indicateur") return { titre: "Indicateur ajouté", apres: ind(ev.nouvelle_valeur) };
   if (ev.evenement === "retrait_indicateur") return { titre: "Indicateur retiré", apres: ind(ev.ancienne_valeur) };
+  if (ev.evenement === "preuve_rattachee") return { titre: "Preuve rattachée", apres: libellePreuve(ev.nouvelle_valeur, preuves) };
+  if (ev.evenement === "preuve_detachee") return { titre: "Lien avec une preuve retiré", apres: libellePreuve(ev.ancienne_valeur, preuves) };
   if (ev.evenement !== "modification") return { titre: "Signalement mis à jour" };
 
   if (CHAMPS_FAIT[ev.champ]) return { titre: CHAMPS_FAIT[ev.champ] };

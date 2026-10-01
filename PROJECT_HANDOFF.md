@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q1 Qualité terminé** — signalements + actions qualité liées (Q1-B3-B3, 01/10/2026) |
-| **Migration de production actuelle** | `015_qualite_actions_signalements.sql` (15 migrations, aucune 016) |
-| **Suite de tests** | **463/463 serveur + 240/240 client** (déployés avec Q1-B3-B3) |
+| **Dernier lot validé en production** | **Q1-B4** — preuves liées aux actions et signalements qualité (01/10/2026) |
+| **Migration de production actuelle** | `016_liens_preuves_qualite.sql` (16 migrations, aucune 017) |
+| **Suite de tests** | **471/471 serveur + 251/251 client** (déployés avec Q1-B4) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2578,7 +2578,29 @@ focalisable ; personne concernée effacée sans message quand une inscription es
 homonymes de responsables ; règle CSS `.qualite-ligne__v` globale ; titre très long ;
 ancienne date de résolution affichée après réouverture ; ancien responsable historique sans
 nom ; message réseau brut « Failed to fetch » ; chargements doublés fiche / formulaire.
-Restent hors Q1 : Q1-B4 (liaison preuves / Drive) et Q1-B5 (tableau de bord qualité).
+Reste hors Q1 : Q1-B5 (tableau de bord qualité).
+
+### Q1-B4 — Preuves liées aux actions et signalements (01/10/2026)
+
+- **Migration 016** (additive) : table `liens_preuves_qualite` à vraies clés étrangères
+  (`preuve_id`, `action_qualite_id` OU `signalement_qualite_id`, exactement une cible —
+  CHECK), index uniques anti-doublon ; `preuves.indicateur_id` reste NOT NULL. Supprimer une
+  preuve (route existante) nettoie ses liens.
+- **API** : détails `GET /api/actions-qualite/:id` et `GET /api/signalements/:id` enrichis de
+  `preuves` (titre, statut, indicateur propre, session, liens Drive déjà connus — jamais la
+  description), une requête par fiche ; `POST …/:id/preuves` `{ preuve_id }` et
+  `DELETE …/:id/preuves/:preuveId` (admin ; 400 / 404 / 409) ; même règle que le PATCH :
+  objet clôturé ou annulé ⇒ liens figés (409), preuves toujours visibles.
+- **Retirer le lien ≠ supprimer la preuve** : seule la relation disparaît ; preuve, fichiers
+  Google Drive, dossier et indicateur sont intacts. Aucun fichier copié ni déplacé, aucun
+  appel Drive nouveau.
+- **Historique** : `preuve_rattachee` / `preuve_detachee` (identifiant de preuve seul).
+- **Droits** : admin rattache / retire ; contributeur : lecture seule des preuves de SA seule
+  action (comme `GET /api/preuves`), aucun accès aux signalements. RBAC global inchangé.
+- **UI** : section « Preuves » sur les fiches action et signalement, sélecteur par la
+  recherche serveur existante (preuves déjà liées exclues), lien « Créer / importer une
+  preuve » vers l'écran Preuves (aucun second formulaire), retrait confirmé.
+- Tests : 471/471 serveur, 251/251 client ; smoke Chrome 1440 / 390.
 
 ---
 

@@ -6,6 +6,7 @@ import { useTitrePage } from "../pages/titre.js";
 import { formaterDate, formaterDateHeure } from "../sessions/format.js";
 import { FormulaireSignalement } from "./FormulaireSignalement.jsx";
 import { FormulaireAction } from "./FormulaireAction.jsx";
+import { PreuvesLiees } from "./PreuvesLiees.jsx";
 import { STATUTS_ACTION, aujourdhuiISO } from "./format.js";
 import {
   CANAUX_SIGNALEMENT, CAUSES_SIGNALEMENT, STATUTS_SIGNALEMENT, TYPES_SIGNALEMENT,
@@ -97,7 +98,7 @@ export function SignalementFiche({ signalementId }) {
   if (err && !donnees) return <Alert ton="error" titre="Le signalement n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>;
   if (!donnees) return <LoadingState texte="Chargement du signalement…" />;
 
-  const { actions = [], historique = [] } = donnees;
+  const { actions = [], historique = [], preuves = [] } = donnees;
   const ty = TYPES_SIGNALEMENT[s.type] || { libelle: s.type, ton: "neutral" };
   const st = STATUTS_SIGNALEMENT[s.statut] || { libelle: s.statut, ton: "neutral" };
   const reclamation = s.type === "reclamation";
@@ -243,12 +244,15 @@ export function SignalementFiche({ signalementId }) {
         </section>
       </div>
 
+      <PreuvesLiees base={`/api/signalements/${s.id}`} preuves={preuves} idTitre="sig-preuves"
+        modifiable={s.statut !== "cloturee" && s.statut !== "annulee"} onChange={charger} />
+
       <section className="qualite-section" aria-labelledby="sig-historique">
         <h2 id="sig-historique" className="qualite-section__titre">Historique</h2>
         {historique.length === 0 ? <p className="sess-secondaire">Aucun événement.</p> : (
           <ol className="qualite-historique">
             {historique.map((ev) => {
-              const d = decrireEvenementSignalement(ev, { indicateurs: indicateursConnus, noms });
+              const d = decrireEvenementSignalement(ev, { indicateurs: indicateursConnus, noms, preuves });
               return (
                 <li key={ev.id} className="qualite-historique__item">
                   <time className="qualite-historique__date" dateTime={ev.cree_le}>{formaterDateHeure(ev.cree_le)}</time>

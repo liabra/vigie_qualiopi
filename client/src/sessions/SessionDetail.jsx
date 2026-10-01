@@ -205,8 +205,8 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
         label="Sections de la session"
         onglets={[
           { to: base, libelle: "Vue d'ensemble" },
-          { to: `${base}/stagiaires`, libelle: "Stagiaires", compteur: synthese.actifs },
-          { to: `${base}/parcours`, libelle: "Parcours" },
+          { to: `${base}/stagiaires`, libelle: "Stagiaires", compteur: synthese.actifs, titreCompteur: `${synthese.actifs} inscrit(s) actif(s), abandons exclus` },
+          { to: `${base}/parcours`, libelle: "Accompagnement" },
           { to: `${base}/assiduite`, libelle: "Assiduité" },
           { to: `${base}/evaluations`, libelle: "Évaluations", compteur: donnees.evaluations?.agregation?.total ?? 0 },
           { to: `${base}/satisfaction`, libelle: "Satisfaction", compteur: donnees.satisfactions?.agregation?.reponses ?? 0 },

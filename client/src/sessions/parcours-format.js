@@ -147,7 +147,7 @@ export const MAX_MOTIF_ABANDON = 300;
 export const AIDE_ABANDON = "Précision courte et factuelle. Ne saisissez aucune information médicale ni aucune justification intime.";
 
 export const TYPES_SUIVI = {
-  signal: { libelle: "Signal observé", ton: "warning" },
+  signal: { libelle: "Observation", ton: "warning" },
   relance: { libelle: "Relance effectuée", ton: "info" },
 };
 export const CATEGORIES_SUIVI = {
@@ -172,11 +172,11 @@ export const AIDE_SUIVI = "Notez uniquement des faits observés. Ne recopiez pas
 export const dateFr = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "");
 export const libelleCategorieSuivi = (type, cat) => CATEGORIES_SUIVI[type]?.[cat] || cat;
 
-// Issue du parcours d'après les statuts d'inscription RÉELS.
-export function issueInscription(l) {
+// Situation de l'inscription : le statut RÉEL (jamais « En cours » pour
+// une inscription encore « Inscrit »), daté pour un abandon.
+export function situationInscription(l) {
   if (l.statut_inscription === "abandon") return { libelle: `Abandon${l.date_abandon ? ` le ${dateFr(l.date_abandon)}` : ""}`, ton: "neutral" };
-  if (l.statut_inscription === "termine") return { libelle: "Terminée", ton: "success" };
-  return { libelle: "En cours", ton: "info" };
+  return STATUTS_INSCRIPTION[l.statut_inscription] || { libelle: l.statut_inscription, ton: "neutral" };
 }
 // Résumé de la vue d'ensemble : structuré seulement (jamais de note).
 export function resumeSuivi(l) {
@@ -217,4 +217,26 @@ export function corpsAbandon({ categorie_abandon = "", motif_abandon = "" } = {}
 export function corpsComplementAbandon({ categorie_abandon = "", motif_abandon = "" } = {}) {
   const motif = String(motif_abandon ?? "").trim();
   return { categorie_abandon: categorie_abandon || null, motif_abandon: motif || null };
+}
+
+// ── UX-Q2 : écran « Accompagnement » ───────────────────────────────
+export const INTRO_ACCOMPAGNEMENT = "Pour chaque stagiaire : ses besoins et son positionnement au départ, les mesures pédagogiques mises en place, puis les observations et relances jusqu'à la fin de l'inscription.";
+export const AIDE_SECTION_BESOINS = "Recueil des attentes et des objectifs, vérification des prérequis et positionnement de départ.";
+export const AIDE_SECTION_MESURES = "Ce qui est mis en place pour faciliter la formation (rythme, supports, matériel…), sans diagnostic.";
+export const AIDE_SECTION_SUIVI = "Faits observés (absences, retards, difficulté signalée) et relances effectuées ; précision de l'abandon le cas échéant.";
+// Mesures pédagogiques : prévues / mises en œuvre (abandonnées si présentes).
+export function resumeMesures(l) {
+  if (!l.adaptations_total) return "Aucune mesure";
+  const pl = (n, mot) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  const parties = [pl(l.adaptations_prevues || 0, "prévue"), `${pl(l.adaptations_mises_en_oeuvre || 0, "mise")} en œuvre`];
+  if (l.adaptations_abandonnees) parties.push(pl(l.adaptations_abandonnees, "abandonnée"));
+  return parties.join(" · ");
+}
+// Population affichée : TOUTES les inscriptions (abandons compris), alors que
+// le compteur de l'onglet Stagiaires ne compte que les inscrits actifs.
+export function resumePopulation(total, abandons) {
+  const base = `${total} inscription${total > 1 ? "s" : ""}`;
+  if (!abandons) return `${base}.`;
+  const actifs = total - abandons;
+  return `${base}, dont ${abandons} abandon${abandons > 1 ? "s" : ""} ; l'onglet Stagiaires compte ${actifs} inscrit${actifs > 1 ? "s" : ""} actif${actifs > 1 ? "s" : ""}.`;
 }

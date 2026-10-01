@@ -132,7 +132,10 @@ test("détail : en-tête complet, fil d'Ariane, onglets et vue d'ensemble", asyn
     ["Formation", "Sessions", "SESS-TEST"],
   );
   const onglets = [...document.querySelectorAll('nav[aria-label="Sections de la session"] a')];
-  assert.deepEqual(onglets.map((a) => a.childNodes[0].textContent), ["Vue d'ensemble", "Stagiaires", "Parcours", "Assiduité", "Évaluations", "Satisfaction", "Documents"]);
+  assert.deepEqual(onglets.map((a) => a.childNodes[0].textContent), ["Vue d'ensemble", "Stagiaires", "Accompagnement", "Assiduité", "Évaluations", "Satisfaction", "Documents"]);
+  assert.equal(onglets[2].getAttribute("href"), "/sessions/1/parcours", "route conservée");
+  const compteur = onglets[1].querySelector(".ui-onglets__compteur");
+  assert.match(compteur.getAttribute("title"), /^\d+ inscrit\(s\) actif\(s\), abandons exclus$/, "population du compteur explicitée");
   assert.equal(document.querySelector('nav[aria-label="Sections de la session"] a[aria-current="page"]').textContent, "Vue d'ensemble");
   assert.ok(t.includes("Dossiers incomplets") && t.includes("Générés par Vigie"));
   assert.equal(document.title, "SESS-TEST — Vigie Qualiopi");

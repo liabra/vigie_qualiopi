@@ -1,6 +1,7 @@
-// Q2-1 — Onglet Parcours : synthèse par inscription, filtre, panneau Recueil
-// du besoin (création, modification, non applicable, positionnement), erreurs,
-// double enregistrement, session archivée, confidentialité. API simulée.
+// Q2-1 / UX-Q2 — Onglet Accompagnement (route /parcours) : synthèse par
+// inscription, filtre, dossier d'accompagnement, panneau « Besoins et
+// positionnement » (création, modification, non applicable, positionnement),
+// erreurs, double enregistrement, session archivée, confidentialité.
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,6 +9,7 @@ import { attendre, bouton, cliquer, demonter, dialogue, monter, saisir, texte } 
 import { SESSION } from "./outils.jsx";
 import { corpsRecueil, filtrerParcours, recueilAFaire, valeursRecueil } from "../src/sessions/parcours-format.js";
 
+const vanne = () => { let ouvrir; const p = new Promise((r) => { ouvrir = r; }); return { attendre: () => p, ouvrir }; };
 let natifs = 0;
 beforeEach(() => {
   natifs = 0;
@@ -47,6 +49,15 @@ const champ = (libelle) => {
   return l ? document.getElementById(l.htmlFor) : null;
 };
 const soumettre = () => cliquer(document.querySelector('button[type="submit"][form="form-recueil"]'));
+const titreDialogue = () => dialogue()?.querySelector("h2")?.textContent;
+// Ouvre le dossier d'accompagnement puis la section voulue (bouton explicite).
+async function ouvrirBesoins(nom, libelle) {
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  await cliquer(bouton(libelle));
+  await attendre(() => titreDialogue() === "Besoins et positionnement");
+}
 const puts = (appels, id) => appels.filter((a) => a.methode === "PUT" && a.chemin === `/api/inscriptions/${id}/recueil`);
 const gets = (appels) => appels.filter((a) => a.methode === "GET" && a.chemin === "/api/sessions/1/parcours").length;
 
@@ -57,33 +68,56 @@ test("pur : recueil à faire = absent ou « à faire » ; corps complet, vides �
   assert.deepEqual(corpsRecueil(valeursRecueil(null)), { statut: "a_faire", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, positionnement_id: null });
 });
 
-test("onglet Parcours : synthèse par inscription, sans texte libre ; adaptations « Aucune mesure »", async () => {
+test("onglet Accompagnement : synthèse par inscription, sans texte libre ; « Aucune mesure » ; statut réel", async () => {
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => lignes().length === 2);
-  assert.ok([...document.querySelectorAll('nav[aria-label="Sections de la session"] a')].some((a) => a.textContent.startsWith("Parcours")));
+  assert.ok([...document.querySelectorAll('nav[aria-label="Sections de la session"] a')].some((a) => a.textContent.startsWith("Accompagnement")));
   const [paul, alice] = lignes();
   assert.ok(paul.textContent.includes("Paul Bernard") && paul.textContent.includes("Abandon") && paul.textContent.includes("Non commencé"));
-  assert.ok(alice.textContent.includes("Réalisé") && alice.textContent.includes("03/09/2026"));
-  assert.ok(alice.textContent.includes("Positionnement initial (02/09/2026) — 12/20"));
-  assert.ok(alice.textContent.includes("Parcours adapté"));
+  assert.ok(alice.textContent.includes("Réalisé") && alice.textContent.includes("Positionnement initial (02/09/2026) — 12/20"));
+  assert.ok(alice.textContent.includes("Inscrit") && !alice.textContent.includes("En cours"), "statut réel « Inscrit »");
+  assert.deepEqual([...alice.querySelectorAll("button")].map((b) => b.textContent), ["Ouvrir le dossier"], "un seul bouton par ligne");
   assert.ok(lignes().every((tr) => tr.textContent.includes("Aucune mesure")), "aucune adaptation : synthèse factuelle");
   assert.ok(!texte().includes(SECRET), "textes libres jamais dans la synthèse");
   assert.equal(gets(appels), 1, "une seule lecture agrégée");
   assert.ok(!appels.some((a) => a.chemin.endsWith("/recueil")), "aucun recueil chargé avant ouverture");
   assert.deepEqual([...alice.querySelectorAll("td")].map((c) => c.getAttribute("data-label")).slice(0, 5),
-    ["Stagiaire", "Recueil du besoin", "Positionnement", "Conclusion", "Adaptations"], "cartes mobiles libellées");
+    ["Stagiaire", "Besoins et positionnement", "Mesures pédagogiques", "Observations et relances", "Situation de l'inscription"], "cartes mobiles libellées");
+  assert.deepEqual([...document.querySelectorAll("thead th")].map((th) => th.textContent).slice(0, 5),
+    ["Stagiaire", "Besoins et positionnement", "Mesures pédagogiques", "Observations et relances", "Situation de l'inscription"]);
+  assert.ok(texte().includes("2 inscriptions, dont 1 abandon ; l'onglet Stagiaires compte 1 inscrit actif."), "populations explicitées");
 });
 
-test("filtre « Recueil à faire » et état vide correspondant", async () => {
+test("dossier d'accompagnement : trois sections expliquées, boutons explicites, retour au dossier après un panneau", async () => {
+  await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  const d = dialogue();
+  assert.deepEqual([...d.querySelectorAll("h3")].map((h) => h.textContent), ["1. Besoins et positionnement", "2. Mesures pédagogiques", "3. Observations et relances"]);
+  assert.ok(d.textContent.includes("Situation de l'inscription :") && d.textContent.includes("Inscrit"));
+  assert.ok(d.textContent.includes("vérification des prérequis") && d.textContent.includes("sans diagnostic") && d.textContent.includes("Faits observés"), "explications courtes");
+  const libelles = [...d.querySelectorAll("button")].map((b) => b.textContent);
+  assert.deepEqual(libelles.filter((l) => /^(Modifier|Gérer|Renseigner|Consulter)/.test(l)),
+    ["Modifier les besoins et le positionnement", "Gérer les mesures pédagogiques", "Gérer les observations et relances"]);
+  assert.ok(!libelles.includes("Modifier") && !libelles.includes("Suivi") && !libelles.includes("Adaptations"), "aucun libellé ambigu");
+  assert.ok(!d.textContent.includes(SECRET), "aucun texte libre dans le dossier");
+  await cliquer(bouton("Modifier les besoins et le positionnement"));
+  await attendre(() => titreDialogue() === "Besoins et positionnement");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Annuler"));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+});
+
+test("filtre « Besoins à recueillir » et état vide correspondant", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => lignes().length === 2);
-  await cliquer([...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith("Recueil à faire")));
+  await cliquer([...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith("Besoins à recueillir")));
   assert.deepEqual(lignes().map((tr) => tr.textContent.includes("Paul Bernard")), [true]);
   await demonter();
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({ "GET /api/sessions/1/parcours": { ...PARCOURS, inscriptions: [PARCOURS.inscriptions[1]] } }));
   await attendre(() => lignes().length === 1);
-  await cliquer([...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith("Recueil à faire")));
-  await attendre(() => texte().includes("Aucun recueil à faire."));
+  await cliquer([...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith("Besoins à recueillir")));
+  await attendre(() => texte().includes("Aucun besoin à recueillir."));
 });
 
 test("aucune inscription : état vide", async () => {
@@ -97,8 +131,7 @@ test("création : date exigée si réalisé, aide RGPD, corps envoyé, panneau f
     "GET /api/sessions/1/parcours": () => (enregistre ? { ...PARCOURS, inscriptions: [{ ...PARCOURS.inscriptions[0], recueil_statut: "realise", date_recueil: "2026-09-04", conclusion: "parcours_standard" }, PARCOURS.inscriptions[1]] } : PARCOURS),
     "PUT /api/inscriptions/12/recueil": (corps) => { enregistre = true; return { recueil: { inscription_id: 12, ...corps } }; },
   }));
-  await attendre(() => bouton("Renseigner"));
-  await cliquer(bouton("Renseigner"));
+  await ouvrirBesoins("Paul Bernard", "Renseigner les besoins et le positionnement");
   await attendre(() => champ("Statut"));
   assert.ok(dialogue().textContent.includes("Ne saisissez pas de diagnostic ni d'information médicale."));
   assert.ok(dialogue().textContent.includes("Aucun positionnement saisi pour ce stagiaire"), "renvoi vers l'onglet Évaluations");
@@ -112,17 +145,17 @@ test("création : date exigée si réalisé, aide RGPD, corps envoyé, panneau f
   await saisir(champ("Prérequis vérifiés"), "oui");
   const avant = gets(appels);
   await soumettre();
-  await attendre(() => !dialogue());
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
   assert.deepEqual(puts(appels, 12)[0].corps, { statut: "realise", date_recueil: "2026-09-04", attentes: "Reprendre une activité", objectifs_personnels: null, prerequis_verifies: "oui", conclusion: "parcours_standard", positionnement_id: null });
   assert.equal(gets(appels) - avant, 1, "rechargement ciblé, une fois");
-  await attendre(() => texte().includes("Recueil du besoin enregistré pour Paul Bernard."));
-  assert.ok(lignes()[0].textContent.includes("Parcours standard"));
+  await attendre(() => texte().includes("Besoins et positionnement enregistrés pour Paul Bernard."));
+  assert.ok(dialogue().textContent.includes("Réalisé") && dialogue().textContent.includes("Parcours standard"), "retour au dossier à jour");
+  assert.ok(lignes()[0].textContent.includes("Réalisé"));
 });
 
 test("modification : valeurs préremplies, positionnement de CETTE inscription seulement, auteur affiché", async () => {
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({ "PUT /api/inscriptions/11/recueil": (c) => ({ recueil: c }) }));
-  await attendre(() => bouton("Modifier"));
-  await cliquer(bouton("Modifier"));
+  await ouvrirBesoins("Alice Martin", "Modifier les besoins et le positionnement");
   await attendre(() => champ("Attentes")?.value === SECRET);
   assert.equal(champ("Statut").value, "realise");
   assert.equal(champ("Date du recueil").value, "2026-09-03");
@@ -138,14 +171,13 @@ test("modification : valeurs préremplies, positionnement de CETTE inscription s
   assert.equal(c.positionnement_id, null);
   assert.equal(c.conclusion, "a_preciser");
   assert.equal(c.attentes, SECRET, "texte conservé tel quel");
-  await attendre(() => !dialogue());
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
   assert.ok(!texte().includes(SECRET), "texte libre non répercuté dans la page");
 });
 
 test("non applicable : enregistré sans date ni contenu", async () => {
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({ "PUT /api/inscriptions/12/recueil": (c) => ({ recueil: c }) }));
-  await attendre(() => bouton("Renseigner"));
-  await cliquer(bouton("Renseigner"));
+  await ouvrirBesoins("Paul Bernard", "Renseigner les besoins et le positionnement");
   await attendre(() => champ("Statut"));
   await saisir(champ("Statut"), "non_applicable");
   await soumettre();
@@ -155,24 +187,25 @@ test("non applicable : enregistré sans date ni contenu", async () => {
 });
 
 test("erreur serveur à l'enregistrement : panneau ouvert, saisie conservée ; double clic ⇒ un seul PUT", async () => {
+  const v = vanne();
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({
-    "PUT /api/inscriptions/12/recueil": () => new Promise((r) => setTimeout(() => r([400, { error: "Ce positionnement concerne une autre inscription." }]), 30)),
+    "PUT /api/inscriptions/12/recueil": async () => { await v.attendre(); return [400, { error: "Ce positionnement concerne une autre inscription." }]; },
   }));
-  await attendre(() => bouton("Renseigner"));
-  await cliquer(bouton("Renseigner"));
+  await ouvrirBesoins("Paul Bernard", "Renseigner les besoins et le positionnement");
   await attendre(() => champ("Attentes"));
   await saisir(champ("Attentes"), "Texte conservé");
   const b = document.querySelector('button[type="submit"][form="form-recueil"]');
   await cliquer(b); await cliquer(b);
+  v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("Ce positionnement concerne une autre inscription."));
   assert.equal(puts(appels, 12).length, 1);
   assert.equal(champ("Attentes").value, "Texte conservé");
 });
 
-test("erreur de chargement du parcours : message et Réessayer", async () => {
+test("erreur de chargement de l'accompagnement : message et Réessayer", async () => {
   let n = 0;
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({ "GET /api/sessions/1/parcours": () => (n++ === 0 ? [500, { error: "Erreur serveur." }] : PARCOURS) }));
-  await attendre(() => texte().includes("Le parcours n'a pas pu être chargé."));
+  await attendre(() => texte().includes("L'accompagnement n'a pas pu être chargé."));
   await cliquer([...document.querySelectorAll("button")].find((x) => x.textContent === "Réessayer"));
   await attendre(() => lignes().length === 2);
   assert.equal(gets(appels), 2);
@@ -186,8 +219,7 @@ test("session archivée : consultation seule, aucun enregistrement possible", as
     "GET /api/inscriptions/11/recueil": { ...RECUEIL_ALICE, archivee: true },
   }));
   await attendre(() => lignes().length === 2);
-  assert.ok(!bouton("Renseigner") && !bouton("Modifier"));
-  await cliquer([...document.querySelectorAll("button")].filter((x) => x.textContent === "Consulter")[1]);
+  await ouvrirBesoins("Alice Martin", "Consulter les besoins et le positionnement");
   await attendre(() => dialogue()?.textContent.includes("Session archivée : recueil en lecture seule."));
   assert.ok(!document.querySelector('button[type="submit"][form="form-recueil"]'));
   assert.ok(champ("Attentes").closest("fieldset.ui-form-lecture").disabled, "formulaire désactivé");
@@ -196,6 +228,6 @@ test("session archivée : consultation seule, aucun enregistrement possible", as
 
 test("contributeur : saisie ouverte comme pour les inscriptions", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "contributeur", routes());
-  await attendre(() => lignes().length === 2);
-  assert.ok(bouton("Renseigner") && bouton("Modifier"));
+  await ouvrirBesoins("Alice Martin", "Modifier les besoins et le positionnement");
+  assert.ok(document.querySelector('button[type="submit"][form="form-recueil"]'));
 });

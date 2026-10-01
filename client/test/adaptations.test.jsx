@@ -1,4 +1,4 @@
-// Q2-2 — Adaptations pédagogiques (onglet Parcours) et confidentialité des
+// Q2-2 — Mesures pédagogiques (onglet Accompagnement) et confidentialité des
 // champs stagiaires réservés à l'administrateur. API simulée, données
 // fictives ; aucune boîte native.
 import "./dom.mjs";
@@ -53,11 +53,18 @@ const champ = (libelle) => {
   return l ? document.getElementById(l.htmlFor) : null;
 };
 const lignes = () => [...document.querySelectorAll("tbody tr")];
+const titreDialogue = () => dialogue()?.querySelector("h2")?.textContent;
+// UX-Q2 : dossier d'accompagnement puis section « Mesures pédagogiques ».
+async function ouvrirMesures(nom) {
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => /^(Gérer|Consulter) les mesures pédagogiques$/.test(b.textContent)));
+  await attendre(() => titreDialogue() === "Mesures pédagogiques" && !dialogue().querySelector(".ui-loading"));
+}
 const ouvrirAdaptations = async (nom, sur = {}, role = "admin") => {
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, role, routes(sur));
-  await attendre(() => document.querySelector(`button[aria-label="Adaptations de ${nom}"]`));
-  await cliquer(document.querySelector(`button[aria-label="Adaptations de ${nom}"]`));
-  await attendre(() => dialogue()?.textContent.includes("Adaptations pédagogiques") && !dialogue().querySelector(".ui-loading"));
+  await ouvrirMesures(nom);
   return appels;
 };
 const soumettre = () => cliquer(document.querySelector('button[type="submit"][form="form-adaptation"]'));
@@ -74,27 +81,27 @@ test("pur : validation, corps complet, filtre et résumé", () => {
   assert.equal(resumeAdaptations(PARCOURS.inscriptions[1]), "3 mesures · 1 prévue · 1 mise en œuvre · 1 abandonnée");
 });
 
-test("synthèse : compteurs par inscription, filtre « Adaptations à mettre en œuvre », « Recueil à faire » conservé", async () => {
+test("synthèse : prévues / mises en œuvre par inscription, filtre « Mesures à mettre en œuvre », « Besoins à recueillir » conservé", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => lignes().length === 2);
-  assert.ok(lignes()[1].textContent.includes("3 mesures · 1 prévue · 1 mise en œuvre · 1 abandonnée"));
+  assert.ok(lignes()[1].textContent.includes("1 prévue · 1 mise en œuvre · 1 abandonnée"));
   assert.ok(lignes()[0].textContent.includes("Aucune mesure"));
   assert.ok(!texte().includes("Supports remis"), "aucun texte de mesure dans la synthèse");
   const vue = (l) => [...document.querySelectorAll(".sess-vue")].find((b) => b.textContent.startsWith(l));
-  await cliquer(vue("Adaptations à mettre en œuvre"));
+  await cliquer(vue("Mesures à mettre en œuvre"));
   assert.deepEqual(lignes().map((tr) => tr.textContent.includes("Alice Martin")), [true]);
-  await cliquer(vue("Recueil à faire"));
+  await cliquer(vue("Besoins à recueillir"));
   assert.equal(lignes().length, 2);
 });
 
-test("mobile 390 px : chaque cellule porte son libellé (cartes empilées), bouton Adaptations par ligne", async () => {
+test("mobile 390 px : chaque cellule porte son libellé (cartes empilées), un seul bouton « Ouvrir le dossier » par ligne", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => lignes().length === 2);
   for (const tr of lignes()) {
     assert.ok([...tr.querySelectorAll("td:not(.sess-table__actions)")].every((td) => td.getAttribute("data-label")), "data-label sur chaque cellule");
-    assert.ok(tr.querySelector('td[data-label="Adaptations"]'));
+    assert.ok(tr.querySelector('td[data-label="Mesures pédagogiques"]'));
+    assert.deepEqual([...tr.querySelectorAll("button")].map((b) => b.textContent), ["Ouvrir le dossier"]);
   }
-  assert.ok(document.querySelector('button[aria-label="Adaptations de Paul Bernard"]'));
 });
 
 test("panneau : liste lisible (catégorie, statut, dates, bilan, auteurs), état vide", async () => {
@@ -104,7 +111,7 @@ test("panneau : liste lisible (catégorie, statut, dates, bilan, auteurs), état
     "Mesure abandonnée", "Décidée le 03/09/2026", "Saisie par Tukui"]) assert.ok(t.includes(x), x);
   await demonter();
   await ouvrirAdaptations("Paul Bernard");
-  assert.ok(dialogue().textContent.includes("Aucune adaptation"));
+  assert.ok(dialogue().textContent.includes("Aucune mesure pédagogique"));
 });
 
 test("création : catégorie obligatoire, aide RGPD, date de décision du jour modifiable, corps exact, compteurs rechargés", async () => {
@@ -128,7 +135,7 @@ test("création : catégorie obligatoire, aide RGPD, date de décision du jour m
   await attendre(() => dialogue()?.textContent.includes("Supports remis en gros caractères") && !champ("Catégorie"));
   assert.deepEqual(ecritures(appels)[0].corps, { categorie: "supports", mesure: "Supports remis en gros caractères", statut: "prevue", date_decision: "2026-09-03", date_mise_en_oeuvre: null, bilan: null });
   assert.equal(appels.filter((a) => a.chemin === "/api/sessions/1/parcours").length - avant, 1, "compteurs rechargés");
-  assert.equal(window.location.pathname, "/sessions/1/parcours", "onglet Parcours conservé");
+  assert.equal(window.location.pathname, "/sessions/1/parcours", "route /parcours conservée");
 });
 
 test("mise en œuvre (date exigée) puis bilan : PATCH exacts", async () => {
@@ -191,17 +198,19 @@ test("erreur serveur : formulaire ouvert, saisie conservée ; double clic ⇒ un
 test("échec de chargement des adaptations : message et Réessayer", async () => {
   let n = 0;
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes({ "GET /api/inscriptions/11/adaptations": () => (n++ === 0 ? [500, { error: "Erreur serveur." }] : LISTE) }));
-  await attendre(() => document.querySelector('button[aria-label="Adaptations de Alice Martin"]'));
-  await cliquer(document.querySelector('button[aria-label="Adaptations de Alice Martin"]'));
-  await attendre(() => dialogue()?.textContent.includes("Les adaptations n'ont pas pu être chargées."));
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  await cliquer(bouton("Gérer les mesures pédagogiques"));
+  await attendre(() => dialogue()?.textContent.includes("Les mesures pédagogiques n'ont pas pu être chargées."));
   await cliquer(boutonDialogue("Réessayer"));
   await attendre(() => dialogue().textContent.includes("Supports remis en gros caractères"));
 });
 
 test("session archivée : lecture seule, aucun bouton d'écriture", async () => {
   await ouvrirAdaptations("Alice Martin", { "GET /api/sessions/1/parcours": { ...PARCOURS, archivee: true }, "GET /api/inscriptions/11/adaptations": { ...LISTE, archivee: true } });
-  assert.ok(dialogue().textContent.includes("Session archivée : adaptations en lecture seule."));
-  for (const l of ["Ajouter une mesure", "Modifier", "Abandonner la mesure", "Marquer comme mise en œuvre"]) assert.ok(!boutonDialogue(l), l);
+  assert.ok(dialogue().textContent.includes("Session archivée : mesures pédagogiques en lecture seule."));
+  for (const l of ["Ajouter une mesure", "Modifier la mesure", "Abandonner la mesure", "Marquer comme mise en œuvre"]) assert.ok(!boutonDialogue(l), l);
 });
 
 test("contributeur : mesures opérationnelles visibles et gérables", async () => {

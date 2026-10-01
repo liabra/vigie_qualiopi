@@ -1,11 +1,11 @@
-// Q2-3 — Abandon enrichi (onglet Stagiaires) et « Suivi et relances »
-// (onglet Parcours). API simulée, données fictives ; aucune boîte native.
+// Q2-3 / UX-Q2 — Abandon enrichi (onglet Stagiaires) et « Observations et relances »
+// (onglet Accompagnement). API simulée, données fictives ; aucune boîte native.
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { attendre, cliquer, demonter, dialogue, monter, saisir, texte } from "./outils.jsx";
 import { aujourdhuiISO } from "../src/qualite/format.js";
-import { corpsAbandon, corpsSuivi, erreursSuivi, issueInscription, resumeSuivi } from "../src/sessions/parcours-format.js";
+import { corpsAbandon, corpsSuivi, erreursSuivi, resumeSuivi, situationInscription } from "../src/sessions/parcours-format.js";
 
 // Réponse retenue jusqu'à ouverture explicite : le double clic a lieu
 // PENDANT la requête, quelle que soit la charge de la machine.
@@ -54,11 +54,18 @@ const lignes = () => [...document.querySelectorAll("tbody tr")];
 const boutonDialogue = (l) => [...dialogue().querySelectorAll("button")].find((b) => b.textContent === l);
 const ecritures = (appels) => appels.filter((a) => (a.methode === "POST" || a.methode === "PATCH") && a.chemin.includes("/suivi"));
 const soumettre = () => cliquer(document.querySelector('button[type="submit"][form="form-suivi"]'));
+const titreDialogue = () => dialogue()?.querySelector("h2")?.textContent;
+// UX-Q2 : dossier d'accompagnement puis section « Observations et relances ».
+async function ouvrirObservations(nom) {
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de ${nom}"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => /^(Gérer|Consulter) les observations et relances$/.test(b.textContent)));
+  await attendre(() => titreDialogue() === "Observations et relances" && !dialogue().querySelector(".ui-loading"));
+}
 async function ouvrirSuivi(nom, sur = {}, role = "admin") {
   const appels = await monter("/sessions/1/parcours", role, routes(sur));
-  await attendre(() => document.querySelector(`button[aria-label="Suivi et relances de ${nom}"]`));
-  await cliquer(document.querySelector(`button[aria-label="Suivi et relances de ${nom}"]`));
-  await attendre(() => dialogue()?.textContent.includes("Suivi et relances") && !dialogue().querySelector(".ui-loading"));
+  await ouvrirObservations(nom);
   return appels;
 }
 
@@ -68,9 +75,10 @@ test("pur : corps d'abandon facultatif, corps de suivi, validation, issue et ré
   assert.deepEqual(corpsSuivi({ type: "signal", date_evenement: "2026-09-10", categorie: "autre", canal: "email", note: " " }), { type: "signal", date_evenement: "2026-09-10", categorie: "autre", canal: null, note: null });
   assert.ok(!("type" in corpsSuivi({ type: "relance", date_evenement: "2026-09-10", categorie: "autre", canal: "email", note: "" }, { creation: false })));
   assert.deepEqual(Object.keys(erreursSuivi({ type: "relance", date_evenement: "", categorie: "", canal: "", note: "" })).sort(), ["canal", "categorie", "date_evenement"]);
-  assert.equal(issueInscription(PARCOURS.inscriptions[0]).libelle, "Abandon le 20/09/2026");
-  assert.equal(issueInscription({ statut_inscription: "termine" }).libelle, "Terminée");
-  assert.equal(issueInscription({ statut_inscription: "en_cours" }).libelle, "En cours");
+  assert.equal(situationInscription(PARCOURS.inscriptions[0]).libelle, "Abandon le 20/09/2026");
+  assert.equal(situationInscription({ statut_inscription: "termine" }).libelle, "Terminé");
+  assert.equal(situationInscription({ statut_inscription: "en_cours" }).libelle, "En cours");
+  assert.equal(situationInscription({ statut_inscription: "inscrit" }).libelle, "Inscrit", "jamais « En cours » pour un simple inscrit");
   assert.deepEqual(resumeSuivi(PARCOURS.inscriptions[1]), { dernier: "Contact tenté, sans réponse (12/09/2026)", relances: "2 relances" });
 });
 
@@ -109,12 +117,12 @@ test("abandon : erreur serveur ⇒ dialogue ouvert, saisie conservée ; double c
   assert.equal(champ("Précision").value, "Prise en charge refusee");
 });
 
-test("vue Parcours : statut, dernier événement, relances, issue ; aucune note ni motif ; aucun suivi chargé avant ouverture", async () => {
+test("vue Accompagnement : dernier événement, relances, situation réelle ; aucune note ni motif ; aucun suivi chargé avant ouverture", async () => {
   const appels = await monter("/sessions/1/parcours", "admin", routes());
   await attendre(() => lignes().length === 2);
   const [paul, alice] = lignes().map((tr) => tr.textContent);
-  assert.ok(alice.includes("Contact tenté, sans réponse (12/09/2026)") && alice.includes("2 relances") && alice.includes("En cours"));
-  assert.ok(paul.includes("Aucun suivi") && paul.includes("Abandon le 20/09/2026"));
+  assert.ok(alice.includes("Contact tenté, sans réponse (12/09/2026)") && alice.includes("2 relances") && alice.includes("Inscrit") && !alice.includes("En cours"));
+  assert.ok(paul.includes("Aucune observation ni relance") && paul.includes("Abandon le 20/09/2026"));
   assert.ok(!texte().includes(NOTE) && !texte().includes(MOTIF) && !texte().includes("Raison professionnelle"));
   assert.ok(!appels.some((a) => a.chemin.endsWith("/suivi")), "aucun suivi individuel chargé dans la vue d'ensemble");
   for (const tr of lignes()) assert.ok([...tr.querySelectorAll("td:not(.sess-table__actions)")].every((td) => td.getAttribute("data-label")), "mobile 390 px : data-label");
@@ -123,17 +131,17 @@ test("vue Parcours : statut, dernier événement, relances, issue ; aucune note 
 test("panneau : historique (types, canal, note, auteurs) et abandon détaillé dans l'espace individuel ; états vides", async () => {
   await ouvrirSuivi("Alice Martin");
   const t = dialogue().textContent;
-  for (const x of ["Relance effectuée", "le 12/09/2026 · Téléphone", "Contact tenté, sans réponse", NOTE, "Signal observé", "Absences répétées constatées", "Saisi par Tukui"]) assert.ok(t.includes(x), x);
+  for (const x of ["Relance effectuée", "le 12/09/2026 · Téléphone", "Contact tenté, sans réponse", NOTE, "Observation", "Absences répétées constatées", "Saisi par Tukui"]) assert.ok(t.includes(x), x);
   await demonter();
   await ouvrirSuivi("Paul Bernard");
   const p = dialogue().textContent;
   assert.ok(p.includes("Abandon le 20/09/2026") && p.includes("Catégorie : Raison professionnelle") && p.includes(`Précision : ${MOTIF}`));
-  assert.ok(p.includes("Aucun suivi"));
+  assert.ok(p.includes("Aucune observation ni relance"));
 });
 
 test("signal : catégorie obligatoire, aide factuelle, date du jour, corps exact, compteurs rechargés", async () => {
   const appels = await ouvrirSuivi("Alice Martin", { "POST /api/inscriptions/11/suivi": (c) => [201, { evenement: { id: 9, ...c } }] });
-  await cliquer(boutonDialogue("Ajouter un signal"));
+  await cliquer(boutonDialogue("Ajouter une observation"));
   await attendre(() => champ("Catégorie"));
   assert.ok(dialogue().textContent.includes("Ne recopiez pas le contenu des échanges"));
   assert.equal(champ("Date").value, aujourdhuiISO());
@@ -181,7 +189,7 @@ test("suivi : erreur serveur ⇒ saisie conservée ; double clic ⇒ un seul env
   const appels = await ouvrirSuivi("Alice Martin", {
     "POST /api/inscriptions/11/suivi": async () => { await v.attendre(); return [400, { error: "Indiquez la date de l'événement." }]; },
   });
-  await cliquer(boutonDialogue("Ajouter un signal"));
+  await cliquer(boutonDialogue("Ajouter une observation"));
   await attendre(() => champ("Catégorie"));
   await saisir(champ("Catégorie"), "retards_repetes");
   await saisir(champ("Note"), "Trois retards cette semaine");
@@ -197,20 +205,22 @@ test("suivi : erreur serveur ⇒ saisie conservée ; double clic ⇒ un seul env
 test("chargement en échec : message et Réessayer", async () => {
   let n = 0;
   await monter("/sessions/1/parcours", "admin", routes({ "GET /api/inscriptions/11/suivi": () => (n++ === 0 ? [500, { error: "Erreur serveur." }] : SUIVI_ALICE) }));
-  await attendre(() => document.querySelector('button[aria-label="Suivi et relances de Alice Martin"]'));
-  await cliquer(document.querySelector('button[aria-label="Suivi et relances de Alice Martin"]'));
-  await attendre(() => dialogue()?.textContent.includes("Le suivi n'a pas pu être chargé."));
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Gérer les observations et relances"));
+  await attendre(() => dialogue()?.textContent.includes("Les observations et relances n'ont pas pu être chargées."));
   await cliquer(boutonDialogue("Réessayer"));
   await attendre(() => dialogue().textContent.includes(NOTE));
 });
 
 test("permissions : contributeur saisit ; session archivée en lecture seule (aucun bouton d'écriture)", async () => {
   await ouvrirSuivi("Alice Martin", {}, "contributeur");
-  assert.ok(boutonDialogue("Ajouter un signal") && boutonDialogue("Ajouter une relance"));
+  assert.ok(boutonDialogue("Ajouter une observation") && boutonDialogue("Ajouter une relance"));
   await demonter();
   await ouvrirSuivi("Alice Martin", { "GET /api/sessions/1/parcours": { ...PARCOURS, archivee: true }, "GET /api/inscriptions/11/suivi": { ...SUIVI_ALICE, archivee: true } });
-  assert.ok(dialogue().textContent.includes("Session archivée : suivi en lecture seule."));
-  for (const l of ["Ajouter un signal", "Ajouter une relance", "Corriger"]) assert.ok(!boutonDialogue(l), l);
+  assert.ok(dialogue().textContent.includes("Session archivée : observations et relances en lecture seule."));
+  for (const l of ["Ajouter une observation", "Ajouter une relance", "Corriger l'événement"]) assert.ok(!boutonDialogue(l), l);
   assert.ok(dialogue().textContent.includes(NOTE), "lecture conservée");
 });
 

@@ -6,23 +6,24 @@ import {
   AIDE_ABANDON, AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
   CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_MOTIF_ABANDON, MAX_NOTE_SUIVI, MAX_TEXTE,
   PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL, TYPES_SUIVI,
+  AIDE_SECTION_BESOINS, AIDE_SECTION_MESURES, AIDE_SECTION_SUIVI, INTRO_ACCOMPAGNEMENT,
   corpsAdaptation, corpsComplementAbandon, corpsRecueil, corpsSuivi, dateFr, erreursAdaptation, erreursRecueil, erreursSuivi, etatRecueil, filtrerParcoursPar,
-  issueInscription, libelleCategorieSuivi, libellePositionnement, resumeAdaptations, resumeSuivi, valeursAdaptation, valeursRecueil, valeursSuivi,
+  libelleCategorieSuivi, libellePositionnement, resumeMesures, resumePopulation, resumeSuivi, situationInscription, valeursAdaptation, valeursRecueil, valeursSuivi,
 } from "./parcours-format.js";
 
-// Onglet « Parcours » (Q2-1) : une ligne par inscription — état du recueil du
-// besoin, positionnement associé, conclusion, statut de l'inscription.
-// Lecture AGRÉGÉE (un appel) ; les textes libres ne sont chargés qu'à
-// l'ouverture du recueil d'une inscription. Le recueil ne bloque rien
-// (assiduité, documents, évaluations, clôture).
+// Onglet « Accompagnement » (route /parcours ; Q2-1 → Q2-3, UX-Q2) : une
+// ligne par inscription — besoins et positionnement, mesures pédagogiques,
+// observations et relances, situation de l'inscription — et UN seul bouton
+// « Ouvrir le dossier ». Lecture AGRÉGÉE (un appel, sans texte libre) ; les
+// textes ne sont chargés qu'à l'ouverture d'un panneau. Rien ne bloque
+// l'assiduité, les documents, les évaluations ni la clôture.
 export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   const sessionId = donnees.session.id;
   const [parcours, setParcours] = useState(null);
   const [err, setErr] = useState(null);
   const [filtre, setFiltre] = useState("tous"); // tous | recueil | adaptations
-  const [ouvert, setOuvert] = useState(null); // ligne dont le recueil est ouvert
-  const [adaptations, setAdaptations] = useState(null); // ligne dont les adaptations sont ouvertes
-  const [suivi, setSuivi] = useState(null); // ligne dont le suivi et les relances sont ouverts
+  const [dossier, setDossier] = useState(null); // ligne dont le dossier d'accompagnement est ouvert
+  const [vue, setVue] = useState(null); // null (dossier) | "recueil" | "mesures" | "suivi"
 
   const charger = useCallback(async () => {
     try { setParcours(await api(`/api/sessions/${sessionId}/parcours`)); setErr(null); }
@@ -30,83 +31,75 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   }, [sessionId]);
   useEffect(() => { charger(); }, [charger]);
 
-  if (err && !parcours) return <Alert ton="error" titre="Le parcours n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>;
-  if (!parcours) return <LoadingState texte="Chargement du parcours…" />;
+  if (err && !parcours) return <Alert ton="error" titre="L'accompagnement n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>;
+  if (!parcours) return <LoadingState texte="Chargement de l'accompagnement…" />;
 
   const positionnementParId = new Map(parcours.positionnements.map((p) => [p.id, p]));
   const lignes = filtrerParcoursPar(parcours.inscriptions, filtre);
   const vues = [
-    { id: "tous", libelle: "Tous" },
-    { id: "recueil", libelle: "Recueil à faire" },
-    { id: "adaptations", libelle: "Adaptations à mettre en œuvre" },
+    { id: "tous", libelle: "Toutes les inscriptions" },
+    { id: "recueil", libelle: "Besoins à recueillir" },
+    { id: "adaptations", libelle: "Mesures à mettre en œuvre" },
   ];
   const modifiable = peutSaisir && !archivee && !parcours.archivee;
+  // Ligne à jour (après rechargement) pour le dossier ouvert.
+  const ligneDossier = dossier ? (parcours.inscriptions.find((l) => l.inscription_id === dossier.inscription_id) || dossier) : null;
+  const total = parcours.inscriptions.length;
+  const abandons = parcours.inscriptions.filter((l) => l.statut_inscription === "abandon").length;
 
   return (
-    <section className="sess-liste" aria-label="Parcours des stagiaires">
-      {parcours.inscriptions.length === 0 ? (
-        <EmptyState titre="Aucun stagiaire inscrit">Le parcours de chaque stagiaire apparaîtra ici dès son inscription.</EmptyState>
+    <section className="sess-liste" aria-label="Accompagnement des stagiaires">
+      <p className="sess-secondaire">{INTRO_ACCOMPAGNEMENT}</p>
+      {total === 0 ? (
+        <EmptyState titre="Aucun stagiaire inscrit">L'accompagnement de chaque stagiaire apparaîtra ici dès son inscription.</EmptyState>
       ) : (
         <>
-          <div className="sess-vues" role="group" aria-label="Filtrer le parcours">
+          <div className="sess-vues" role="group" aria-label="Filtrer l'accompagnement">
             {vues.map((v) => (
               <button key={v.id} type="button" aria-pressed={filtre === v.id} className={"sess-vue" + (filtre === v.id ? " sess-vue--active" : "")} onClick={() => setFiltre(v.id)}>
                 {v.libelle} <span className="sess-vue__compteur">{filtrerParcoursPar(parcours.inscriptions, v.id).length}</span>
               </button>
             ))}
           </div>
+          <p className="sess-secondaire">{resumePopulation(total, abandons)}</p>
           {lignes.length === 0 ? (
             filtre === "adaptations"
-              ? <EmptyState titre="Aucune adaptation à mettre en œuvre.">Toutes les mesures prévues sont mises en œuvre ou abandonnées.</EmptyState>
-              : <EmptyState titre="Aucun recueil à faire.">Tous les recueils du besoin sont réalisés ou non applicables.</EmptyState>
+              ? <EmptyState titre="Aucune mesure à mettre en œuvre.">Toutes les mesures prévues sont mises en œuvre ou abandonnées.</EmptyState>
+              : <EmptyState titre="Aucun besoin à recueillir.">Tous les recueils du besoin sont réalisés ou non applicables.</EmptyState>
           ) : (
             <table className="sess-table">
-              <caption className="visually-hidden">Parcours ({lignes.length})</caption>
+              <caption className="visually-hidden">Accompagnement ({lignes.length})</caption>
               <thead>
                 <tr>
                   <th scope="col">Stagiaire</th>
-                  <th scope="col">Recueil du besoin</th>
-                  <th scope="col">Positionnement</th>
-                  <th scope="col">Conclusion</th>
-                  <th scope="col">Adaptations</th>
-                  <th scope="col">Suivi</th>
-                  <th scope="col">Issue</th>
+                  <th scope="col">Besoins et positionnement</th>
+                  <th scope="col">Mesures pédagogiques</th>
+                  <th scope="col">Observations et relances</th>
+                  <th scope="col">Situation de l'inscription</th>
                   <th scope="col"><span className="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {lignes.map((l) => {
                   const etat = etatRecueil(l);
-                  const insc = STATUTS_INSCRIPTION[l.statut_inscription] || { libelle: l.statut_inscription, ton: "neutral" };
+                  const situation = situationInscription(l);
                   const pos = l.positionnement_id ? positionnementParId.get(l.positionnement_id) : null;
-                  const nom = `${l.prenom} ${l.nom}`;
-                  const issue = issueInscription(l);
                   const rs = resumeSuivi(l);
+                  const nom = `${l.prenom} ${l.nom}`;
                   return (
                     <tr key={l.inscription_id}>
-                      <td data-label="Stagiaire" className="sess-table__principal">
-                        {nom}
-                        <span className="sess-secondaire"><Badge ton={insc.ton}>{insc.libelle}</Badge></span>
-                      </td>
-                      <td data-label="Recueil du besoin">
+                      <td data-label="Stagiaire" className="sess-table__principal">{nom}</td>
+                      <td data-label="Besoins et positionnement">
                         <Badge ton={etat.ton}>{etat.libelle}</Badge>
-                        {l.date_recueil && <span className="sess-secondaire">le {String(l.date_recueil).slice(0, 10).split("-").reverse().join("/")}</span>}
+                        <span className="sess-secondaire">{pos ? libellePositionnement(pos) : "Aucun positionnement associé"}</span>
                       </td>
-                      <td data-label="Positionnement">{pos ? libellePositionnement(pos) : <span className="sess-secondaire">—</span>}</td>
-                      <td data-label="Conclusion">{CONCLUSIONS[l.conclusion] || <span className="sess-secondaire">—</span>}</td>
-                      <td data-label="Adaptations">
-                        {l.adaptations_total ? resumeAdaptations(l) : <span className="sess-secondaire">Aucune mesure</span>}
+                      <td data-label="Mesures pédagogiques">{resumeMesures(l)}</td>
+                      <td data-label="Observations et relances">
+                        {rs.dernier ? <>{rs.dernier}<span className="sess-secondaire">{rs.relances}</span></> : <span className="sess-secondaire">Aucune observation ni relance</span>}
                       </td>
-                      <td data-label="Suivi">
-                        {rs.dernier ? <>{rs.dernier}<span className="sess-secondaire">{rs.relances}</span></> : <span className="sess-secondaire">Aucun suivi</span>}
-                      </td>
-                      <td data-label="Issue"><Badge ton={issue.ton}>{issue.libelle}</Badge></td>
+                      <td data-label="Situation de l'inscription"><Badge ton={situation.ton}>{situation.libelle}</Badge></td>
                       <td className="sess-table__actions">
-                        <Button compact onClick={() => setSuivi(l)} aria-label={`Suivi et relances de ${nom}`}>Suivi</Button>
-                        <Button compact onClick={() => setAdaptations(l)} aria-label={`Adaptations de ${nom}`}>Adaptations</Button>
-                        <Button compact onClick={() => setOuvert(l)} aria-label={`${modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"} le recueil de ${nom}`}>
-                          {modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"}
-                        </Button>
+                        <Button compact onClick={() => { setVue(null); setDossier(l); }} aria-label={`Ouvrir le dossier d'accompagnement de ${nom}`}>Ouvrir le dossier</Button>
                       </td>
                     </tr>
                   );
@@ -117,23 +110,76 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
         </>
       )}
 
-      {suivi && (
-        <PanneauSuivi ligne={suivi} modifiable={modifiable} onFermer={() => setSuivi(null)} onChange={charger} />
+      {ligneDossier && vue === null && (
+        <DossierAccompagnement ligne={ligneDossier} positionnement={ligneDossier.positionnement_id ? positionnementParId.get(ligneDossier.positionnement_id) : null}
+          modifiable={modifiable} onOuvrir={setVue} onFermer={() => setDossier(null)} />
       )}
-
-      {adaptations && (
-        <PanneauAdaptations ligne={adaptations} modifiable={modifiable} onFermer={() => setAdaptations(null)} onChange={charger} />
-      )}
-
-      {ouvert && (
-        <PanneauRecueil ligne={ouvert} modifiable={modifiable} onFermer={() => setOuvert(null)}
+      {/* Panneaux existants (Q2-1, Q2-2, Q2-3) réutilisés tels quels : ils
+          remplacent le dossier le temps de la saisie, puis on y revient. */}
+      {ligneDossier && vue === "recueil" && (
+        <PanneauRecueil ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)}
           onEnregistre={async () => {
-            setOuvert(null);
-            notifier?.({ ton: "success", titre: `Recueil du besoin enregistré pour ${ouvert.prenom} ${ouvert.nom}.` });
+            setVue(null);
+            notifier?.({ ton: "success", titre: `Besoins et positionnement enregistrés pour ${ligneDossier.prenom} ${ligneDossier.nom}.` });
             await charger();
           }} />
       )}
+      {ligneDossier && vue === "mesures" && (
+        <PanneauAdaptations ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} onChange={charger} />
+      )}
+      {ligneDossier && vue === "suivi" && (
+        <PanneauSuivi ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} onChange={charger} />
+      )}
     </section>
+  );
+}
+
+// Dossier d'accompagnement : trois sections, chacune avec une explication
+// courte, l'état synthétique (aucun texte libre) et l'accès au panneau
+// existant correspondant.
+function DossierAccompagnement({ ligne, positionnement, modifiable, onOuvrir, onFermer }) {
+  const nom = `${ligne.prenom} ${ligne.nom}`;
+  const etat = etatRecueil(ligne);
+  const situation = situationInscription(ligne);
+  const rs = resumeSuivi(ligne);
+  const action = (consulter, gerer) => (modifiable ? gerer : consulter);
+  const sections = [
+    {
+      id: "recueil", titre: "Besoins et positionnement", aide: AIDE_SECTION_BESOINS,
+      etat: <><Badge ton={etat.ton}>{etat.libelle}</Badge> <span className="sess-secondaire">{positionnement ? libellePositionnement(positionnement) : "Aucun positionnement associé"}{ligne.conclusion ? ` · ${CONCLUSIONS[ligne.conclusion]}` : ""}</span></>,
+      bouton: action("Consulter les besoins et le positionnement", ligne.recueil_statut ? "Modifier les besoins et le positionnement" : "Renseigner les besoins et le positionnement"),
+    },
+    {
+      id: "mesures", titre: "Mesures pédagogiques", aide: AIDE_SECTION_MESURES,
+      etat: <span>{resumeMesures(ligne)}</span>,
+      bouton: action("Consulter les mesures pédagogiques", "Gérer les mesures pédagogiques"),
+    },
+    {
+      id: "suivi", titre: "Observations et relances", aide: AIDE_SECTION_SUIVI,
+      etat: <span>{rs.dernier ? `Dernier événement : ${rs.dernier} · ${rs.relances}` : "Aucune observation ni relance"}</span>,
+      bouton: action("Consulter les observations et relances", "Gérer les observations et relances"),
+    },
+  ];
+  return (
+    <Drawer ouvert onFermer={onFermer} taille="large" titre="Dossier d'accompagnement" description={nom}
+      pied={<Button onClick={onFermer}>Fermer</Button>}>
+      <div className="ui-form">
+        <div className="suivi-inscription">
+          <span>Situation de l'inscription :</span> <Badge ton={situation.ton}>{situation.libelle}</Badge>
+        </div>
+        {!modifiable && <Alert ton="info">Consultation seule.</Alert>}
+        <ol className="accompagnement-sections">
+          {sections.map((sec, i) => (
+            <li key={sec.id} className="adaptation">
+              <h3 className="accompagnement-sections__titre">{i + 1}. {sec.titre}</h3>
+              <p className="sess-secondaire">{sec.aide}</p>
+              <div>{sec.etat}</div>
+              <div className="sess-actions"><Button compact onClick={() => onOuvrir(sec.id)}>{sec.bouton}</Button></div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </Drawer>
   );
 }
 
@@ -179,7 +225,7 @@ function PanneauRecueil({ ligne, modifiable, onFermer, onEnregistre }) {
   }
 
   return (
-    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Recueil du besoin"
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Besoins et positionnement"
       description={`${ligne.prenom} ${ligne.nom}`}
       pied={lecture ? <Button onClick={onFermer}>Fermer</Button> : (
         <>
@@ -304,7 +350,7 @@ function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
 
   const liste = donnees?.adaptations || [];
   return (
-    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Adaptations pédagogiques"
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Mesures pédagogiques"
       description={`${ligne.prenom} ${ligne.nom}`}
       pied={edition && !lecture ? (
         <>
@@ -312,11 +358,11 @@ function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
           <Button variante="primary" type="submit" form="form-adaptation" disabled={enCours}>{enCours ? "Enregistrement…" : edition.id ? "Enregistrer la mesure" : "Ajouter la mesure"}</Button>
         </>
       ) : <Button onClick={onFermer} disabled={enCours}>Fermer</Button>}>
-      {errChargement && <Alert ton="error" titre="Les adaptations n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
-      {!donnees && !errChargement && <LoadingState texte="Chargement des adaptations…" />}
+      {errChargement && <Alert ton="error" titre="Les mesures pédagogiques n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement des mesures pédagogiques…" />}
       {donnees && (
         <div className="ui-form">
-          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : adaptations en lecture seule." : "Consultation seule."}</Alert>}
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : mesures pédagogiques en lecture seule." : "Consultation seule."}</Alert>}
           {erreurServeur && <Alert ton="error" titre="La mesure n'a pas été enregistrée.">{erreurServeur}</Alert>}
 
           {edition && !lecture ? (
@@ -355,7 +401,7 @@ function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
             <>
               {!lecture && <div><Button variante="primary" compact onClick={() => ouvrir(null)}>Ajouter une mesure</Button></div>}
               {liste.length === 0 ? (
-                <EmptyState titre="Aucune adaptation">Aucune mesure pédagogique n'a été décidée pour ce stagiaire.</EmptyState>
+                <EmptyState titre="Aucune mesure pédagogique">Aucune mesure pédagogique n'a été décidée pour ce stagiaire.</EmptyState>
               ) : (
                 <ul className="adaptations-liste" aria-label="Mesures pédagogiques">
                   {liste.map((a) => {
@@ -377,7 +423,7 @@ function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
                         </span>
                         {!lecture && a.statut !== "abandonnee" && (
                           <div className="sess-actions">
-                            <Button compact onClick={() => ouvrir(a)}>Modifier</Button>
+                            <Button compact onClick={() => ouvrir(a)}>Modifier la mesure</Button>
                             {a.statut === "prevue" && (
                               <Button compact onClick={() => ouvrir(a, { statut: "mise_en_oeuvre", date_mise_en_oeuvre: aujourdhuiISO() })}>Marquer comme mise en œuvre</Button>
                             )}
@@ -482,7 +528,7 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
   const statut = insc ? (STATUTS_INSCRIPTION[insc.statut] || { libelle: insc.statut, ton: "neutral" }) : null;
   const v = edition?.valeurs;
   return (
-    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Suivi et relances"
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Observations et relances"
       description={`${ligne.prenom} ${ligne.nom}`}
       pied={edition && !lecture ? (
         <>
@@ -495,11 +541,11 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
           <Button variante="primary" type="submit" form="form-abandon" disabled={enCours}>{enCours ? "Enregistrement…" : "Enregistrer l'abandon"}</Button>
         </>
       ) : <Button onClick={onFermer} disabled={enCours}>Fermer</Button>}>
-      {errChargement && <Alert ton="error" titre="Le suivi n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
-      {!donnees && !errChargement && <LoadingState texte="Chargement du suivi…" />}
+      {errChargement && <Alert ton="error" titre="Les observations et relances n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement des observations et relances…" />}
       {donnees && (
         <div className="ui-form">
-          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : suivi en lecture seule." : "Consultation seule."}</Alert>}
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : observations et relances en lecture seule." : "Consultation seule."}</Alert>}
           {erreurServeur && <Alert ton="error" titre={complement ? "L'abandon n'a pas été complété." : "L'événement n'a pas été enregistré."}>{erreurServeur}</Alert>}
 
           <div className="suivi-inscription" aria-label="Inscription">
@@ -561,12 +607,12 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
             <>
               {!lecture && (
                 <div className="sess-actions">
-                  <Button variante="primary" compact onClick={() => ouvrir(null, { type: "signal" })}>Ajouter un signal</Button>
+                  <Button variante="primary" compact onClick={() => ouvrir(null, { type: "signal" })}>Ajouter une observation</Button>
                   <Button compact onClick={() => ouvrir(null, { type: "relance" })}>Ajouter une relance</Button>
                 </div>
               )}
               {evenements.length === 0 ? (
-                <EmptyState titre="Aucun suivi">Aucun signal ni aucune relance n'a été enregistré pour ce stagiaire.</EmptyState>
+                <EmptyState titre="Aucune observation ni relance">Aucune observation ni aucune relance n'a été enregistrée pour ce stagiaire.</EmptyState>
               ) : (
                 <ul className="adaptations-liste" aria-label="Événements de suivi">
                   {evenements.map((e) => (
@@ -580,7 +626,7 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
                       <span className="sess-secondaire">
                         {e.cree_par_nom ? `Saisi par ${e.cree_par_nom}` : ""}{e.mis_a_jour_par_nom && e.mis_a_jour_le !== e.cree_le ? ` · corrigé par ${e.mis_a_jour_par_nom}` : ""}
                       </span>
-                      {!lecture && <div className="sess-actions"><Button compact onClick={() => ouvrir(e)} aria-label={`Corriger l'événement du ${dateFr(e.date_evenement)}`}>Corriger</Button></div>}
+                      {!lecture && <div className="sess-actions"><Button compact onClick={() => ouvrir(e)} aria-label={`Corriger l'événement du ${dateFr(e.date_evenement)}`}>Corriger l'événement</Button></div>}
                     </li>
                   ))}
                 </ul>

@@ -14,7 +14,7 @@ export function Tabs({ label, onglets }) {
             <NavLink end to={o.to} className={({ isActive }) => "ui-onglets__lien" + (isActive ? " ui-onglets__lien--actif" : "")}>
               {o.libelle}
               {o.compteur !== undefined && o.compteur !== null && (
-                <span className="ui-onglets__compteur" aria-label={`(${o.compteur})`}>{o.compteur}</span>
+                <span className="ui-onglets__compteur" aria-label={`(${o.titreCompteur || o.compteur})`} title={o.titreCompteur}>{o.compteur}</span>
               )}
             </NavLink>
           </li>

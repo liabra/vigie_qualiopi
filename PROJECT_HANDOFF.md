@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q2-3-CLOTURE** — invariant de la catégorie d'abandon, complément d'un abandon existant |
+| **Dernier lot validé en production** | **UX-Q2** — onglet « Accompagnement » et dossier d'accompagnement |
 | **Migration de production actuelle** | `019_suivi_inscriptions.sql` (19 migrations, aucune 020) |
-| **Suite de tests** | **519/519 serveur + 297/297 client** (déployés avec la clôture Q2-3) |
+| **Suite de tests** | **519/519 serveur + 298/298 client** (déployés avec UX-Q2) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2740,6 +2740,32 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
   documenté.
 - Tests : **519/519 serveur**, **297/297 client** ; smoke Chrome 12/12 (390 px).
   Migrations inchangées : **001 → 019**.
+
+### UX-Q2 — Onglet « Accompagnement » (frontend uniquement)
+
+- L'onglet « Parcours » devient **« Accompagnement »** (route `/sessions/:id/parcours`
+  conservée), avec une phrase d'explication. Tableau : Stagiaire, Besoins et positionnement,
+  Mesures pédagogiques (prévues / mises en œuvre), Observations et relances, Situation de
+  l'inscription, et **un seul bouton « Ouvrir le dossier »** par ligne (les boutons « Suivi »,
+  « Adaptations » et « Modifier » sont retirés). Filtres : « Toutes les inscriptions »,
+  « Besoins à recueillir », « Mesures à mettre en œuvre ».
+- **Dossier d'accompagnement** : trois sections expliquées (Besoins et positionnement, Mesures
+  pédagogiques, Observations et relances), état synthétique sans texte libre, bouton explicite
+  vers le panneau EXISTANT (Q2-1, Q2-2, Q2-3 réutilisés tels quels : ils remplacent le dossier
+  le temps de la saisie, puis on y revient ; aucune modale empilée).
+- Libellés : jamais « Modifier » seul (« Modifier la mesure », « Modifier les besoins et le
+  positionnement »…), « Corriger l'événement », « Ajouter une observation » ; titres de
+  panneaux « Besoins et positionnement », « Mesures pédagogiques », « Observations et relances ».
+- **Statut réel** : la situation affiche le statut d'inscription tel quel (Inscrit, En cours,
+  Terminé, Abandon le …) ; l'ancien regroupement affichait « En cours » pour un simple inscrit.
+- **Compteurs 7 / 8** : pas d'anomalie. L'onglet Stagiaires compte les **inscrits actifs**
+  (abandons exclus), l'Accompagnement liste **toutes les inscriptions** (abandons compris ;
+  une inscription par personne et par session). Le compteur porte désormais l'infobulle
+  « N inscrit(s) actif(s), abandons exclus » et l'Accompagnement affiche « X inscriptions, dont
+  Y abandon(s) ; l'onglet Stagiaires compte Z inscrit(s) actif(s). »
+- Aucun changement d'API, de droits, de migration ni de données ; confidentialité Q2-2
+  inchangée (vérifiée sur les réponses réseau du contributeur). Tests : 519/519 serveur,
+  298/298 client ; smoke Chrome 34/34 (1440 / 390).
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

@@ -2699,3 +2699,14 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Date d'abandon par défaut en UTC (Guyane UTC−3 : 21 h–minuit ⇒ lendemain) : documenté, non
   modifié, décision métier attendue.
 - Tests : **519/519 serveur**, **297/297 client**, build OK ; smoke 12/12. Migrations **001 → 019**.
+
+## 2026-10-01 — UX-Q2 : onglet « Accompagnement » (déployé)
+
+- « Parcours » renommé « Accompagnement » (route conservée) ; tableau simplifié, un seul bouton
+  « Ouvrir le dossier » ; dossier d'accompagnement en trois sections qui ouvrent les panneaux
+  Q2-1 / Q2-2 / Q2-3 existants.
+- Libellés explicites (plus de « Modifier », « Suivi » ni « Adaptations » seuls) ; statut réel
+  de l'inscription (« Inscrit » n'est plus affiché « En cours »).
+- Compteurs 7 / 8 expliqués : inscrits actifs (Stagiaires) vs toutes les inscriptions
+  (Accompagnement) ; infobulle du compteur et phrase de population ajoutées.
+- Frontend uniquement. Tests : **519/519 serveur**, **298/298 client**, build OK ; smoke 34/34.

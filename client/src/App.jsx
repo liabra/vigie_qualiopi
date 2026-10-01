@@ -169,6 +169,7 @@ export default function App() {
         <Route path="sessions" element={<SessionsListe admin={isAdmin} />} />
         <Route path="sessions/:sessionId" element={session("apercu")} />
         <Route path="sessions/:sessionId/stagiaires" element={session("stagiaires")} />
+        <Route path="sessions/:sessionId/parcours" element={session("parcours")} />
         <Route path="sessions/:sessionId/assiduite" element={session("assiduite")} />
         <Route path="sessions/:sessionId/evaluations" element={session("evaluations")} />
         <Route path="sessions/:sessionId/satisfaction" element={session("satisfaction")} />

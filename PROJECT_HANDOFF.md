@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q1-B5** — tableau de bord qualité ; **chantier Q1 complet** (01/10/2026) |
-| **Migration de production actuelle** | `016_liens_preuves_qualite.sql` (16 migrations, aucune 017) |
-| **Suite de tests** | **479/479 serveur + 261/261 client** (déployés avec Q1-B5) |
+| **Dernier lot validé en production** | **Q2-1** — recueil du besoin et positionnement (onglet Parcours) |
+| **Migration de production actuelle** | `017_recueils_besoin.sql` (17 migrations, aucune 018) |
+| **Suite de tests** | **490/490 serveur + 272/272 client** (déployés avec Q2-1) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2623,6 +2623,31 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - **Aucun score Qualiopi, taux de conformité ni diagnostic inventé.**
 - Tests : 479/479 serveur (dont `tableau-bord-qualite.test.js`, base vierge, port 55449),
   261/261 client ; smoke Chrome 1440 / 390. Migrations inchangées : **001 → 016**.
+
+## 14 septies. Q2-1 — Parcours bénéficiaire : recueil du besoin et positionnement
+
+- **Migration 017** (additive) : `recueils_besoin`, UN recueil par inscription (UNIQUE + FK),
+  statut `a_faire` / `realise` / `non_applicable`, date, attentes et objectifs personnels
+  (≤ 2 000 caractères), prérequis `oui` / `non` / `partiel`, conclusion `parcours_standard` /
+  `parcours_adapte` / `reorientation` / `a_preciser`, `positionnement_id` → `resultats_qcm`.
+  **Aucun backfill** : une inscription sans recueil est « non commencée » (aucune fausse date).
+  Aucune table existante modifiée (inscriptions, évaluations, stagiaires inchangées).
+- **Positionnement** : réutilise `resultats_qcm` (type `positionnement`) ; le serveur vérifie
+  existence, type et appartenance à LA MÊME inscription (`resultats_qcm.inscription_id`).
+- **API** (`server/src/routes/parcours.js`) : `GET /api/sessions/:id/parcours` (vue agrégée,
+  états seulement, sans texte libre), `GET` et `PUT /api/inscriptions/:id/recueil` (état complet,
+  positionnements sélectionnables de l'inscription). Droits = inscriptions (lecture
+  authentifiée, écriture admin + contributeur) ; session archivée : lecture, écriture 409.
+- **UI** : onglet « Parcours » de la session (synthèse par inscription, filtre « Recueil à
+  faire », adaptations « Suivi à venir ») et panneau « Recueil du besoin » (aide : pas de
+  diagnostic ni d'information médicale). Le recueil ne bloque rien (assiduité, documents,
+  évaluations, clôture).
+- **Confidentialité** : besoins de formation seulement ; textes jamais journalisés, ni dans un
+  historique, ni dans les marqueurs documentaires ; `situation_handicap` et
+  `besoins_adaptation` non modifiés.
+- Tests : 490/490 serveur (dont `parcours.test.js`, base vierge, port 55450), 272/272 client ;
+  smoke Chrome 1440 / 390. Migrations : **001 → 017**.
+- Suite prévue (non commencée) : Q2-2 adaptations du parcours, Q2-3 abandon enrichi + RGPD.
 
 ---
 

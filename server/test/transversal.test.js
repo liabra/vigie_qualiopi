@@ -152,14 +152,14 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 
 // ── Migrations ───────────────────────────────────────────────
 
-test("migrations 001→016 appliquées depuis zéro, dans l'ordre", async () => {
+test("migrations 001→017 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 16, "16 migrations attendues");
+  assert.equal(noms.length, 17, "17 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
-  assert.match(noms[15], /^016_/, "finit par 016");
+  assert.match(noms[16], /^017_/, "finit par 017");
   // Tables clés présentes.
-  for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite"]) {
+  for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite", "recueils_besoin"]) {
     const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t]);
     assert.equal(rowCount, 1, `table ${t} absente`);
   }
@@ -169,10 +169,10 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 16);
+  assert.equal(rows[0].n, 17);
 });
 
-test("montée incrémentale : base arrêtée à 010, données conservées après 011→016", async () => {
+test("montée incrémentale : base arrêtée à 010, données conservées après 011→017", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_incr");
@@ -188,11 +188,11 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
     "INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin) VALUES ($1, 1, $2, $3, $4)",
     [formation.id, "SESS-HIST", "2026-01-05", "2026-03-05"]);
 
-  // Finit la montée avec le vrai runner (011→016).
+  // Finit la montée avec le vrai runner (011→017).
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");

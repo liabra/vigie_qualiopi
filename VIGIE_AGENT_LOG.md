@@ -2646,3 +2646,16 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 ### État
 
 **Chantier Q1 Qualité complet et déployé (B1 → B5).**
+
+## 2026-10-01 — Q2-1 : recueil du besoin et positionnement (déployé)
+
+- Migration **017** `recueils_besoin` (additive, un recueil par inscription, listes fermées,
+  textes bornés, aucun backfill) ; positionnement = `resultats_qcm` existant de la MÊME
+  inscription (vérifié serveur).
+- API `GET /api/sessions/:id/parcours` (agrégée, sans texte libre) et `GET` / `PUT
+  /api/inscriptions/:id/recueil` ; droits identiques aux inscriptions ; archivée ⇒ 409.
+- Onglet « Parcours » + panneau « Recueil du besoin » ; aucun impact sur inscriptions,
+  import CSV, abandon, assiduité, évaluations, satisfaction, EduSign, génération.
+- Tests : **490/490 serveur**, **272/272 client**, build OK ; smoke Chrome 21/21 (1440 / 390).
+  Migrations : **001 → 017**.
+

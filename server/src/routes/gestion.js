@@ -26,6 +26,7 @@ import {
 } from "../services/csvStagiaires.js";
 import { dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
+import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -307,7 +308,8 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
      WHERE d.session_id = $1 ORDER BY d.genere_le DESC`,
     [id]
   );
-  res.json({ session, groupes, stagiaires, documents });
+  // fix : champs réservés retirés de la RÉPONSE pour le contributeur.
+  res.json({ session, groupes, stagiaires: stagiaires.map((st) => projeterStagiaire(st, req.user)), documents });
 }));
 
 // Corriger une session. L'admin reprend la référence, les dates, le lieu, le
@@ -884,6 +886,9 @@ router.delete("/absences/:id", requireRedacteur, wrap(async (req, res) => {
 router.patch("/stagiaires/:id", requireRedacteur, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
+  // fix : un contributeur ne crée, ne remplace ni ne vide les champs réservés
+  // (refus explicite, même pour null ou "") ; aucune écriture partielle.
+  if (!estAdmin(req.user) && champsReservesEnvoyes(req.body).length) return res.status(403).json({ error: MSG_RESERVE_ADMIN });
   const { civilite, nom, prenom, email, telephone, entreprise, financeur, situation_handicap, besoins_adaptation } = req.body || {};
   if (civilite !== undefined && civilite !== null && !CIVILITES.includes(civilite)) {
     return res.status(400).json({ error: "Civilité inconnue." });
@@ -908,7 +913,7 @@ router.patch("/stagiaires/:id", requireRedacteur, wrap(async (req, res) => {
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
   const { rows } = await query("UPDATE stagiaires SET " + sets.join(", ") + " WHERE id = $1 RETURNING *", params);
   if (!rows.length) return res.status(404).json({ error: "Stagiaire introuvable." });
-  res.json({ stagiaire: rows[0] });
+  res.json({ stagiaire: projeterStagiaire(rows[0], req.user) });
 }));
 
 // ── Import CSV de stagiaires ─────────────────────────────────
@@ -926,10 +931,15 @@ function extraireValeurs(cellules, colonnes) {
 
 // req : fonction de requête (query() pour l'aperçu, cx.query dans la
 // transaction de confirmation). Renvoie { erreur } ou le détail classifié.
-async function classerStagiaires({ req, sessionId, texte }) {
+async function classerStagiaires({ req, sessionId, texte, admin = false }) {
   const analyse = parserCsv(texte);
   if (analyse.erreur) return { erreur: analyse.erreur };
   const { colonnes, inconnus, ambigus } = construireMapping(analyse.enTetes);
+  // fix : colonnes réservées à l'administrateur refusées pour le contributeur
+  // (jamais importées silencieusement, jamais ignorées sans le dire).
+  if (!admin && Object.values(colonnes).some((c) => CHAMPS_RESERVES_ADMIN.includes(c))) {
+    return { erreur: "Les colonnes « situation de handicap » et « besoins d'adaptation » sont réservées à l'administrateur : retirez-les du fichier.", statut: 403 };
+  }
   if (ambigus.length) {
     return {
       erreur: "Colonnes ambiguës : " +
@@ -1070,8 +1080,8 @@ router.post("/sessions/:id/stagiaires/import-apercu", requireRedacteur, wrap(asy
   if (!texte || !String(texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
   const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
   if (!session) return res.status(404).json({ error: "Session introuvable." });
-  const r = await classerStagiaires({ req: query, sessionId, texte });
-  if (r.erreur) return res.status(400).json({ error: r.erreur });
+  const r = await classerStagiaires({ req: query, sessionId, texte, admin: estAdmin(req.user) });
+  if (r.erreur) return res.status(r.statut || 400).json({ error: r.erreur });
   res.json(vueApercu(r));
 }));
 
@@ -1090,8 +1100,8 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
     if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
     if (session.archivee_le) { await cx.query("ROLLBACK"); return res.status(409).json({ error: MSG_ARCHIVEE }); }
 
-    const r = await classerStagiaires({ req: (sql, params) => cx.query(sql, params), sessionId, texte });
-    if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
+    const r = await classerStagiaires({ req: (sql, params) => cx.query(sql, params), sessionId, texte, admin: estAdmin(req.user) });
+    if (r.erreur) { await cx.query("ROLLBACK"); return res.status(r.statut || 400).json({ error: r.erreur }); }
 
     const bilan = { crees: 0, reutilises: 0, inscrits: 0, dejaInscrits: 0, ignores: [] };
     const inscrire = (stagiaireId, ligne) => cx.query(

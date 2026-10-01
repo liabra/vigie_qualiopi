@@ -63,3 +63,73 @@ export function libellePositionnement(p) {
   const score = p.score !== null && p.score !== undefined && p.score_max ? ` — ${Number(p.score)}/${Number(p.score_max)}` : "";
   return `${p.intitule || "Positionnement"}${d ? ` (${d})` : ""}${score}`;
 }
+
+// ── Q2-2 : adaptations pédagogiques (mesures opérationnelles) ──────
+export const CATEGORIES_ADAPTATION = {
+  rythme: "Rythme",
+  supports: "Supports",
+  accessibilite_locaux: "Accessibilité des locaux",
+  materiel: "Matériel",
+  modalites_evaluation: "Modalités d'évaluation",
+  accompagnement: "Accompagnement",
+  autre: "Autre",
+};
+// « Abandonnée » = mesure abandonnée, jamais l'abandon de la formation.
+export const STATUTS_ADAPTATION = {
+  prevue: { libelle: "Prévue", ton: "warning" },
+  mise_en_oeuvre: { libelle: "Mise en œuvre", ton: "success" },
+  abandonnee: { libelle: "Mesure abandonnée", ton: "neutral" },
+};
+export const MAX_MESURE = 500;
+export const AIDE_ADAPTATION = "Décrivez uniquement ce qui est mis en place pour faciliter la formation. Ne saisissez aucun diagnostic ni aucune information médicale.";
+export const EXEMPLES_ADAPTATION = [
+  "Supports remis en gros caractères.",
+  "Temps supplémentaire pour les exercices.",
+  "Évaluation orale plutôt qu'écrite.",
+  "Mise à disposition d'un équipement adapté.",
+];
+
+// « Adaptations à mettre en œuvre » = au moins une mesure encore prévue.
+export const adaptationsAMettreEnOeuvre = (ligne) => (ligne.adaptations_prevues || 0) > 0;
+export function filtrerParcoursPar(lignes, filtre = "tous") {
+  if (filtre === "recueil") return (lignes || []).filter(recueilAFaire);
+  if (filtre === "adaptations") return (lignes || []).filter(adaptationsAMettreEnOeuvre);
+  return lignes || [];
+}
+export function resumeAdaptations(l) {
+  const total = l.adaptations_total || 0;
+  if (!total) return "Aucune mesure";
+  const parties = [`${total} mesure${total > 1 ? "s" : ""}`];
+  if (l.adaptations_prevues) parties.push(`${l.adaptations_prevues} prévue${l.adaptations_prevues > 1 ? "s" : ""}`);
+  if (l.adaptations_mises_en_oeuvre) parties.push(`${l.adaptations_mises_en_oeuvre} mise${l.adaptations_mises_en_oeuvre > 1 ? "s" : ""} en œuvre`);
+  if (l.adaptations_abandonnees) parties.push(`${l.adaptations_abandonnees} abandonnée${l.adaptations_abandonnees > 1 ? "s" : ""}`);
+  return parties.join(" · ");
+}
+
+export const ADAPTATION_VIDE = { categorie: "", mesure: "", statut: "prevue", date_decision: "", date_mise_en_oeuvre: "", bilan: "" };
+export function valeursAdaptation(a) {
+  if (!a) return { ...ADAPTATION_VIDE };
+  return {
+    categorie: a.categorie, mesure: a.mesure || "", statut: a.statut,
+    date_decision: String(a.date_decision || "").slice(0, 10), date_mise_en_oeuvre: String(a.date_mise_en_oeuvre || "").slice(0, 10), bilan: a.bilan || "",
+  };
+}
+export function erreursAdaptation(v) {
+  const e = {};
+  if (!CATEGORIES_ADAPTATION[v.categorie]) e.categorie = "Choisissez une catégorie.";
+  const m = String(v.mesure || "").trim();
+  if (!m) e.mesure = "Décrivez la mesure mise en place.";
+  else if (m.length > MAX_MESURE) e.mesure = `${MAX_MESURE} caractères au plus.`;
+  if (!v.date_decision) e.date_decision = "Indiquez la date de décision.";
+  if (v.statut === "mise_en_oeuvre" && !v.date_mise_en_oeuvre) e.date_mise_en_oeuvre = "Indiquez la date de mise en œuvre.";
+  if (String(v.bilan || "").length > MAX_MESURE) e.bilan = `${MAX_MESURE} caractères au plus.`;
+  return e;
+}
+// Corps complet de l'état voulu (vides ⇒ null), identique en POST et PATCH.
+export function corpsAdaptation(v) {
+  const n = (x) => (String(x ?? "").trim() === "" ? null : String(x).trim());
+  return {
+    categorie: v.categorie, mesure: String(v.mesure || "").trim(), statut: v.statut,
+    date_decision: n(v.date_decision), date_mise_en_oeuvre: n(v.date_mise_en_oeuvre), bilan: n(v.bilan),
+  };
+}

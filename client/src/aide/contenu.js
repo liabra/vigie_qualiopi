@@ -324,7 +324,7 @@ export const RUBRIQUES_GUIDE = [
     id: "stagiaires", titre: "Stagiaires", admin: false,
     sections: [
       { titre: "Inscription", lignes: ["Dans l'onglet Stagiaires, ajoutez un stagiaire un par un ou importez un CSV. L'inscription porte le groupe, le prescripteur et l'état du dossier."] },
-      { titre: "Dossier", lignes: ["Le dossier réunit le contact, l'entreprise, le financeur et, en accès restreint, la situation de handicap et les besoins d'adaptation."] },
+      { titre: "Dossier", lignes: ["Le dossier réunit le contact, l'entreprise et le financeur. La situation de handicap et les besoins d'adaptation historiques sont réservés à l'administrateur ; les mesures pédagogiques se suivent dans l'onglet Parcours."] },
     ],
   },
   {

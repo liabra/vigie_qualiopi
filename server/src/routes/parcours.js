@@ -12,7 +12,7 @@ import { query } from "../db.js";
 import { requireAuth, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
-import { lireRecueil } from "../services/parcours.js";
+import { lireAdaptation, lireRecueil } from "../services/parcours.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -30,10 +30,20 @@ router.get("/sessions/:id/parcours", requireAuth, wrap(async (req, res) => {
     query(
       `SELECT i.id AS inscription_id, i.statut AS statut_inscription, s.nom, s.prenom,
               r.statut AS recueil_statut, r.date_recueil, r.conclusion, r.prerequis_verifies,
-              r.positionnement_id, r.mis_a_jour_le
+              r.positionnement_id, r.mis_a_jour_le,
+              -- Q2-2 : comptages seulement (jamais les textes des mesures).
+              COALESCE(a.total, 0) AS adaptations_total, COALESCE(a.prevues, 0) AS adaptations_prevues,
+              COALESCE(a.mises_en_oeuvre, 0) AS adaptations_mises_en_oeuvre, COALESCE(a.abandonnees, 0) AS adaptations_abandonnees
        FROM inscriptions i
        JOIN stagiaires s ON s.id = i.stagiaire_id
        LEFT JOIN recueils_besoin r ON r.inscription_id = i.id
+       LEFT JOIN (
+         SELECT inscription_id, count(*)::int AS total,
+                count(*) FILTER (WHERE statut = 'prevue')::int AS prevues,
+                count(*) FILTER (WHERE statut = 'mise_en_oeuvre')::int AS mises_en_oeuvre,
+                count(*) FILTER (WHERE statut = 'abandonnee')::int AS abandonnees
+         FROM adaptations_parcours GROUP BY inscription_id
+       ) a ON a.inscription_id = i.id
        WHERE i.session_id = $1
        ORDER BY s.nom, s.prenom, i.id`, [sessionId]),
     query(
@@ -102,6 +112,71 @@ router.put("/inscriptions/:id/recueil", requireRedacteur, wrap(async (req, res) 
      champs.prerequis_verifies, champs.conclusion, champs.positionnement_id, realisePar]
   );
   res.json({ recueil: r });
+}));
+
+// ── Q2-2 : adaptations pédagogiques (mesures opérationnelles) ──────
+// Droits = inscriptions : lecture authentifiée, écriture admin + contributeur.
+// Réponses : la mesure et son suivi SEULEMENT — jamais situation_handicap,
+// besoins_adaptation historique ni autre donnée personnelle. Aucune
+// suppression physique ; une écriture refusée n'écrit rien.
+const COLONNES_ADAPTATION = `a.id, a.inscription_id, a.categorie, a.mesure, a.statut, a.date_decision,
+  a.date_mise_en_oeuvre, a.bilan, a.cree_le, a.mis_a_jour_le, uc.nom AS cree_par_nom, um.nom AS mis_a_jour_par_nom`;
+const LIRE_ADAPTATIONS = `SELECT ${COLONNES_ADAPTATION}
+  FROM adaptations_parcours a
+  LEFT JOIN utilisateurs uc ON uc.id = a.cree_par
+  LEFT JOIN utilisateurs um ON um.id = a.mis_a_jour_par`;
+
+router.get("/inscriptions/:id/adaptations", requireAuth, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const insc = await inscriptionAvecSession(id);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  const { rows } = await query(`${LIRE_ADAPTATIONS} WHERE a.inscription_id = $1 ORDER BY a.date_decision, a.id`, [id]);
+  res.json({ adaptations: rows, archivee: !!insc.archivee_le });
+}));
+
+router.post("/inscriptions/:id/adaptations", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const { champs, erreur } = lireAdaptation(req.body || {});
+  if (erreur) return res.status(400).json({ error: erreur });
+  const insc = await inscriptionAvecSession(id);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  if (insc.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  const { rows: [cree] } = await query(
+    `INSERT INTO adaptations_parcours (inscription_id, categorie, mesure, statut, date_decision, date_mise_en_oeuvre, bilan, cree_par, mis_a_jour_par)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING id`,
+    [id, champs.categorie, champs.mesure, champs.statut, champs.date_decision, champs.date_mise_en_oeuvre, champs.bilan, req.user.id]
+  );
+  const { rows: [a] } = await query(`${LIRE_ADAPTATIONS} WHERE a.id = $1`, [cree.id]);
+  res.status(201).json({ adaptation: a });
+}));
+
+// Modification partielle : l'état FINAL (avant + corps) est validé, puis
+// écrit en une seule instruction. L'adaptation doit appartenir à CETTE
+// inscription (sinon 404, sans rien révéler).
+router.patch("/inscriptions/:id/adaptations/:adaptationId", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  const adaptationId = parseIdPositif(req.params.adaptationId);
+  if (!id || !adaptationId) return res.status(400).json({ error: "Identifiant invalide." });
+  const insc = await inscriptionAvecSession(id);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  if (insc.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  const { rows: [avant] } = await query(
+    "SELECT categorie, mesure, statut, date_decision, date_mise_en_oeuvre, bilan FROM adaptations_parcours WHERE id = $1 AND inscription_id = $2",
+    [adaptationId, id]
+  );
+  if (!avant) return res.status(404).json({ error: "Adaptation introuvable pour cette inscription." });
+  const { champs, erreur } = lireAdaptation(req.body || {}, avant);
+  if (erreur) return res.status(400).json({ error: erreur });
+  await query(
+    `UPDATE adaptations_parcours SET categorie = $3, mesure = $4, statut = $5, date_decision = $6,
+       date_mise_en_oeuvre = $7, bilan = $8, mis_a_jour_par = $9, mis_a_jour_le = now()
+     WHERE id = $1 AND inscription_id = $2`,
+    [adaptationId, id, champs.categorie, champs.mesure, champs.statut, champs.date_decision, champs.date_mise_en_oeuvre, champs.bilan, req.user.id]
+  );
+  const { rows: [a] } = await query(`${LIRE_ADAPTATIONS} WHERE a.id = $1`, [adaptationId]);
+  res.json({ adaptation: a });
 }));
 
 export default router;

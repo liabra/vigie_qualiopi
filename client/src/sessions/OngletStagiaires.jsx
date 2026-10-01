@@ -150,7 +150,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
           <DrawerAjout ouvert={drawer === "ajout"} sessionId={session.id} groupes={groupes} prescripteurs={annexes.prescripteurs}
             onFermer={() => setDrawer(null)}
             onFait={async (nom) => { setDrawer(null); notifier({ ton: "success", titre: `${nom} inscrit(e) à la session.` }); await recharger(); }} />
-          <DrawerImport ouvert={drawer === "import"} sessionId={session.id} onFermer={() => setDrawer(null)}
+          <DrawerImport ouvert={drawer === "import"} sessionId={session.id} admin={admin} onFermer={() => setDrawer(null)}
             onFait={async (b) => {
               setDrawer(null);
               notifier({
@@ -162,7 +162,7 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
         </>
       )}
       <DrawerDossier
-        st={dossierOuvert} groupes={groupes} prescripteurs={annexes.prescripteurs} peutSaisir={peutSaisir && !archivee}
+        st={dossierOuvert} groupes={groupes} prescripteurs={annexes.prescripteurs} peutSaisir={peutSaisir && !archivee} admin={admin}
         onFermer={() => setDrawer(null)}
         onFait={async () => { setDrawer(null); notifier({ ton: "success", titre: "Dossier enregistré." }); await recharger(); }}
       />
@@ -293,7 +293,7 @@ const STATUT_LIGNE = {
   vide: { libelle: "Ligne vide", ton: "neutral" },
 };
 
-function DrawerImport({ ouvert, sessionId, onFermer, onFait }) {
+function DrawerImport({ ouvert, sessionId, admin = false, onFermer, onFait }) {
   const [apercu, setApercu] = useState(null);
   const [erreur, setErreur] = useState(null);
   const [enCours, setEnCours] = useState(false);
@@ -332,7 +332,9 @@ function DrawerImport({ ouvert, sessionId, onFermer, onFait }) {
         </Button></>}>
       <div className="ui-form">
         {erreur && <Alert ton="error" titre="Import impossible.">{erreur}</Alert>}
-        <Field label="Fichier CSV" aide="Virgule ou point-virgule, exportable depuis Excel, LibreOffice ou Google Sheets. Colonnes reconnues : civilité, nom, prénom, email, téléphone, entreprise, financeur, situation de handicap, besoins d'adaptation, groupe, prescripteur, dossier complet.">
+        <Field label="Fichier CSV" aide={admin
+          ? "Virgule ou point-virgule, exportable depuis Excel, LibreOffice ou Google Sheets. Colonnes reconnues : civilité, nom, prénom, email, téléphone, entreprise, financeur, situation de handicap, besoins d'adaptation, groupe, prescripteur, dossier complet."
+          : "Virgule ou point-virgule, exportable depuis Excel, LibreOffice ou Google Sheets. Colonnes reconnues : civilité, nom, prénom, email, téléphone, entreprise, financeur, groupe, prescripteur, dossier complet. Les colonnes situation de handicap et besoins d'adaptation sont réservées à l'administrateur."}>
           <input type="file" accept=".csv,text/csv" onChange={lireFichier} />
         </Field>
         {apercu && (
@@ -373,11 +375,14 @@ function DrawerImport({ ouvert, sessionId, onFermer, onFait }) {
 // ── Dossier d'un stagiaire (drawer large) ────────────────────
 // La fiche (personne) et l'inscription (session) restent deux appels
 // distincts, comme avant : seul ce qui a changé est envoyé.
-function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, onFermer, onFait }) {
+function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, admin = false, onFermer, onFait }) {
+  // fix : les champs réservés n'existent dans la fiche QUE pour l'admin ;
+  // pour un contributeur, ils ne sont jamais lus ni envoyés (ce qui, sinon,
+  // effacerait silencieusement les données de l'administrateur).
   const ficheDe = (x) => ({
     civilite: x.civilite || "", nom: x.nom || "", prenom: x.prenom || "", email: x.email || "",
     telephone: x.telephone || "", entreprise: x.entreprise || "", financeur: x.financeur || "",
-    situation_handicap: x.situation_handicap === true, besoins_adaptation: x.besoins_adaptation || "",
+    ...(admin ? { situation_handicap: x.situation_handicap === true, besoins_adaptation: x.besoins_adaptation || "" } : {}),
   });
   const inscDe = (x) => ({ groupe_id: x.groupe_id ? String(x.groupe_id) : "", prescripteur: x.prescripteur || "", dossier_complet: x.dossier_complet === true });
   const [fiche, setFiche] = useState(null);
@@ -400,7 +405,7 @@ function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, onFermer, onFai
       if (JSON.stringify(fiche) !== JSON.stringify(ficheDe(st))) {
         await api(`/api/stagiaires/${st.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ ...fiche, civilite: fiche.civilite || null, besoins_adaptation: fiche.besoins_adaptation || null }),
+          body: JSON.stringify({ ...fiche, civilite: fiche.civilite || null, ...(admin ? { besoins_adaptation: fiche.besoins_adaptation || null } : {}) }),
         });
       }
       if (JSON.stringify(insc) !== JSON.stringify(inscDe(st))) {
@@ -462,13 +467,15 @@ function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, onFermer, onFai
               </Field>
               <Checkbox label="Dossier complet" checked={insc.dossier_complet} onChange={(ev) => setInsc({ ...insc, dossier_complet: ev.target.checked })} />
             </FormSection>
+            {admin && (
             <FormSection titre="Accessibilité (confidentiel)" colonnes={1}>
-              <p className="sess-secondaire">Informations visibles uniquement dans ce dossier.</p>
+              <p className="sess-secondaire">Informations réservées à l'administrateur.</p>
               <Checkbox label="Situation de handicap" checked={fiche.situation_handicap} onChange={(ev) => setFiche({ ...fiche, situation_handicap: ev.target.checked })} />
               <Field label="Besoins d'adaptation" facultatif>
                 <textarea rows={3} value={fiche.besoins_adaptation} onChange={f("besoins_adaptation")} />
               </Field>
             </FormSection>
+            )}
           </fieldset>
         </form>
       )}

@@ -166,3 +166,9 @@
 @media (max-width: 600px) { .tdb-outils { grid-template-columns: minmax(0, 1fr); } }
 .tdb-libelle { display: block; overflow-wrap: anywhere; }
 .tdb-table td { overflow-wrap: break-word; }
+
+/* Q2-2 — Adaptations pédagogiques (onglet Parcours) */
+.adaptations-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+.adaptation { display: grid; gap: 0.25rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); min-width: 0; }
+.adaptation__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.adaptation__mesure, .adaptation__bilan { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

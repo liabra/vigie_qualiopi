@@ -2658,3 +2658,17 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   import CSV, abandon, assiduité, évaluations, satisfaction, EduSign, génération.
 - Tests : **490/490 serveur**, **272/272 client**, build OK ; smoke Chrome 21/21 (1440 / 390).
   Migrations : **001 → 017**.
+
+## 2026-10-01 — Q2-2 : adaptations pédagogiques et confidentialité (déployé)
+
+- `situation_handicap` / `besoins_adaptation` réservés à l'admin : retirés des réponses API
+  pour le contributeur ; toute tentative contributeur (même `null` / `""`, PATCH ou import CSV)
+  ⇒ 403 sans écriture ; valeurs historiques conservées.
+- Migration **018** `adaptations_parcours` (catégories et statuts fermés, mesure et bilan
+  ≤ 500, dates obligatoires selon le statut, auteurs, pas de suppression physique, aucune
+  reprise de `besoins_adaptation`).
+- API `GET` / `POST` / `PATCH /api/inscriptions/:id/adaptations[/:adaptationId]` ; archivée ⇒ 409 ;
+  vue Parcours : comptages seulement. UI : colonne, filtre « Adaptations à mettre en œuvre »,
+  panneau Adaptations avec aide « aucun diagnostic ».
+- Tests : **506/506 serveur**, **285/285 client**, build OK ; smoke Chrome 29/29 (1440 / 390,
+  réponses réseau contributeur sans champ réservé, PATCH réservés ⇒ 403). Migrations : **001 → 018**.

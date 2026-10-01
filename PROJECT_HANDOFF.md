@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q2-1** — recueil du besoin et positionnement (onglet Parcours) |
-| **Migration de production actuelle** | `017_recueils_besoin.sql` (17 migrations, aucune 018) |
-| **Suite de tests** | **490/490 serveur + 272/272 client** (déployés avec Q2-1) |
+| **Dernier lot validé en production** | **Q2-2** — adaptations pédagogiques et confidentialité (onglet Parcours) |
+| **Migration de production actuelle** | `018_adaptations_parcours.sql` (18 migrations, aucune 019) |
+| **Suite de tests** | **506/506 serveur + 285/285 client** (déployés avec Q2-2) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2648,6 +2648,38 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 - Tests : 490/490 serveur (dont `parcours.test.js`, base vierge, port 55450), 272/272 client ;
   smoke Chrome 1440 / 390. Migrations : **001 → 017**.
 - Suite prévue (non commencée) : Q2-2 adaptations du parcours, Q2-3 abandon enrichi + RGPD.
+
+## 14 octies. Q2-2 — Adaptations pédagogiques et confidentialité
+
+- **Confidentialité** (`server/src/services/confidentialite.js`) : `situation_handicap` et
+  `besoins_adaptation` sont **réservés à l'admin**. Projection appliquée **dans les réponses
+  API** (`GET /api/sessions/:id`, réponse de `PATCH /api/stagiaires/:id`) ; un contributeur
+  qui envoie l'une de ces clés (même `null` ou `""`) reçoit **403 sans aucune écriture** ;
+  import CSV contributeur avec ces colonnes : 403. Modifier une autre information du
+  stagiaire n'efface jamais les valeurs historiques. Aucune donnée supprimée, aucun nouveau rôle.
+- **Migration 018** (additive) : `adaptations_parcours` (inscription, catégorie fermée
+  `rythme` / `supports` / `accessibilite_locaux` / `materiel` / `modalites_evaluation` /
+  `accompagnement` / `autre`, mesure ≤ 500, statut `prevue` / `mise_en_oeuvre` / `abandonnee`,
+  date de décision obligatoire, date de mise en œuvre obligatoire si mise en œuvre, bilan ≤ 500,
+  auteurs et horodatages). **Aucune reprise** de `besoins_adaptation` ; pas de suppression physique.
+  « Mesure abandonnée » ≠ abandon de la formation.
+- **API** (`server/src/routes/parcours.js`) : `GET` / `POST /api/inscriptions/:id/adaptations`,
+  `PATCH /api/inscriptions/:id/adaptations/:adaptationId` (état final validé, une seule
+  écriture ; adaptation d'une autre inscription ⇒ 404). Droits = inscriptions ; archivée :
+  lecture, écriture 409. La vue `GET /api/sessions/:id/parcours` ne renvoie que des **comptages**.
+- **UI** : colonne Adaptations (total, prévues, mises en œuvre, abandonnées), filtre
+  « Adaptations à mettre en œuvre », panneau « Adaptations » (ajouter, modifier, marquer comme
+  mise en œuvre, renseigner le bilan, abandonner la mesure avec confirmation) ; aide : « Décrivez
+  uniquement ce qui est mis en place pour faciliter la formation. Ne saisissez aucun diagnostic
+  ni aucune information médicale. » Dossier stagiaire : section « Accessibilité (confidentiel) »
+  visible et envoyée par l'admin seulement.
+- Textes des mesures jamais journalisés, ni dans l'historique Qualité, ni dans les documents.
+- Tests : 506/506 serveur (dont `adaptations.test.js`, port 55451), 285/285 client (dont
+  `adaptations.test.jsx`) ; smoke Chrome 29/29 (1440 / 390, admin + contributeur, réponses
+  réseau inspectées). Migrations : **001 → 018**.
+- Risques restants (P3) : les valeurs historiques de `besoins_adaptation` restent en texte libre
+  (lecture admin seulement) ; pas de rôle « référent handicap » ; Q2-3 (abandon enrichi + RGPD)
+  non commencé.
 
 ---
 

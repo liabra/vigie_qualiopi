@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { Alert, Badge, Button, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
+import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
+import { aujourdhuiISO } from "../qualite/format.js";
 import {
-  AIDE_CONFIDENTIALITE, CONCLUSIONS, MAX_TEXTE, PREREQUIS, STATUTS_INSCRIPTION, STATUTS_RECUEIL,
-  corpsRecueil, erreursRecueil, etatRecueil, filtrerParcours, libellePositionnement, valeursRecueil,
+  AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, CATEGORIES_ADAPTATION, CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_TEXTE,
+  PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL,
+  corpsAdaptation, corpsRecueil, erreursAdaptation, erreursRecueil, etatRecueil, filtrerParcoursPar,
+  libellePositionnement, resumeAdaptations, valeursAdaptation, valeursRecueil,
 } from "./parcours-format.js";
 
 // Onglet « Parcours » (Q2-1) : une ligne par inscription — état du recueil du
@@ -15,8 +18,9 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   const sessionId = donnees.session.id;
   const [parcours, setParcours] = useState(null);
   const [err, setErr] = useState(null);
-  const [aFaire, setAFaire] = useState(false);
+  const [filtre, setFiltre] = useState("tous"); // tous | recueil | adaptations
   const [ouvert, setOuvert] = useState(null); // ligne dont le recueil est ouvert
+  const [adaptations, setAdaptations] = useState(null); // ligne dont les adaptations sont ouvertes
 
   const charger = useCallback(async () => {
     try { setParcours(await api(`/api/sessions/${sessionId}/parcours`)); setErr(null); }
@@ -28,7 +32,12 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   if (!parcours) return <LoadingState texte="Chargement du parcours…" />;
 
   const positionnementParId = new Map(parcours.positionnements.map((p) => [p.id, p]));
-  const lignes = filtrerParcours(parcours.inscriptions, { aFaire });
+  const lignes = filtrerParcoursPar(parcours.inscriptions, filtre);
+  const vues = [
+    { id: "tous", libelle: "Tous" },
+    { id: "recueil", libelle: "Recueil à faire" },
+    { id: "adaptations", libelle: "Adaptations à mettre en œuvre" },
+  ];
   const modifiable = peutSaisir && !archivee && !parcours.archivee;
 
   return (
@@ -38,15 +47,16 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
       ) : (
         <>
           <div className="sess-vues" role="group" aria-label="Filtrer le parcours">
-            <button type="button" aria-pressed={!aFaire} className={"sess-vue" + (!aFaire ? " sess-vue--active" : "")} onClick={() => setAFaire(false)}>
-              Tous <span className="sess-vue__compteur">{parcours.inscriptions.length}</span>
-            </button>
-            <button type="button" aria-pressed={aFaire} className={"sess-vue" + (aFaire ? " sess-vue--active" : "")} onClick={() => setAFaire(true)}>
-              Recueil à faire <span className="sess-vue__compteur">{filtrerParcours(parcours.inscriptions, { aFaire: true }).length}</span>
-            </button>
+            {vues.map((v) => (
+              <button key={v.id} type="button" aria-pressed={filtre === v.id} className={"sess-vue" + (filtre === v.id ? " sess-vue--active" : "")} onClick={() => setFiltre(v.id)}>
+                {v.libelle} <span className="sess-vue__compteur">{filtrerParcoursPar(parcours.inscriptions, v.id).length}</span>
+              </button>
+            ))}
           </div>
           {lignes.length === 0 ? (
-            <EmptyState titre="Aucun recueil à faire.">Tous les recueils du besoin sont réalisés ou non applicables.</EmptyState>
+            filtre === "adaptations"
+              ? <EmptyState titre="Aucune adaptation à mettre en œuvre.">Toutes les mesures prévues sont mises en œuvre ou abandonnées.</EmptyState>
+              : <EmptyState titre="Aucun recueil à faire.">Tous les recueils du besoin sont réalisés ou non applicables.</EmptyState>
           ) : (
             <table className="sess-table">
               <caption className="visually-hidden">Parcours ({lignes.length})</caption>
@@ -78,8 +88,11 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
                       </td>
                       <td data-label="Positionnement">{pos ? libellePositionnement(pos) : <span className="sess-secondaire">—</span>}</td>
                       <td data-label="Conclusion">{CONCLUSIONS[l.conclusion] || <span className="sess-secondaire">—</span>}</td>
-                      <td data-label="Adaptations"><span className="sess-secondaire">Suivi à venir</span></td>
+                      <td data-label="Adaptations">
+                        {l.adaptations_total ? resumeAdaptations(l) : <span className="sess-secondaire">Aucune mesure</span>}
+                      </td>
                       <td className="sess-table__actions">
+                        <Button compact onClick={() => setAdaptations(l)} aria-label={`Adaptations de ${nom}`}>Adaptations</Button>
                         <Button compact onClick={() => setOuvert(l)} aria-label={`${modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"} le recueil de ${nom}`}>
                           {modifiable ? (l.recueil_statut ? "Modifier" : "Renseigner") : "Consulter"}
                         </Button>
@@ -91,6 +104,10 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
             </table>
           )}
         </>
+      )}
+
+      {adaptations && (
+        <PanneauAdaptations ligne={adaptations} modifiable={modifiable} onFermer={() => setAdaptations(null)} onChange={charger} />
       )}
 
       {ouvert && (
@@ -205,6 +222,167 @@ function PanneauRecueil({ ligne, modifiable, onFermer, onEnregistre }) {
           {donnees.recueil?.realise_par_nom && <p className="sess-secondaire">Recueil réalisé par {donnees.recueil.realise_par_nom}.</p>}
         </form>
       )}
+    </Drawer>
+  );
+}
+
+// Panneau « Adaptations » d'une inscription (Q2-2) : mesures pédagogiques
+// OPÉRATIONNELLES seulement (jamais de diagnostic). Liste, ajout,
+// modification, mise en œuvre, bilan, abandon de la mesure (sans
+// suppression). Le formulaire ne se ferme qu'après succès.
+function PanneauAdaptations({ ligne, modifiable, onFermer, onChange }) {
+  const [donnees, setDonnees] = useState(null);
+  const [errChargement, setErrChargement] = useState(null);
+  const [edition, setEdition] = useState(null); // { id|null, valeurs }
+  const [erreurs, setErreurs] = useState({});
+  const [erreurServeur, setErreurServeur] = useState(null);
+  const [enCours, setEnCours] = useState(false);
+  const [aAbandonner, setAAbandonner] = useState(null);
+  const verrou = useRef(false);
+  const base = `/api/inscriptions/${ligne.inscription_id}/adaptations`;
+
+  const charger = useCallback(async () => {
+    try { setDonnees(await api(base)); setErrChargement(null); }
+    catch (e) { setErrChargement(e.message); }
+  }, [base]);
+  useEffect(() => { charger(); }, [charger]);
+
+  const lecture = !modifiable || donnees?.archivee;
+  const ouvrir = (a, sur = {}) => {
+    setErreurs({}); setErreurServeur(null);
+    setEdition({ id: a?.id ?? null, valeurs: { ...valeursAdaptation(a), ...(a ? {} : { date_decision: aujourdhuiISO() }), ...sur } });
+  };
+  const champ = (cle) => (e) => setEdition((ed) => ({ ...ed, valeurs: { ...ed.valeurs, [cle]: e.target.value } }));
+
+  async function envoyer(id, corps) {
+    if (verrou.current) return false; // fix : jamais de double soumission
+    verrou.current = true;
+    setEnCours(true);
+    setErreurServeur(null);
+    try {
+      if (id) await api(`${base}/${id}`, { method: "PATCH", body: JSON.stringify(corps) });
+      else await api(base, { method: "POST", body: JSON.stringify(corps) });
+      await Promise.all([charger(), onChange?.()]);
+      return true;
+    } catch (err) {
+      setErreurServeur(err.message);
+      return false;
+    } finally {
+      verrou.current = false;
+      setEnCours(false);
+    }
+  }
+
+  async function enregistrer(e) {
+    e.preventDefault();
+    if (lecture) return;
+    const trouvees = erreursAdaptation(edition.valeurs);
+    setErreurs(trouvees);
+    if (Object.keys(trouvees).length) return;
+    if (await envoyer(edition.id, corpsAdaptation(edition.valeurs))) setEdition(null);
+  }
+
+  async function abandonner() {
+    if (await envoyer(aAbandonner.id, { statut: "abandonnee" })) setAAbandonner(null);
+    else setAAbandonner(null);
+  }
+
+  const liste = donnees?.adaptations || [];
+  return (
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Adaptations pédagogiques"
+      description={`${ligne.prenom} ${ligne.nom}`}
+      pied={edition && !lecture ? (
+        <>
+          <Button onClick={() => setEdition(null)} disabled={enCours}>Annuler</Button>
+          <Button variante="primary" type="submit" form="form-adaptation" disabled={enCours}>{enCours ? "Enregistrement…" : edition.id ? "Enregistrer la mesure" : "Ajouter la mesure"}</Button>
+        </>
+      ) : <Button onClick={onFermer} disabled={enCours}>Fermer</Button>}>
+      {errChargement && <Alert ton="error" titre="Les adaptations n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement des adaptations…" />}
+      {donnees && (
+        <div className="ui-form">
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : adaptations en lecture seule." : "Consultation seule."}</Alert>}
+          {erreurServeur && <Alert ton="error" titre="La mesure n'a pas été enregistrée.">{erreurServeur}</Alert>}
+
+          {edition && !lecture ? (
+            <form id="form-adaptation" onSubmit={enregistrer} noValidate className="ui-form">
+              <Alert ton="info" titre="Mesures pédagogiques uniquement">
+                <p>{AIDE_ADAPTATION}</p>
+                <p className="sess-secondaire">Exemples : {EXEMPLES_ADAPTATION.join(" ")}</p>
+              </Alert>
+              <FormSection titre={edition.id ? "Modifier la mesure" : "Nouvelle mesure"} colonnes={2}>
+                <Field label="Catégorie" erreur={erreurs.categorie}>
+                  <select value={edition.valeurs.categorie} onChange={champ("categorie")} required>
+                    <option value="">Choisir une catégorie</option>
+                    {Object.entries(CATEGORIES_ADAPTATION).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </Field>
+                <Field label="Statut">
+                  <select value={edition.valeurs.statut} onChange={champ("statut")}>
+                    {Object.entries(STATUTS_ADAPTATION).map(([k, st]) => <option key={k} value={k}>{st.libelle}</option>)}
+                  </select>
+                </Field>
+                <Field label="Mesure mise en place" erreur={erreurs.mesure} aide={AIDE_ADAPTATION} className="ui-field--large">
+                  <textarea rows={3} maxLength={MAX_MESURE} value={edition.valeurs.mesure} onChange={champ("mesure")} required />
+                </Field>
+                <Field label="Date de décision" erreur={erreurs.date_decision}>
+                  <input type="date" value={edition.valeurs.date_decision} onChange={champ("date_decision")} required />
+                </Field>
+                <Field label="Date de mise en œuvre" facultatif={edition.valeurs.statut !== "mise_en_oeuvre"} erreur={erreurs.date_mise_en_oeuvre}>
+                  <input type="date" value={edition.valeurs.date_mise_en_oeuvre} onChange={champ("date_mise_en_oeuvre")} />
+                </Field>
+                <Field label="Bilan" facultatif erreur={erreurs.bilan} aide="Ce que la mesure a apporté (opérationnel)." className="ui-field--large">
+                  <textarea rows={2} maxLength={MAX_MESURE} value={edition.valeurs.bilan} onChange={champ("bilan")} />
+                </Field>
+              </FormSection>
+            </form>
+          ) : (
+            <>
+              {!lecture && <div><Button variante="primary" compact onClick={() => ouvrir(null)}>Ajouter une mesure</Button></div>}
+              {liste.length === 0 ? (
+                <EmptyState titre="Aucune adaptation">Aucune mesure pédagogique n'a été décidée pour ce stagiaire.</EmptyState>
+              ) : (
+                <ul className="adaptations-liste" aria-label="Mesures pédagogiques">
+                  {liste.map((a) => {
+                    const st = STATUTS_ADAPTATION[a.statut] || { libelle: a.statut, ton: "neutral" };
+                    const date = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : null);
+                    return (
+                      <li key={a.id} className="adaptation">
+                        <div className="adaptation__tete">
+                          <Badge ton={st.ton}>{st.libelle}</Badge>
+                          <span className="sess-secondaire">{CATEGORIES_ADAPTATION[a.categorie] || a.categorie}</span>
+                        </div>
+                        <p className="adaptation__mesure">{a.mesure}</p>
+                        <span className="sess-secondaire">
+                          Décidée le {date(a.date_decision)}{a.date_mise_en_oeuvre ? ` · mise en œuvre le ${date(a.date_mise_en_oeuvre)}` : ""}
+                        </span>
+                        {a.bilan && <p className="adaptation__bilan"><strong>Bilan :</strong> {a.bilan}</p>}
+                        <span className="sess-secondaire">
+                          {a.cree_par_nom ? `Saisie par ${a.cree_par_nom}` : ""}{a.mis_a_jour_par_nom ? ` · dernière modification par ${a.mis_a_jour_par_nom}` : ""}
+                        </span>
+                        {!lecture && a.statut !== "abandonnee" && (
+                          <div className="sess-actions">
+                            <Button compact onClick={() => ouvrir(a)}>Modifier</Button>
+                            {a.statut === "prevue" && (
+                              <Button compact onClick={() => ouvrir(a, { statut: "mise_en_oeuvre", date_mise_en_oeuvre: aujourdhuiISO() })}>Marquer comme mise en œuvre</Button>
+                            )}
+                            {a.statut === "mise_en_oeuvre" && !a.bilan && <Button compact onClick={() => ouvrir(a)}>Renseigner le bilan</Button>}
+                            <Button compact variante="danger" onClick={() => setAAbandonner(a)}>Abandonner la mesure</Button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      <ConfirmDialog ouvert={!!aAbandonner} titre="Abandonner cette mesure ?" libelleConfirmer="Abandonner la mesure"
+        ton="danger" enCours={enCours} onConfirmer={abandonner} onAnnuler={() => setAAbandonner(null)}>
+        La mesure restera dans le suivi avec le statut « Mesure abandonnée ». Cela ne concerne pas l'inscription du stagiaire à la formation.
+      </ConfirmDialog>
     </Drawer>
   );
 }

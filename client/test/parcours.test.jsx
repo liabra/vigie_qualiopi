@@ -57,7 +57,7 @@ test("pur : recueil à faire = absent ou « à faire » ; corps complet, vides �
   assert.deepEqual(corpsRecueil(valeursRecueil(null)), { statut: "a_faire", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, positionnement_id: null });
 });
 
-test("onglet Parcours : synthèse par inscription, sans texte libre ; adaptations « Suivi à venir »", async () => {
+test("onglet Parcours : synthèse par inscription, sans texte libre ; adaptations « Aucune mesure »", async () => {
   const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => lignes().length === 2);
   assert.ok([...document.querySelectorAll('nav[aria-label="Sections de la session"] a')].some((a) => a.textContent.startsWith("Parcours")));
@@ -66,7 +66,7 @@ test("onglet Parcours : synthèse par inscription, sans texte libre ; adaptation
   assert.ok(alice.textContent.includes("Réalisé") && alice.textContent.includes("03/09/2026"));
   assert.ok(alice.textContent.includes("Positionnement initial (02/09/2026) — 12/20"));
   assert.ok(alice.textContent.includes("Parcours adapté"));
-  assert.ok(lignes().every((tr) => tr.textContent.includes("Suivi à venir")));
+  assert.ok(lignes().every((tr) => tr.textContent.includes("Aucune mesure")), "aucune adaptation : synthèse factuelle");
   assert.ok(!texte().includes(SECRET), "textes libres jamais dans la synthèse");
   assert.equal(gets(appels), 1, "une seule lecture agrégée");
   assert.ok(!appels.some((a) => a.chemin.endsWith("/recueil")), "aucun recueil chargé avant ouverture");

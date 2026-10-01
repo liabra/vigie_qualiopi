@@ -477,16 +477,34 @@ test("une erreur en cours d'import annule tout (rollback)", async () => {
 
 // ── Fiche stagiaire ──────────────────────────────────────────
 
-test("un contributeur corrige une fiche stagiaire", async () => {
+test("un contributeur corrige une fiche stagiaire sans toucher aux champs réservés (Q2-2)", async () => {
   const base = baseSimulee({
-    stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine", email: "blandine@exemple.fr" }],
+    stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine", email: "blandine@exemple.fr", situation_handicap: true, besoins_adaptation: "Mention historique" }],
   }).installer();
   const r = await appel("PATCH", "/api/stagiaires/1", {
-    nom: "Stark-Bisset", email: "blandine.stark@exemple.fr", entreprise: "A2C", financeur: "OPCO", situation_handicap: true, besoins_adaptation: "salle au calme",
+    nom: "Stark-Bisset", email: "blandine.stark@exemple.fr", entreprise: "A2C", financeur: "OPCO",
   }, CONTRIBUTEUR);
   assert.equal(r.statut, 200);
   assert.equal(base.etat.stagiaires[0].nom, "Stark-Bisset");
   assert.equal(base.etat.stagiaires[0].entreprise, "A2C");
+  assert.equal(base.etat.stagiaires[0].situation_handicap, true, "donnée historique conservée");
+  assert.equal(base.etat.stagiaires[0].besoins_adaptation, "Mention historique", "donnée historique conservée");
+  assert.ok(!("situation_handicap" in r.corps.stagiaire) && !("besoins_adaptation" in r.corps.stagiaire), "réponse sans champ réservé");
+});
+
+test("un contributeur ne peut ni créer, ni remplacer, ni vider les champs réservés (403, aucune écriture)", async () => {
+  for (const corps of [{ situation_handicap: true }, { besoins_adaptation: "x" }, { besoins_adaptation: null }, { besoins_adaptation: "" },
+    { situation_handicap: false }, { nom: "Autre", besoins_adaptation: "" }]) {
+    const base = baseSimulee({ stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine", situation_handicap: true, besoins_adaptation: "Mention historique" }] }).installer();
+    const r = await appel("PATCH", "/api/stagiaires/1", corps, CONTRIBUTEUR);
+    assert.equal(r.statut, 403, JSON.stringify(corps));
+    assert.equal(base.etat.stagiaires[0].nom, "Stark", "aucune écriture partielle");
+    assert.equal(base.etat.stagiaires[0].besoins_adaptation, "Mention historique");
+  }
+  const base = baseSimulee({ stagiaires: [{ id: 1, nom: "Stark", prenom: "Blandine", situation_handicap: false, besoins_adaptation: null }] }).installer();
+  const r = await appel("PATCH", "/api/stagiaires/1", { situation_handicap: true, besoins_adaptation: "Salle au calme" }, ADMIN);
+  assert.equal(r.statut, 200, "l'administrateur garde la main");
+  assert.equal(base.etat.stagiaires[0].besoins_adaptation, "Salle au calme");
   assert.equal(base.etat.stagiaires[0].situation_handicap, true);
 });
 
@@ -584,13 +602,23 @@ test("un rôle non autorisé n'importe pas", async () => {
   assert.equal((await importer(csv([["Mme", "A", "Un", "", "", "", "", "", "", "", "", ""]]), AUTRE)).statut, 403);
 });
 
-test("un contributeur importe un stagiaire", async () => {
+test("un contributeur importe un stagiaire (colonnes non réservées)", async () => {
   const base = baseSimulee().installer();
-  const r = await importer(csv([["M.", "Dupont", "Jean", "jean@exemple.fr", "", "", "", "", "", "", "", ""]]), CONTRIBUTEUR);
+  const texte = ["civilité;nom;prénom;E-mail", "M.;Dupont;Jean;jean@exemple.fr"].join("\n");
+  const r = await importer(texte, CONTRIBUTEUR);
   assert.equal(r.statut, 200);
   assert.equal(r.corps.bilan.crees, 1);
   assert.equal(base.etat.stagiaires.length, 1);
   assert.equal(base.etat.inscriptions.length, 1);
+});
+
+test("un contributeur ne peut pas importer les colonnes réservées (403, aucune écriture)", async () => {
+  const base = baseSimulee().installer();
+  const r = await importer(csv([["M.", "Dupont", "Jean", "jean@exemple.fr", "", "", "", "oui", "Salle au calme", "", "", ""]]), CONTRIBUTEUR);
+  assert.equal(r.statut, 403);
+  assert.match(r.corps.error, /réservées à l'administrateur/);
+  assert.equal(base.etat.stagiaires.length, 0);
+  assert.equal(base.etat.inscriptions.length, 0);
 });
 
 test("le contributeur gagne la fiche et l'inscription, rien d'autre", async () => {

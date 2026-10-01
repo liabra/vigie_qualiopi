@@ -2646,4 +2646,3 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 ### État
 
 **Chantier Q1 Qualité complet et déployé (B1 → B5).**
-

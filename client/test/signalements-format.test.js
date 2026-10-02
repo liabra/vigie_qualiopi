@@ -44,8 +44,8 @@ test("retard (règle PO) : résolue / clôturée / annulée dépassées ⇒ jama
 test("compteurs : à traiter, en retard, résolues, clôturées", () => {
   const liste = [
     rec({ id: 1, statut: "ouverte", date_echeance_cible: "2026-09-29" }),
-    rec({ id: 2, statut: "qualifiee", date_echeance_cible: "2026-10-01" }),
-    rec({ id: 3, statut: "en_traitement", date_echeance_cible: "2026-10-01" }),
+    rec({ id: 2, statut: "qualifiee", date_echeance_cible: "2099-12-31" }), // fix : future quelle que soit la date du jour
+    rec({ id: 3, statut: "en_traitement", date_echeance_cible: "2099-12-31" }),
     rec({ id: 4, statut: "resolue", date_echeance_cible: "2026-09-29" }), // dépassée mais résolue : pas en retard
     rec({ id: 5, statut: "cloturee", date_echeance_cible: "2026-09-29" }),
     rec({ id: 6, statut: "annulee", date_echeance_cible: "2026-09-29" }),

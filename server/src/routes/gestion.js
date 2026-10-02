@@ -12,7 +12,7 @@ import { getDrive } from "../services/google.js";
 import { parseIdPositif } from "../services/ids.js";
 // Évaluations / QCM + satisfaction (lot L7) : validation et parsing purs.
 import {
-  champsEvaluation, champsSatisfaction,
+  champsEvaluation, champsSatisfaction, TYPES_SATISFACTION,
   construireMappingResultats, dateDeCsv, lireNombreCsv,
   typeEvaluationCsv, resultatCsv,
 } from "../services/evaluations.js";
@@ -28,6 +28,7 @@ import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "..
 import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
+import { NOTE_MAX_SATISFACTION, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -1760,6 +1761,94 @@ router.patch("/satisfactions/:id", requireRedacteur, wrap(async (req, res) => {
     `UPDATE satisfactions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params
   );
   res.json({ satisfaction: f });
+}));
+
+// ── Q3-1 : import des réponses Google Forms de satisfaction ──
+// Anonyme par défaut ; rapprochement par e-mail seulement sur option. L'e-mail
+// et les colonnes d'identité ne sont jamais conservés ni renvoyés. Note sur 5.
+async function analyserImportSatisfaction(req, sessionId, corps) {
+  if (!TYPES_SATISFACTION.includes(corps.type)) return { erreur: "Choisissez le public interrogé." };
+  const analyse = parserCsvComplet(corps.texte);
+  if (analyse.erreur) return { erreur: analyse.erreur };
+  const proposees = devinerColonnes(analyse.enTetes);
+  const options = {
+    colonne_note: corps.colonne_note === undefined ? proposees.colonne_note : corps.colonne_note,
+    colonne_commentaire: corps.colonne_commentaire === undefined ? proposees.colonne_commentaire : corps.colonne_commentaire,
+    rapprocher_email: corps.rapprocher_email === true,
+    date_defaut: corps.date_defaut || null,
+  };
+  let parEmail = new Map();
+  if (options.rapprocher_email) {
+    const { rows } = await req(
+      `SELECT i.id AS inscription_id, s.email, s.nom, s.prenom
+       FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id WHERE i.session_id = $1`, [sessionId]);
+    for (const r of rows) {
+      const em = normaliserEmail(r.email);
+      if (!em) continue;
+      if (!parEmail.has(em)) parEmail.set(em, []);
+      parEmail.get(em).push(r);
+    }
+  }
+  const { rows: deja } = await req("SELECT reponses FROM satisfactions WHERE session_id = $1 AND type = $2", [sessionId, corps.type]);
+  const existantes = new Set(deja.map((r) => empreinteReponse(r.reponses)));
+  const r = classerReponses({ enTetes: analyse.enTetes, lignes: analyse.lignes, options, inscriptionsParEmail: parEmail, existantes });
+  if (r.erreur) return { erreur: r.erreur };
+  return { ...r, enTetes: analyse.enTetes, options, colonneHorodateur: colonneHorodateur(analyse.enTetes), colonneEmail: colonneEmail(analyse.enTetes) };
+}
+
+function vueApercuSatisfaction(r) {
+  return {
+    enTetes: r.enTetes, resume: r.resume, horodateur: r.horodateur, rapprochement: r.rapprochement,
+    colonneEmailPresente: r.colonneEmailPresente, colonnesEcartees: r.colonnesEcartees,
+    colonne_horodateur: r.colonneHorodateur >= 0 ? r.colonneHorodateur : null,
+    colonne_note: r.options.colonne_note, colonne_commentaire: r.options.colonne_commentaire,
+    lignes: r.resultats.map((l) => ({
+      index: l.index, statut: l.statut, motif: l.motif, stagiaire: l.stagiaire ?? null,
+      date: l.date ?? null, note: l.note ?? null, commentaire: l.commentaire ?? null,
+    })),
+  };
+}
+
+router.post("/sessions/:id/satisfactions/import-apercu", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  if (!req.body?.texte || !String(req.body.texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+  const { rows: [session] } = await query("SELECT id FROM sessions WHERE id = $1", [sessionId]);
+  if (!session) return res.status(404).json({ error: "Session introuvable." });
+  const r = await analyserImportSatisfaction(query, sessionId, req.body);
+  if (r.erreur) return res.status(400).json({ error: r.erreur });
+  res.json(vueApercuSatisfaction(r));
+}));
+
+router.post("/sessions/:id/satisfactions/import", requireRedacteur, wrap(async (req, res) => {
+  const sessionId = identifiant(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
+  if (!req.body?.texte || !String(req.body.texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [session] } = await cx.query("SELECT id, archivee_le FROM sessions WHERE id = $1 FOR UPDATE", [sessionId]);
+    if (!session) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Session introuvable." }); }
+    if (session.archivee_le) { await cx.query("ROLLBACK"); return res.status(409).json({ error: MSG_ARCHIVEE }); }
+    const r = await analyserImportSatisfaction((sql, params) => cx.query(sql, params), sessionId, req.body);
+    if (r.erreur) { await cx.query("ROLLBACK"); return res.status(400).json({ error: r.erreur }); }
+    const bilan = { importees: 0, anonymes: 0, nominatives: 0, ignorees: [] };
+    for (const l of r.resultats) {
+      if (l.statut !== "pret") { bilan.ignorees.push({ index: l.index, statut: l.statut, motif: l.motif }); continue; }
+      await cx.query(
+        `INSERT INTO satisfactions (session_id, inscription_id, type, date_recueil, note_globale, note_max, commentaires, reponses)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [sessionId, l.inscriptionId ?? null, req.body.type, l.date, l.note, NOTE_MAX_SATISFACTION, l.commentaire, JSON.stringify(l.reponses)]
+      );
+      bilan.importees++;
+      if (l.inscriptionId) bilan.nominatives++; else bilan.anonymes++;
+    }
+    await cx.query("COMMIT");
+    res.json({ bilan });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
 }));
 
 export default router;

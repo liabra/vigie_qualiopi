@@ -9,7 +9,7 @@ export const TYPES_EVALUATION = [
   "positionnement", "intermediaire", "qcm", "validation_etape", "evaluation_finale", "autre",
 ];
 export const RESULTATS_EVALUATION = ["valide", "non_valide", "non_determine", "non_applicable"];
-export const TYPES_SATISFACTION = ["a_chaud", "a_froid", "financeur", "entreprise", "formateur"];
+export const TYPES_SATISFACTION = ["a_chaud", "a_froid", "financeur", "entreprise", "formateur", "prescripteur", "partenaire"];
 
 // AAAA-MM-JJ strict, ou null.
 export function dateValideStricte(v) {
@@ -116,6 +116,10 @@ export function champsSatisfaction(corps, avant = {}) {
     if (corps.note_max === null || corps.note_max === "") return { erreur: "Note maximum invalide." };
     const n = Number(corps.note_max);
     if (!Number.isFinite(n) || n <= 0) return { erreur: "Note maximum invalide." };
+    // Q3-1 : note sur 5 imposée. Une réponse historique garde son échelle
+    // (la renvoyer telle quelle reste accepté), mais aucune nouvelle échelle.
+    const historique = avant.note_max !== undefined && avant.note_max !== null && n === Number(avant.note_max);
+    if (n !== 5 && !historique) return { erreur: "La note de satisfaction se donne sur 5." };
     champs.note_max = n;
   }
   if (corps.commentaires !== undefined) champs.commentaires = texte(corps.commentaires);

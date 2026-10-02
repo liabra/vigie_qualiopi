@@ -2731,3 +2731,15 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Tests : `peremption.test.js` (instants fixes 00:30Z / 02:59:59Z / 03:00Z, cinq fuseaux de
   session), rouge puis vert ; **534/534 serveur**, build OK ; smoke avec base en
   Pacific/Kiritimati. Migrations : **001 → 020**.
+
+## 2026-10-02 — Q3-1 : satisfaction, import Google Forms (déployé)
+
+- Décisions PO : enquêtes toujours rattachées à une session ; anonymat inchangé ; note sur 5
+  imposée pour les nouvelles réponses ; import anonyme par défaut, rapprochement par e-mail
+  sur option.
+- Migration **021** : publics `prescripteur` et `partenaire`. Note sur 5 imposée par l'API.
+- Import CSV Google Forms (aperçu puis confirmation transactionnelle) : parseur multiligne,
+  horodateur, colonnes de note / commentaire ajustables, colonnes d'identité jamais conservées,
+  e-mail jamais stocké, doublons détectés.
+- Test daté `signalements-format.test.js` corrigé (échéance devenue passée le 02/10).
+- Tests : **543/543 serveur**, **305/305 client**, build OK ; smoke Chrome. Migrations **001 → 021**.

@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **TIME-2** — péremption des preuves au jour civil de Cayenne |
-| **Migration de production actuelle** | `020_dates_metier_preuves.sql` (20 migrations, aucune 021) |
-| **Suite de tests** | **534/534 serveur + 298/298 client** (déployés avec TIME-2) |
+| **Dernier lot validé en production** | **Q3-1** — satisfaction : import Google Forms, publics prescripteur / partenaire, note sur 5 |
+| **Migration de production actuelle** | `021_satisfaction_publics.sql` (21 migrations, aucune 022) |
+| **Suite de tests** | **543/543 serveur + 305/305 client** (déployés avec Q3-1) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2816,6 +2816,34 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
   réelle avec session en Kiritimati ; colonnes et consommateurs (`/api/preuves`, filtre
   `alerte`, détail, `/api/indicateurs`). Rouge avant 020, vert après. Aucun crochet de test en
   production.
+
+### Q3-1 — Satisfaction : recueillir les avis (Google Forms reste l'outil de collecte)
+
+- **Décisions PO (02/10/2026)** : une enquête est **toujours rattachée à une session** ;
+  anonymat **inchangé** (admin et contributeur voient noms et commentaires, comme avant) ;
+  **note sur 5 imposée** pour les nouvelles réponses (les réponses historiques gardent leur
+  échelle) ; import **anonyme par défaut**, rapprochement par e-mail **seulement sur option**.
+- **Migration 021** `021_satisfaction_publics.sql` : publics `prescripteur` et `partenaire`
+  ajoutés à la liste fermée (`satisfactions_type_check` élargie, aucune donnée touchée).
+- **Note sur 5** : appliquée par l'API (`champsSatisfaction`) — `note_max` ≠ 5 refusé, sauf à
+  renvoyer l'échelle déjà enregistrée d'une réponse historique ; aucune contrainte SQL (les
+  anciennes réponses restent valides). Écran : « Note (sur 5) », plus de champ d'échelle.
+- **Import Google Forms** (`POST /api/sessions/:id/satisfactions/import-apercu` puis
+  `/import`, `requireRedacteur`, archivée ⇒ 409, transaction) : CSV de la feuille de réponses
+  lu par un parseur RFC 4180 dédié (`services/satisfactionImport.js` : cellules multilignes,
+  guillemets) ; horodateur ⇒ date du recueil (sinon date saisie à l'import) ; question de note
+  et de commentaire proposées puis ajustables ; note 0–5 (« 4 », « 4,5 », « 4 - Satisfait ») ;
+  toutes les réponses conservées dans `reponses` **sauf colonnes d'identité** (e-mail, nom,
+  prénom, téléphone…) ; e-mail jamais stocké ni renvoyé ; doublons détectés (réponse
+  identique, horodateur compris, déjà importée pour ce public) ; limites 2 000 réponses,
+  80 colonnes, 5 000 caractères par réponse.
+- Tests : `satisfactionImport.test.js` (port 55455) et `satisfaction-import.test.jsx` ;
+  smoke Chrome (1440 / 390) avec un vrai fichier CSV multiligne. Migrations : **001 → 021**.
+- Reste pour **Q3-2** (exploiter) : synthèse multi-sessions et taux de réponse, « Créer une
+  action qualité » depuis un avis, indicateurs de satisfaction au tableau de bord qualité.
+- Tests de dates figées : `signalements-format.test.js` dépendait de la date du jour
+  (échéance « 2026-10-01 » devenue passée) — corrigé (échéance 2099). D'autres jeux de test
+  portent des échéances proches (2026-10-15, 2026-10-19) : à surveiller.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

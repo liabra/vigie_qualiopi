@@ -2780,3 +2780,16 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   pour l'existant) ; appui / référent handicap exclus ; « A, B et C ».
 - Session avec intervenants rattachés : non supprimable.
 - Tests : **565/565 serveur**, **321/321 client**, build OK ; smoke Chrome. Migrations **001 → 023**.
+
+## 2026-10-02 — Q4-2-FINAL : justificatifs des intervenants et alertes (déployé)
+
+- Migration **024** : pièces attendues, rattachements intervenant ↔ preuve, preuves
+  confidentielles (marquage définitif).
+- Confidentialité : audit de tous les chemins d'accès aux preuves ; filtre serveur unique
+  appliqué à la liste / recherche, au détail (404), à la veille, aux preuves liées d'une
+  action qualité et aux documents générés d'une session pour tout non-admin.
+- Fiche intervenant › Justificatifs professionnels (admin) ; sous-traitance (contrat, date,
+  échéance, état) ; page de pilotage et section du tableau de bord ; aucune non-conformité
+  automatique.
+- Tests : **576/576 serveur**, **329/329 client**, build OK ; smoke Chrome (admin + contributeur,
+  réseau inspecté). Migrations **001 → 024**.

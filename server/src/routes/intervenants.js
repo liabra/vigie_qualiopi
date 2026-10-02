@@ -13,6 +13,8 @@ import { parseIdPositif } from "../services/ids.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
 import { estAdmin } from "../services/confidentialite.js";
 import { FONCTIONS, NATURES, champsIntervenant, lireFormations, projeterIntervenant } from "../services/intervenants.js";
+import { CATEGORIES_JUSTIFICATIF, alertesJustificatifs, dossierIntervenant } from "../services/justificatifs.js";
+import { estDateValide } from "../services/dates.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -215,6 +217,83 @@ router.delete("/sessions/:id/groupes/:groupeId/intervenants/:intervenantId", req
   const r = await query("DELETE FROM intervenants_groupes WHERE intervenant_id = $1 AND groupe_id = $2", [c.intervenantId, c.groupeId]);
   if (!r.rowCount) return res.status(404).json({ error: "Cet intervenant n'est pas rattaché au groupe." });
   res.json(await intervenantsDeSession(c.sessionId, true));
+}));
+
+// ── Q4-2 : justificatifs professionnels (ADMIN uniquement) ──────
+// Dossier confidentiel : aucune de ces routes n'est ouverte au contributeur.
+
+async function intervenantOu404(req, res) {
+  const id = parseIdPositif(req.params.id);
+  if (!id) { res.status(400).json({ error: "Identifiant d'intervenant invalide." }); return null; }
+  const { rows: [i] } = await query("SELECT id, nom, prenom, nature, actif FROM intervenants WHERE id = $1", [id]);
+  if (!i) { res.status(404).json({ error: "Intervenant introuvable." }); return null; }
+  return i;
+}
+
+router.get("/justificatifs-intervenants", requireAdmin, wrap(async (_req, res) => {
+  res.json(await alertesJustificatifs());
+}));
+
+router.get("/intervenants/:id/justificatifs", requireAdmin, wrap(async (req, res) => {
+  const i = await intervenantOu404(req, res);
+  if (!i) return;
+  res.json(await dossierIntervenant(i));
+}));
+
+// Pièces attendues : remplacement complet (liste fermée, dédoublonnée).
+router.put("/intervenants/:id/justificatifs/attendus", requireAdmin, wrap(async (req, res) => {
+  const i = await intervenantOu404(req, res);
+  if (!i) return;
+  const liste = req.body?.categories;
+  if (!Array.isArray(liste) || liste.some((c) => !CATEGORIES_JUSTIFICATIF.includes(c))) return res.status(400).json({ error: "Catégorie de justificatif inconnue." });
+  const cats = [...new Set(liste)];
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    await cx.query("DELETE FROM intervenants_justificatifs_attendus WHERE intervenant_id = $1 AND NOT (categorie = ANY($2::text[]))", [i.id, cats]);
+    if (cats.length) await cx.query(`INSERT INTO intervenants_justificatifs_attendus (intervenant_id, categorie, cree_par)
+      SELECT $1, unnest($2::text[]), $3 ON CONFLICT DO NOTHING`, [i.id, cats, req.user.id]);
+    await cx.query("COMMIT");
+  } catch (e) { await cx.query("ROLLBACK"); throw e; } finally { cx.release(); }
+  res.json(await dossierIntervenant(i));
+}));
+
+// Rattacher une preuve EXISTANTE (aucune copie Drive). La preuve devient
+// définitivement confidentielle (réservée à l'admin).
+router.post("/intervenants/:id/justificatifs", requireAdmin, wrap(async (req, res) => {
+  const i = await intervenantOu404(req, res);
+  if (!i) return;
+  const preuveId = parseIdPositif(req.body?.preuve_id);
+  if (!preuveId) return res.status(400).json({ error: "Choisissez une preuve existante." });
+  const categorie = req.body?.categorie;
+  if (!CATEGORIES_JUSTIFICATIF.includes(categorie)) return res.status(400).json({ error: "Catégorie de justificatif inconnue." });
+  const dateDoc = req.body?.date_document === undefined || req.body?.date_document === null || req.body?.date_document === "" ? null : String(req.body.date_document);
+  if (dateDoc !== null && !estDateValide(dateDoc)) return res.status(400).json({ error: "Date du document invalide : format attendu AAAA-MM-JJ." });
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rowCount } = await cx.query("SELECT 1 FROM preuves WHERE id = $1", [preuveId]);
+    if (!rowCount) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Preuve introuvable." }); }
+    const r = await cx.query(
+      `INSERT INTO intervenants_justificatifs (intervenant_id, preuve_id, categorie, date_document, cree_par)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (intervenant_id, preuve_id) DO NOTHING`, [i.id, preuveId, categorie, dateDoc, req.user.id]);
+    if (!r.rowCount) { await cx.query("ROLLBACK"); return res.status(409).json({ error: "Cette preuve est déjà rattachée à cet intervenant." }); }
+    await cx.query("INSERT INTO preuves_confidentielles (preuve_id, par) VALUES ($1, $2) ON CONFLICT DO NOTHING", [preuveId, req.user.id]);
+    await cx.query("COMMIT");
+  } catch (e) { await cx.query("ROLLBACK"); throw e; } finally { cx.release(); }
+  res.status(201).json(await dossierIntervenant(i));
+}));
+
+// Retirer le rattachement SEULEMENT : la preuve, ses fichiers Drive et sa
+// confidentialité sont conservés.
+router.delete("/intervenants/:id/justificatifs/:lienId", requireAdmin, wrap(async (req, res) => {
+  const i = await intervenantOu404(req, res);
+  if (!i) return;
+  const lienId = parseIdPositif(req.params.lienId);
+  if (!lienId) return res.status(400).json({ error: "Identifiant de rattachement invalide." });
+  const r = await query("DELETE FROM intervenants_justificatifs WHERE id = $1 AND intervenant_id = $2", [lienId, i.id]);
+  if (!r.rowCount) return res.status(404).json({ error: "Rattachement introuvable pour cet intervenant." });
+  res.json(await dossierIntervenant(i));
 }));
 
 export default router;

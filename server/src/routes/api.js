@@ -8,6 +8,7 @@ import { importerClasseur } from "../services/import.js";
 import { champsAudit } from "../services/audits.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
+import { preuveVisibleContributeur } from "../services/confidentialite.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -228,6 +229,8 @@ const STATUTS = ["maitrise", "a_consolider", "a_risque", "non_applicable"];
 
 router.get("/preuves", requireAuth, wrap(async (req, res) => {
   const filtres = ["1 = 1"];
+  // fix Q4-2 : justificatifs d'intervenants jamais listés ni cherchables hors admin.
+  if (req.user.role !== "admin") filtres.push(preuveVisibleContributeur("p"));
   const params = [];
   if (req.query.statut && STATUTS.includes(req.query.statut)) { params.push(req.query.statut); filtres.push(`p.statut = $${params.length}`); }
   if (req.query.indicateur) {
@@ -301,9 +304,10 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
      JOIN criteres c ON c.id = i.critere_id
      LEFT JOIN sessions s ON s.id = p.session_id
      LEFT JOIN groupes g ON g.id = p.groupe_id
-     WHERE p.id = $1`,
+     WHERE p.id = $1${req.user.role !== "admin" ? ` AND ${preuveVisibleContributeur("p")}` : ""}`,
     [id]
   );
+  // fix Q4-2 : accès direct par identifiant à un justificatif ⇒ 404 hors admin.
   if (!rows.length) return res.status(404).json({ error: "Preuve introuvable." });
   res.json({ preuve: rows[0] });
 }));
@@ -934,7 +938,7 @@ router.get("/veille/:id", requireAuth, wrap(async (req, res) => {
     `SELECT p.id, p.titre, p.statut, p.mode_fichiers, p.session_id, p.indicateur_id, p.veille_id,
        COALESCE((SELECT json_agg(json_build_object('id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url, 'nom', f.drive_nom, 'mime', f.drive_mime) ORDER BY f.id)
                  FROM preuve_fichiers f WHERE f.preuve_id = p.id), '[]'::json) AS fichiers
-     FROM preuves p WHERE p.veille_id = $1 ORDER BY p.id`,
+     FROM preuves p WHERE p.veille_id = $1${req.user.role !== "admin" ? ` AND ${preuveVisibleContributeur("p")}` : ""} ORDER BY p.id`,
     [id]
   );
   res.json({ veille: v, preuves });

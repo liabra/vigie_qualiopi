@@ -307,7 +307,8 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   const { rows: documents } = await query(
     `SELECT d.*, m.nom AS modele, m.portee FROM documents_generes d
      JOIN modeles_documents m ON m.id = d.modele_id
-     WHERE d.session_id = $1 ORDER BY d.genere_le DESC`,
+     WHERE d.session_id = $1${estAdmin(req.user) ? "" : " AND (d.preuve_id IS NULL OR NOT EXISTS (SELECT 1 FROM preuves_confidentielles pc WHERE pc.preuve_id = d.preuve_id))"}
+     ORDER BY d.genere_le DESC`, // fix Q4-2 : document généré devenu justificatif ⇒ masqué hors admin
     [id]
   );
   // fix : champs réservés retirés de la RÉPONSE pour le contributeur.

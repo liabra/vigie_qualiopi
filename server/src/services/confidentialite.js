@@ -27,3 +27,9 @@ export function champsReservesEnvoyes(corps) {
   const c = corps && typeof corps === "object" ? corps : {};
   return CHAMPS_RESERVES_ADMIN.filter((k) => Object.prototype.hasOwnProperty.call(c, k));
 }
+
+// Q4-2 — Preuves CONFIDENTIELLES (justificatifs d'intervenants) : filtre
+// SQL unique, à appliquer à toute lecture de preuve destinée à un
+// non-admin. `alias` = alias SQL de la table / vue des preuves.
+export const preuveVisibleContributeur = (alias = "p") =>
+  `NOT EXISTS (SELECT 1 FROM preuves_confidentielles pc WHERE pc.preuve_id = ${alias}.id)`;

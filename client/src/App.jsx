@@ -30,6 +30,7 @@ import { SignalementFiche } from "./qualite/SignalementFiche.jsx";
 import { TableauBordQualite } from "./qualite/TableauBordQualite.jsx";
 import { SyntheseSatisfactions } from "./qualite/SyntheseSatisfactions.jsx";
 import { IntervenantsPage } from "./intervenants/IntervenantsPage.jsx";
+import { JustificatifsPilotage } from "./intervenants/JustificatifsPilotage.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -194,6 +195,7 @@ export default function App() {
 
         <Route path="formations" element={admin(<FormationsPage />)} />
         <Route path="intervenants" element={<IntervenantsPage admin={isAdmin} />} />
+        <Route path="justificatifs-intervenants" element={admin(<JustificatifsPilotage />)} />
         <Route path="modeles" element={admin(<ModelesPage />)} />
         <Route path="prescripteurs" element={admin(<PrescripteursPage />)} />
         <Route path="versions" element={admin(<VersionsPage onChange={auChangement} />)} />

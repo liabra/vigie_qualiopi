@@ -177,6 +177,13 @@ const AIDE = {
       },
     ],
   },
+  justificatifsIntervenants: {
+    titre: "Justificatifs des intervenants",
+    sections: [
+      { titre: "À quoi sert cette page", lignes: ["Elle liste, pour les intervenants actifs, les pièces attendues manquantes et les documents bientôt à renouveler ou périmés.", "C'est un repère de suivi : une pièce manquante n'est pas, en soi, une non-conformité Qualiopi."] },
+      { titre: "Compléter un dossier", lignes: ["Ouvrez la fiche de l'intervenant : « Définir les pièces attendues », puis « Rattacher une preuve » déjà enregistrée dans le module Preuves (fichiers Drive, échéance).", "Une preuve rattachée devient définitivement réservée à l'administrateur. Retirer le lien ne supprime ni la preuve ni le fichier Drive."] },
+    ],
+  },
   intervenants: {
     titre: "Intervenants",
     sections: [
@@ -295,6 +302,7 @@ const CLES = [
   ["/actions-qualite", "actions"],
   ["/formations", "formations"],
   ["/intervenants", "intervenants"],
+  ["/justificatifs-intervenants", "justificatifsIntervenants"],
   ["/modeles", "modeles"],
   ["/prescripteurs", "prescripteurs"],
   ["/versions", "versions"],

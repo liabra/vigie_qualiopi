@@ -50,3 +50,23 @@ export function corpsFiche(v) {
     domaines: domainesDepuisTexte(v.domaines), formation_ids: v.formation_ids,
   };
 }
+
+// ── Q4-2 : justificatifs professionnels (admin) ──────────────────
+export const CATEGORIES_JUSTIFICATIF = {
+  cv: "CV", diplome: "Diplôme", attestation: "Attestation", certification: "Certification", contrat: "Contrat", autre: "Autre",
+};
+export const ETATS_JUSTIFICATIF = {
+  disponible: { libelle: "Disponible", ton: "success" },
+  bientot: { libelle: "Bientôt à renouveler", ton: "warning" },
+  perime: { libelle: "Périmé", ton: "error" },
+  manquant: { libelle: "Manquant", ton: "warning" },
+};
+export const MSG_PAS_NON_CONFORMITE = "Repère de suivi : une pièce manquante ou à renouveler n'est pas, en soi, une non-conformité Qualiopi.";
+export const AVERTISSEMENT_CONFIDENTIEL = "La preuve rattachée devient définitivement réservée à l'administrateur : les contributeurs ne la verront plus, nulle part dans Vigie.";
+// Validité affichée d'après la preuve (même système d'alertes que le module Preuves).
+export function validite(j) {
+  const d = (x) => String(x).slice(0, 10).split("-").reverse().join("/");
+  if (j.type_alerte === "echeance_fixe" && j.date_echeance) return `jusqu'au ${d(j.date_echeance)}`;
+  if (j.type_alerte === "revision_periodique" && j.periodicite_mois) return `révision tous les ${j.periodicite_mois} mois`;
+  return "sans échéance";
+}

@@ -23,6 +23,8 @@ import {
   PUBLICS_SATISFACTION, lireProvenanceSatisfaction, provenanceEnvoyee,
 } from "../services/qualite.js";
 import { synthetiserSatisfactions } from "../services/satisfactionSynthese.js";
+import { preuveVisibleContributeur } from "../services/confidentialite.js";
+import { alertesJustificatifs } from "../services/justificatifs.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -188,7 +190,7 @@ const LIGNES_SIGNALEMENT = `
 // restent sur Drive, on ne renvoie que leurs liens déjà connus. Une seule
 // requête par fiche (pas de N+1). L'indicateur propre de la preuve est
 // conservé tel quel (y compris d'une ancienne version du référentiel).
-async function preuvesLiees(colonne, id) {
+async function preuvesLiees(colonne, id, admin = true) {
   const { rows } = await query(
     `SELECT p.id, p.titre, p.statut, p.statut_effectif, p.indicateur_id, i.numero AS indicateur,
             i.libelle AS indicateur_libelle, p.session_id, s.reference AS session_reference,
@@ -200,7 +202,7 @@ async function preuvesLiees(colonne, id) {
      JOIN preuves_enrichies p ON p.id = l.preuve_id
      JOIN indicateurs i ON i.id = p.indicateur_id
      LEFT JOIN sessions s ON s.id = p.session_id
-     WHERE l.${colonne} = $1
+     WHERE l.${colonne} = $1${admin ? "" : ` AND ${preuveVisibleContributeur("p")}`}
      ORDER BY l.cree_le, l.id`, [id]
   );
   return rows;
@@ -501,7 +503,7 @@ router.get("/actions-qualite/:id", requireRedacteur, wrap(async (req, res) => {
   );
   // Preuves liées : lisibles par tout utilisateur connecté (comme
   // GET /api/preuves) ; un contributeur ne les voit que sur SON action.
-  res.json({ action: actionPourRole(a, req.user.role), historique, preuves: await preuvesLiees("action_qualite_id", id) });
+  res.json({ action: actionPourRole(a, req.user.role), historique, preuves: await preuvesLiees("action_qualite_id", id, req.user.role === "admin") }); // fix Q4-2 : justificatifs masqués au contributeur
 }));
 
 router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {
@@ -835,6 +837,9 @@ router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
            FROM signalements_qualite s`, [jour]),
     query("SELECT count(*)::int AS total FROM preuves"),
   ]);
+  // Q4-2 : justificatifs des intervenants — comptes seulement (admin) ; une
+  // pièce manquante n'est PAS une non-conformité.
+  const { resume: justificatifs } = await alertesJustificatifs();
   // Q3-2 : satisfaction des parties prenantes — faits seulement ; une
   // moyenne PAR échelle (jamais de mélange), aucune donnée individuelle.
   const [{ rows: [sg] }, { rows: parEchelle }] = await Promise.all([
@@ -904,6 +909,7 @@ router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
   res.json({
     aujourdhui: jour,
     kpis: { actions: ka, signalements: ks, preuves: { total: kp.total } },
+    justificatifs_intervenants: justificatifs,
     satisfaction: { reponses: sg.reponses, publics: sg.publics, periode: { du: sg.du, au: sg.au }, echelles: parEchelle },
     priorites,
     indicateurs,

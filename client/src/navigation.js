@@ -17,6 +17,7 @@ export const NAVIGATION = [
       { to: "/sessions", libelle: "Sessions" },
       { to: "/formations", libelle: "Formations", admin: true },
       { to: "/intervenants", libelle: "Intervenants" },
+      { to: "/justificatifs-intervenants", libelle: "Justificatifs des intervenants", admin: true },
     ],
   },
   {

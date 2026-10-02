@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q4-1-FINAL** — annuaire des formateurs et intervenants, rattachements sessions / groupes |
-| **Migration de production actuelle** | `023_intervenants.sql` (23 migrations, aucune 024) |
-| **Suite de tests** | **565/565 serveur + 321/321 client** (déployés avec Q4-1-FINAL) |
+| **Dernier lot validé en production** | **Q4-2-FINAL** — justificatifs des intervenants, alertes, confidentialité des preuves |
+| **Migration de production actuelle** | `024_justificatifs_intervenants.sql` (24 migrations, aucune 025) |
+| **Suite de tests** | **576/576 serveur + 329/329 client** (déployés avec Q4-2-FINAL) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2941,6 +2941,48 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
 - **Pour Q4-2** : justificatifs par intervenant (CV, diplômes, contrats) en réutilisant les
   preuves / Drive, dates de validité et alertes, sous-traitance (indicateur 27, V10 au
   01/11/2026), liste fermée des justificatifs à valider par Mme Stark.
+
+### Q4-2 — Justificatifs des intervenants et alertes
+
+- **Principe** : un justificatif est une **preuve existante** (module Preuves : fichiers Google
+  Drive, `type_alerte` / `date_echeance` / révision, `alerte_statut`) **rattachée** à un
+  intervenant — aucun nouveau stockage, aucune copie Drive, un seul système d'alertes ;
+  `preuves.indicateur_id` reste NOT NULL.
+- **Migration 024** `024_justificatifs_intervenants.sql` : `preuves_confidentielles` (preuve_id
+  PK, auteur, date), `intervenants_justificatifs_attendus` (PK intervenant + catégorie),
+  `intervenants_justificatifs` (intervenant, preuve, catégorie, date du document, auteur, date ;
+  UNIQUE intervenant + preuve ; `ON DELETE CASCADE` côté preuve, `RESTRICT` côté personne).
+  Catégories : cv, diplome, attestation, certification, contrat, autre — toutes facultatives ;
+  une pièce n'est « manquante » que si l'admin l'a désignée comme attendue.
+- **Confidentialité (audit des chemins puis protection serveur)** : chemins exposant une preuve
+  à un contributeur = `GET /api/preuves` (liste, recherche `q`, filtres `session`, `alerte`…),
+  `GET /api/preuves/:id`, `GET /api/veille/:id` (preuves de la veille), preuves liées d'une
+  action qualité (`GET /api/actions-qualite/:id`), documents générés d'une session
+  (`GET /api/sessions/:id`, lien Drive et `preuve_id`) ; les autres lectures sont admin
+  (signalements, tableau de bord, imports, recherche Drive) ou ne renvoient que des comptes
+  (`GET /api/referentiel`). Vigie ne télécharge aucun fichier : les liens Drive ne transitent
+  que par ces réponses. Filtre SQL **unique** `preuveVisibleContributeur()`
+  (`services/confidentialite.js`) appliqué à ces cinq routes pour tout non-admin (accès direct
+  ⇒ 404). Une preuve rattachée devient **définitivement** confidentielle (retirer le lien ne la
+  rend pas visible). Limite : les comptes par indicateur (`/api/referentiel`) incluent ces
+  preuves (aucun titre ni lien) ; le partage Drive lui-même reste géré dans Google Drive.
+- **API (admin uniquement)** : `GET /api/intervenants/:id/justificatifs` (lignes par catégorie,
+  documents, sous-traitance), `PUT …/justificatifs/attendus`, `POST …/justificatifs`
+  (preuve existante, catégorie, date du document ; doublon 409), `DELETE
+  …/justificatifs/:lienId` (rattachement seul ; preuve et fichiers conservés),
+  `GET /api/justificatifs-intervenants` (pilotage, intervenants actifs, une requête).
+- **États** : disponible > bientôt à renouveler > périmé (d'après `alerte_statut` de la preuve),
+  manquant si attendue et sans document ; un document à renouveler est signalé même si un autre
+  est valide. **Jamais présenté comme une non-conformité Qualiopi.**
+- **Sous-traitants** : bloc « Suivi de la sous-traitance » (contrat attendu ou non, état, contrat
+  rattaché avec date du contrat et échéance de la preuve) ; ni facturation, ni paie, ni règle V10.
+- **Interface** : fiche intervenant › « Justificatifs professionnels » (définir les pièces
+  attendues, rattacher une preuve avec avertissement de confidentialité, ouvrir le document,
+  retirer le lien confirmé) ; page admin **Formation › Justificatifs des intervenants** (résumé,
+  filtre par état, ouverture de la fiche `/intervenants?fiche=ID`) ; section compacte au tableau
+  de bord Qualité (requêtes toujours ≤ 15).
+- Tests : `justificatifs.test.js` (port 55458), `justificatifs.test.jsx` ; smoke Chrome 1440 /
+  390 avec admin et contributeur, réponses réseau inspectées. Migrations : **001 → 024**.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

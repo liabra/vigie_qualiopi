@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { JustificatifsIntervenant } from "./JustificatifsIntervenant.jsx";
 import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
@@ -27,6 +28,15 @@ export function IntervenantsPage({ admin }) {
     catch (e) { setErr(e.message); }
   }, []);
   useEffect(() => { charger(); }, [charger]);
+  // ?fiche=ID (depuis la synthèse des justificatifs) : ouvre la fiche (admin).
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = Number(params.get("fiche"));
+    if (!admin || !id || !liste) return;
+    const i = liste.find((x) => x.id === id);
+    if (i) setFiche(i);
+    setParams({}, { replace: true });
+  }, [admin, liste, params, setParams]);
 
   const lignes = liste ? filtrerIntervenants(liste, filtres) : [];
   const changer = (cle) => (e) => setFiltres((f) => ({ ...f, [cle]: e.target.value }));
@@ -206,6 +216,9 @@ function DrawerFiche({ intervenant, onFermer, onEnregistre }) {
             </label>
           ))}
         </fieldset>
+      </form>
+      {intervenant && <JustificatifsIntervenant intervenant={intervenant} />}
+      <div className="ui-form">
         {intervenant && (
           <section aria-label="Interventions">
             <h3 className="accompagnement-sections__titre">Interventions (historique)</h3>
@@ -218,7 +231,7 @@ function DrawerFiche({ intervenant, onFermer, onEnregistre }) {
             )}
           </section>
         )}
-      </form>
+      </div>
     </Drawer>
   );
 }

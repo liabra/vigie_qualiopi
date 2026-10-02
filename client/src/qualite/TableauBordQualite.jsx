@@ -78,6 +78,19 @@ export function TableauBordQualite() {
             <p className="sess-secondaire">« Sans preuve liée » est un repère de pilotage, pas une non-conformité.</p>
           </section>
 
+          {d.justificatifs_intervenants && (
+            <section className="qualite-section" aria-labelledby="tdb-justificatifs">
+              <h2 id="tdb-justificatifs" className="qualite-section__titre">Justificatifs des intervenants</h2>
+              <div className="qualite-compteurs">
+                <Tuile n={d.justificatifs_intervenants.manquants} libelle="Pièces attendues manquantes" />
+                <Tuile n={d.justificatifs_intervenants.bientot} libelle="Bientôt à renouveler" />
+                <Tuile n={d.justificatifs_intervenants.perimes} libelle="Périmés" />
+                <Tuile n={d.justificatifs_intervenants.intervenants} libelle="Intervenants concernés" />
+              </div>
+              <p className="sess-secondaire">Repère de suivi, pas une non-conformité. <Link to="/justificatifs-intervenants">Voir les justificatifs des intervenants</Link></p>
+            </section>
+          )}
+
           {d.satisfaction && (
             <section className="qualite-section" aria-labelledby="tdb-satisfaction">
               <h2 id="tdb-satisfaction" className="qualite-section__titre">Satisfaction des parties prenantes</h2>

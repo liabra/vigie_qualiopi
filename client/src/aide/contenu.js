@@ -14,10 +14,11 @@ const AIDE = {
     titre: "Accueil",
     sections: [
       {
-        titre: "Le tableau de bord",
+        titre: "Le poste de pilotage",
         lignes: [
-          "Vigie s'ouvre sur l'essentiel : vos sessions en cours, les prochaines sessions et les alertes opérationnelles.",
-          "Chaque carte vous mène à l'écran concerné en un clic.",
+          "L'administrateur voit la « Vue d'ensemble A2C », le contributeur « Mon espace de travail » : chacun ne voit que ce que son rôle permet.",
+          "« À traiter en priorité » liste au plus 10 points concrets, dans un ordre fixe : retards qualité d'abord, puis péremptions, dossiers stagiaires, recueils du besoin, mesures pédagogiques et échéances à venir. Chaque ligne ouvre l'écran concerné.",
+          "Aucun taux de conformité ni score n'est calculé : seulement des faits vérifiables. Le tableau de bord qualité détaillé reste dans le menu Qualité.",
         ],
       },
     ],

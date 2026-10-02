@@ -188,6 +188,9 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
             </button></>
           )}
         </div>
+        {data.perimetre_preuves === "accessibles" && (
+          <p className="muted small">Le statut de l'indicateur tient compte de toutes les preuves enregistrées, y compris celles réservées à l'administration.</p>
+        )}
       </div>
       {err && <p className="flash erreur">{err}</p>}
       {data.version.note && <p className="flash info">{data.version.note}</p>}

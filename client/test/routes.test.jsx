@@ -11,8 +11,8 @@ afterEach(demonter);
 test("« / » redirige vers /accueil pour un utilisateur connecté", async () => {
   await monter("/");
   await attendre(() => window.location.pathname === "/accueil");
-  await attendre(() => document.querySelector("h1")?.textContent === "Accueil");
-  assert.equal(document.title, "Accueil — Vigie Qualiopi");
+  await attendre(() => document.querySelector("h1")?.textContent === "Vue d'ensemble A2C");
+  assert.equal(document.title, "Vue d'ensemble A2C — Vigie Qualiopi");
 });
 
 test("/sessions affiche la liste des sessions", async () => {

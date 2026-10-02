@@ -2801,3 +2801,13 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Rattachement d'une preuve à un intervenant : confirmation explicite avec l'avertissement de
   confidentialité (Drive inchangé). Aucune migration, aucun justificatif modifié.
 - Tests : **577/577 serveur**, **330/330 client**, build OK.
+
+## 2026-10-02 — Q5-FINAL : poste de pilotage général (déployé)
+
+- `GET /api/pilotage/accueil` : synthèse transversale Q1 → Q4 construite selon le rôle par le
+  serveur, requêtes en nombre constant, sessions archivées / annulées exclues, jour de Cayenne.
+- Accueil admin « Vue d'ensemble A2C » / contributeur « Mon espace de travail » : résumé,
+  priorités ordonnées (≤ 10, liens réels), sessions et bénéficiaires, qualité et justificatifs
+  (admin) ou mes actions (contributeur), raccourcis.
+- Note du statut des indicateurs pour le contributeur. Aucune migration.
+- Tests : **585/585 serveur**, **331/331 client**, build OK ; smoke Chrome deux rôles.

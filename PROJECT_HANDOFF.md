@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q4-2-FINAL** — justificatifs des intervenants, alertes, confidentialité des preuves |
+| **Dernier lot validé en production** | **Q5-FINAL** — poste de pilotage général (Accueil par rôle) |
 | **Migration de production actuelle** | `024_justificatifs_intervenants.sql` (24 migrations, aucune 025) |
-| **Suite de tests** | **577/577 serveur + 330/330 client** (déployés avec la finition Q4-2) |
+| **Suite de tests** | **585/585 serveur + 331/331 client** (déployés avec Q5-FINAL) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2989,6 +2989,43 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
   de bord Qualité (requêtes toujours ≤ 15).
 - Tests : `justificatifs.test.js` (port 55458), `justificatifs.test.jsx` ; smoke Chrome 1440 /
   390 avec admin et contributeur, réponses réseau inspectées. Migrations : **001 → 024**.
+
+### Q5 — Poste de pilotage général (Accueil)
+
+- **Endpoint agrégé** `GET /api/pilotage/accueil` (`server/src/routes/pilotage.js`,
+  `requireAuth`) : réponse construite **selon le rôle** côté serveur, nombre de requêtes
+  **constant** (admin ≤ 15, contributeur ≤ 10), comptes seulement ; l'écran ne télécharge plus
+  les listes complètes (preuves, veilles, sessions, audits) — `client/src/accueil/format.js`
+  supprimé.
+- **Périmètre des compteurs** : sessions **non archivées et non annulées** ; « en cours » =
+  statut `en_cours` ; « à venir » = `planifiee` avec date de début ≥ aujourd'hui (jour civil de
+  Cayenne) ; inscriptions hors abandon ; dossier incomplet = `dossier_complet = false` ;
+  recueil à réaliser = recueil absent ou « à faire » (même règle que Q2-1) ; mesures = adaptations
+  « prévues » d'inscriptions actives ; comptes par lignes distinctes (aucun doublon).
+- **Admin** (« Vue d'ensemble A2C ») : + actions ouvertes / en retard (échéance < aujourd'hui) /
+  efficacité à vérifier, réclamations en cours / en retard, preuves périmées / bientôt / à
+  confirmer, justificatifs (résumé Q4-2), réponses de satisfaction (sessions non archivées),
+  actions de veille, dernier audit. **Contributeur** (« Mon espace de travail ») : sessions et
+  dossiers (déjà accessibles) + **ses** actions qualité seulement ; aucune donnée qualité
+  globale, preuve, justificatif, satisfaction, signalement, commentaire, lien Drive ou champ
+  handicap (vérifié par test).
+- **Priorités** (`services/pilotage.js`, pur) : ordre FIXE documenté — actions en retard,
+  réclamations en retard, efficacité à vérifier, preuves périmées, justificatifs périmés, pièces
+  manquantes, preuves à confirmer, puis par session (date de début) dossiers, recueils, mesures,
+  puis justificatifs et preuves bientôt, veille. Au plus **10** lignes ; « Voir toutes les
+  sessions » seulement si des lignes de session sont masquées. Chaque lien mène à une fiche, un
+  onglet de session ou un filtre existant (`/actions-qualite?statut=…`,
+  `/signalements-qualite?type=reclamation`, `/preuves?alerte=…`, `/preuves?a_confirmer=1`,
+  `/veille?vue=actions`, `/justificatifs-intervenants`).
+- **Écran** : A. En bref (4 tuiles), B. À traiter en priorité, C. Sessions et bénéficiaires,
+  D. Qualité et justificatifs (admin) / Mes actions qualité (contributeur), E. Raccourcis ;
+  chargement, erreur + Réessayer, « Actualisé à HH:MM » + Actualiser ; bandeau Drive (admin)
+  conservé. Le Tableau de bord qualité reste dans le menu Qualité (aucun second lien ambigu).
+  Aucun taux de conformité, taux de réponse ni score d'audit inventé.
+- **Indicateurs (contributeur)** : note « Le statut de l'indicateur tient compte de toutes les
+  preuves enregistrées, y compris celles réservées à l'administration. »
+- Tests : `pilotage.test.js` (port 55459), `accueil.test.jsx` réécrit ; smoke Chrome 1440 / 390
+  / 720 (zoom 200 %), deux rôles, réponses réseau inspectées. Migrations inchangées : **001 → 024**.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

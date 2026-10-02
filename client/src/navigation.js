@@ -29,6 +29,7 @@ export const NAVIGATION = [
       { to: "/audits", libelle: "Audits" },
       { to: "/actions-qualite", libelle: "Actions qualité" },
       { to: "/signalements-qualite", libelle: "Signalements", admin: true },
+      { to: "/synthese-satisfactions", libelle: "Synthèse des satisfactions", admin: true },
     ],
   },
   {

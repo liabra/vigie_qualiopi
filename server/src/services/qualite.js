@@ -198,3 +198,34 @@ export function transitionInvalide(tableau, action, statutActuel) {
   }
   return null;
 }
+
+// ── Q3-2 : provenance « satisfaction » d'une action (création seulement) ──
+export const PUBLICS_SATISFACTION = ["a_chaud", "a_froid", "financeur", "entreprise", "formateur", "prescripteur", "partenaire"];
+const CLES_PROVENANCE = ["satisfaction_id", "satisfaction_public", "satisfaction_du", "satisfaction_au"];
+export const provenanceEnvoyee = (corps = {}) => CLES_PROVENANCE.some((k) => Object.prototype.hasOwnProperty.call(corps, k));
+
+// Retourne null (pas de provenance), { reponse: id } ou { synthese: {...} },
+// ou { erreur }. Aucun texte libre : uniquement un identifiant, une période,
+// un public (la formation / session passent par les champs existants).
+export function lireProvenanceSatisfaction(corps = {}) {
+  if (!provenanceEnvoyee(corps)) return null;
+  if (corps.signalement_id !== undefined && corps.signalement_id !== null && corps.signalement_id !== "") {
+    return { erreur: "Une action ne peut pas provenir à la fois d'un signalement et d'un retour de satisfaction." };
+  }
+  if (corps.satisfaction_id !== undefined && corps.satisfaction_id !== null) {
+    const id = parseIdPositif(corps.satisfaction_id);
+    if (!id) return { erreur: "Identifiant de réponse de satisfaction invalide." };
+    if (["satisfaction_public", "satisfaction_du", "satisfaction_au"].some((k) => corps[k] !== undefined && corps[k] !== null)) {
+      return { erreur: "Une action issue d'une réponse reprend le public de la réponse : ne pas préciser de période ni de public." };
+    }
+    return { reponse: id };
+  }
+  const du = corps.satisfaction_du, au = corps.satisfaction_au;
+  if (!du || !au || dateOptionnelleInvalide(String(du)) || dateOptionnelleInvalide(String(au))) {
+    return { erreur: "Indiquez la période de la synthèse (dates AAAA-MM-JJ)." };
+  }
+  if (String(du) > String(au)) return { erreur: "Période de synthèse invalide : le début suit la fin." };
+  const pub = corps.satisfaction_public === undefined || corps.satisfaction_public === null || corps.satisfaction_public === "" ? null : corps.satisfaction_public;
+  if (pub !== null && !PUBLICS_SATISFACTION.includes(pub)) return { erreur: "Public de satisfaction inconnu." };
+  return { synthese: { satisfaction_du: String(du), satisfaction_au: String(au), satisfaction_public: pub } };
+}

@@ -20,7 +20,9 @@ import {
   TRANSITIONS_ACTION, TRANSITIONS_SIGNALEMENT,
   champsAction, champsSignalement, lireCauses, lireIndicateurs,
   prefixeReference, referencePour, datePlusJoursOuvres, transitionInvalide,
+  PUBLICS_SATISFACTION, lireProvenanceSatisfaction, provenanceEnvoyee,
 } from "../services/qualite.js";
+import { synthetiserSatisfactions } from "../services/satisfactionSynthese.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -454,7 +456,9 @@ const LIGNES_ACTION = `
 
 function actionPourRole(action, role) {
   if (role === "admin") return action;
-  const { signalement_objet, signalement_type, ...reste } = action;
+  // fix : un contributeur responsable ne récupère ni le lien vers la réponse
+  // de satisfaction d'origine, ni sa provenance (période, public).
+  const { signalement_objet, signalement_type, satisfaction_id, satisfaction_public, satisfaction_du, satisfaction_au, ...reste } = action;
   return { ...reste, signalement_reference: action.signalement_reference || null };
 }
 
@@ -505,6 +509,10 @@ router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {
   const { champs, erreur } = champsAction(corps);
   if (erreur) return res.status(400).json({ error: erreur });
   if (!champs.titre) return res.status(400).json({ error: "Titre obligatoire." });
+  // Q3-2 : provenance « satisfaction » (réponse ou synthèse), sans aucune
+  // donnée personnelle ni texte de la réponse.
+  const provenance = lireProvenanceSatisfaction(corps);
+  if (provenance?.erreur) return res.status(400).json({ error: provenance.erreur });
   const li = lireIndicateurs(corps);
   if (li.erreur) return res.status(400).json({ error: li.erreur });
 
@@ -514,6 +522,17 @@ router.post("/actions-qualite", requireAdmin, wrap(async (req, res) => {
     await verifierIndicateurs(client, li.ids ?? []);
     await verifierResponsable(client, champs.responsable_id);
     if (champs.signalement_id) await verifierSignalement(client, champs.signalement_id);
+    if (provenance?.reponse) {
+      const { rows: [sat] } = await client.query("SELECT id, session_id, type FROM satisfactions WHERE id = $1", [provenance.reponse]);
+      if (!sat) throw err400("Réponse de satisfaction introuvable.");
+      // La session est celle de la réponse : jamais un autre rattachement.
+      if (champs.session_id !== undefined && champs.session_id !== null && champs.session_id !== sat.session_id) {
+        throw err400("La session d'une action issue d'une réponse est celle de la réponse.");
+      }
+      Object.assign(champs, { session_id: sat.session_id, satisfaction_id: sat.id, satisfaction_public: sat.type, origine: "satisfaction" });
+    } else if (provenance?.synthese) {
+      Object.assign(champs, provenance.synthese, { origine: "satisfaction" });
+    }
     await reconcilierSessionFormation(client, champs, {});
     const reference = await referenceSuivante(client, "AQ");
     const colonnes = ["reference", ...Object.keys(champs), "cree_par"];
@@ -547,6 +566,10 @@ router.patch("/actions-qualite/:id", requireAdmin, wrap(async (req, res) => {
     if (avant.statut === "annulee") { await client.query("ROLLBACK"); return res.status(409).json({ error: "Une action annulée n'est plus modifiable." }); }
     const { champs, erreur } = champsAction(req.body || {}, avant);
     if (erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: erreur }); }
+    // Q3-2 : la provenance « satisfaction » est fixée à la création.
+    if (provenanceEnvoyee(req.body || {}) || (avant.origine === "satisfaction" && champs.signalement_id !== undefined)) {
+      await client.query("ROLLBACK"); return res.status(400).json({ error: "La provenance d'une action ne se modifie pas." });
+    }
     const li = lireIndicateurs(req.body || {});
     if (li.erreur) { await client.query("ROLLBACK"); return res.status(400).json({ error: li.erreur }); }
     if (!Object.keys(champs).length && li.ids === null) {
@@ -755,6 +778,41 @@ const RAISONS = {
 const EVENEMENTS_ACTIVITE = ["creation", "cloturer", "annuler", "rouvrir", "preuve_rattachee", "preuve_detachee"];
 const MAX_PRIORITES = 10;
 
+// ── Q3-2 : synthèse des satisfactions (multi-sessions, ADMIN) ──
+// Filtres : période (date de recueil), formation, public, session. Aucune
+// donnée individuelle n'est lue : ni répondant, ni commentaire, ni réponse.
+router.get("/qualite/satisfactions/synthese", requireAdmin, wrap(async (req, res) => {
+  const q = req.query;
+  const clauses = [], params = [];
+  const ajoute = (valeur, cond) => { params.push(valeur); clauses.push(cond.replace("?", `$${params.length}`)); };
+  for (const [cle, cond] of [["du", "f.date_recueil >= ?"], ["au", "f.date_recueil <= ?"]]) {
+    if (!q[cle]) continue;
+    if (!estDateValide(String(q[cle]))) return res.status(400).json({ error: `Date invalide (${cle}) : format attendu AAAA-MM-JJ.` });
+    ajoute(String(q[cle]), cond);
+  }
+  if (q.du && q.au && String(q.du) > String(q.au)) return res.status(400).json({ error: "Période invalide : le début suit la fin." });
+  for (const [cle, cond] of [["formation_id", "s.formation_id = ?"], ["session_id", "f.session_id = ?"]]) {
+    if (!q[cle]) continue;
+    const n = parseIdPositif(q[cle]);
+    if (!n) return res.status(400).json({ error: `Identifiant invalide (${cle}).` });
+    ajoute(n, cond);
+  }
+  if (q.type) {
+    if (!PUBLICS_SATISFACTION.includes(q.type)) return res.status(400).json({ error: "Public inconnu." });
+    ajoute(q.type, "f.type = ?");
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const { rows } = await query(
+    `SELECT f.session_id, f.type, f.date_recueil, f.note_globale, f.note_max,
+            s.reference, s.date_debut, s.date_fin, s.formation_id, fo.intitule AS formation
+     FROM satisfactions f
+     JOIN sessions s ON s.id = f.session_id
+     JOIN formations fo ON fo.id = s.formation_id
+     ${where}`, params);
+  res.json({ filtres: { du: q.du || null, au: q.au || null, formation_id: q.formation_id ? Number(q.formation_id) : null,
+    session_id: q.session_id ? Number(q.session_id) : null, type: q.type || null }, ...synthetiserSatisfactions(rows) });
+}));
+
 router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
   const brute = String(req.query.aujourdhui || "");
   if (brute && !estDateValide(brute)) return res.status(400).json({ error: "Date invalide (aujourdhui) : format attendu AAAA-MM-JJ." });
@@ -776,6 +834,15 @@ router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
                   count(*) FILTER (WHERE ${SIGNALEMENT_ACTIF} AND NOT ${PREUVE_LIEE_SIGNALEMENT})::int AS actifs_sans_preuve
            FROM signalements_qualite s`, [jour]),
     query("SELECT count(*)::int AS total FROM preuves"),
+  ]);
+  // Q3-2 : satisfaction des parties prenantes — faits seulement ; une
+  // moyenne PAR échelle (jamais de mélange), aucune donnée individuelle.
+  const [{ rows: [sg] }, { rows: parEchelle }] = await Promise.all([
+    query(`SELECT count(*)::int AS reponses, min(date_recueil) AS du, max(date_recueil) AS au,
+                  COALESCE(array_agg(DISTINCT type) FILTER (WHERE type IS NOT NULL), '{}') AS publics
+           FROM satisfactions`),
+    query(`SELECT note_max::float AS echelle, count(note_globale)::int AS reponses, round(avg(note_globale), 2)::float AS moyenne
+           FROM satisfactions WHERE note_globale IS NOT NULL GROUP BY note_max ORDER BY note_max`),
   ]);
 
   // Priorités : catégories dans un ordre FIXE, chacune triée de façon
@@ -837,6 +904,7 @@ router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
   res.json({
     aujourdhui: jour,
     kpis: { actions: ka, signalements: ks, preuves: { total: kp.total } },
+    satisfaction: { reponses: sg.reponses, publics: sg.publics, periode: { du: sg.du, au: sg.au }, echelles: parEchelle },
     priorites,
     indicateurs,
     activite_recente: activite,

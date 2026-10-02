@@ -81,7 +81,7 @@ test("navigation : « Tableau de bord qualité » en tête du groupe Qualité po
   const liens = liensNavigation();
   const i = liens.indexOf("Tableau de bord qualité");
   assert.ok(i >= 0);
-  assert.deepEqual(liens.slice(i, i + 8), ["Tableau de bord qualité", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Signalements", "Modèles de documents"]);
+  assert.deepEqual(liens.slice(i, i + 8), ["Tableau de bord qualité", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Signalements", "Synthèse des satisfactions"]);
   assert.ok(!liens.includes("Tableau de bord"), "ancien libellé retiré");
   const lien = [...document.querySelectorAll("nav a")].find((a) => a.textContent.trim() === "Tableau de bord qualité");
   assert.equal(lien.getAttribute("href"), "/tableau-de-bord-qualite", "route conservée");

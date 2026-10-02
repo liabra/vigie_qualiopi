@@ -209,7 +209,7 @@ test("contributeur : aucune action d'administration, actions pédagogiques prés
   await verifier("/sessions/1/stagiaires", ["Ajouter un stagiaire", "Importer un CSV"], ["Ajouter un groupe", "Modifier la session"]);
   await verifier("/sessions/1/assiduite", ["Saisir une absence"], []);
   await verifier("/sessions/1/evaluations", ["Ajouter une évaluation"], []);
-  await verifier("/sessions/1/satisfaction", ["Ajouter un recueil"], []);
+  await verifier("/sessions/1/satisfaction", [], ["Ajouter un recueil", "Importer des réponses (CSV Google Forms)"]); // Q3-2 : admin seulement
   await verifier("/sessions/1/documents", ["Générer un document"], ["Rattacher un document"]);
 });
 

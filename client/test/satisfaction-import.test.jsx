@@ -159,7 +159,8 @@ test("contributeur : résultats regroupés seulement, groupe < 5 masqué, aucun 
   assert.ok(t.includes("ne garantit pas à elle seule l'anonymat"));
   for (const x of ["Anonyme", "Commentaire", "Répondant", "Pièce"]) assert.ok(!t.includes(x), x);
   assert.ok(!bouton(IMPORTER), "import réservé à l'admin");
-  assert.ok(bouton("Ajouter un recueil"), "saisie manuelle conservée");
+  assert.ok(!bouton("Ajouter un recueil"), "Q3-2 : aucune saisie individuelle pour le contributeur");
+  assert.ok(!bouton("Créer une action qualité"));
   assert.ok(!appels.some((a) => a.chemin.includes("import")));
 });
 

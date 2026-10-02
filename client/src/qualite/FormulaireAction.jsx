@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { Alert, Button, Drawer, Field, FormSection, LoadingState } from "../ui/index.js";
 import { SelecteurIndicateurs } from "../veille/SelecteurIndicateurs.jsx";
 import { PRIORITES } from "./format.js";
+import { LIBELLE_ORIGINE_SATISFACTION, libellePublic, libelleProvenanceSynthese } from "./satisfaction-format.js";
 
 // Libellé d'un utilisateur assignable ; l'e-mail n'est affiché QUE pour
 // distinguer deux homonymes.
@@ -17,9 +18,17 @@ function libelleUtilisateur(u, tous = []) {
 // (création depuis la fiche d'un signalement) : signalement_id envoyé et
 // non modifiable — le serveur en déduit l'origine « signalement » ; session
 // / formation reprises du signalement, responsable seulement s'il est actif.
-export function FormulaireAction({ action = null, signalementSource = null, onFermer, onEnregistre }) {
+// `satisfactionSource` (Q3-2, création depuis un retour de satisfaction) :
+//   { mode: "reponse", satisfaction_id, session_id, type, date } — session
+//   de la réponse, non modifiable ; ou { mode: "synthese", du, au, type,
+//   formation_id, session_id } — formation / session seulement si filtrées.
+// Rien de la réponse (répondant, commentaire, fichier) n'est prérempli :
+// l'admin rédige lui-même le titre et la mesure envisagée.
+export function FormulaireAction({ action = null, signalementSource = null, satisfactionSource = null, onFermer, onEnregistre }) {
   const modification = action !== null;
-  const source = modification ? null : signalementSource;
+  const satisfaction = modification ? null : satisfactionSource;
+  const source = modification || satisfaction ? null : signalementSource;
+  const depart = source || satisfaction;
   const [valeurs, setValeurs] = useState(() => action ? {
     titre: action.titre || "",
     constat: action.constat || "",
@@ -33,8 +42,8 @@ export function FormulaireAction({ action = null, signalementSource = null, onFe
   } : {
     titre: "", constat: "", priorite: "", responsable_id: "", echeance: "",
     action_prevue: "", indicateur_ids: [],
-    session_id: source?.session_id ? String(source.session_id) : "",
-    formation_id: !source?.session_id && source?.formation_id ? String(source.formation_id) : "",
+    session_id: depart?.session_id ? String(depart.session_id) : "",
+    formation_id: !depart?.session_id && depart?.formation_id ? String(depart.formation_id) : "",
   });
 
   const [utilisateurs, setUtilisateurs] = useState(null);
@@ -90,6 +99,8 @@ export function FormulaireAction({ action = null, signalementSource = null, onFe
         formation_id: valeurs.session_id ? null : (valeurs.formation_id ? Number(valeurs.formation_id) : null),
       };
       if (source) corps.signalement_id = source.id;
+      if (satisfaction?.mode === "reponse") corps.satisfaction_id = satisfaction.satisfaction_id;
+      if (satisfaction?.mode === "synthese") Object.assign(corps, { satisfaction_du: satisfaction.du, satisfaction_au: satisfaction.au, satisfaction_public: satisfaction.type || null });
       const r = modification
         ? await api(`/api/actions-qualite/${action.id}`, { method: "PATCH", body: JSON.stringify(corps) })
         : await api("/api/actions-qualite", { method: "POST", body: JSON.stringify(corps) });
@@ -104,8 +115,12 @@ export function FormulaireAction({ action = null, signalementSource = null, onFe
   return (
     <Drawer
       ouvert onFermer={onFermer} fermable={!enCours}
-      titre={modification ? "Modifier l'action" : source ? "Action qualité liée" : "Nouvelle action qualité"}
-      description={modification ? action.reference : source ? `Signalement lié : ${source.reference}` : "Une action à mener pour améliorer ou corriger la situation."}
+      titre={modification ? "Modifier l'action" : source ? "Action qualité liée" : satisfaction ? LIBELLE_ORIGINE_SATISFACTION : "Nouvelle action qualité"}
+      description={modification ? action.reference : source ? `Signalement lié : ${source.reference}`
+        : satisfaction ? (satisfaction.mode === "reponse"
+          ? `Réponse de satisfaction (${libellePublic(satisfaction.type)}${satisfaction.date ? `, ${String(satisfaction.date).slice(0, 10).split("-").reverse().join("/")}` : ""})`
+          : libelleProvenanceSynthese(satisfaction))
+        : "Une action à mener pour améliorer ou corriger la situation."}
       pied={
         <>
           <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
@@ -119,6 +134,11 @@ export function FormulaireAction({ action = null, signalementSource = null, onFe
         {erreurServeur && <Alert ton="error" titre="L'action n'a pas été enregistrée.">{erreurServeur}</Alert>}
         {source && (
           <p className="sess-secondaire">Signalement lié : <strong>{source.reference}</strong>{source.objet ? ` — ${source.objet}` : ""} (non modifiable ici)</p>
+        )}
+        {satisfaction && (
+          <Alert ton="info" titre="Provenance enregistrée avec l'action">
+            Aucune réponse individuelle n'est recopiée (ni répondant, ni commentaire, ni fichier) : rédigez vous-même le titre et la mesure envisagée.
+          </Alert>
         )}
         <FormSection titre="Définition" colonnes={2}>
           <Field label="Titre" erreur={erreurs.titre} className="ui-field--large">
@@ -150,8 +170,8 @@ export function FormulaireAction({ action = null, signalementSource = null, onFe
           <Field label="Action prévue" facultatif aide="Ce qui va être fait, par qui, comment.">
             <textarea rows={3} value={valeurs.action_prevue} onChange={champ("action_prevue")} />
           </Field>
-          <Field label="Session" facultatif aide="Une session archivée peut être choisie : une action qualité peut être postérieure à la formation.">
-            <select value={valeurs.session_id} onChange={champ("session_id")}>
+          <Field label="Session" facultatif aide={satisfaction?.mode === "reponse" ? "Session de la réponse d'origine (non modifiable)." : "Une session archivée peut être choisie : une action qualité peut être postérieure à la formation."}>
+            <select value={valeurs.session_id} onChange={champ("session_id")} disabled={satisfaction?.mode === "reponse"}>
               <option value="">Aucune session</option>
               {sessions.map((s) => (
                 <option key={s.id} value={s.id}>{s.reference} — {s.formation}{s.archivee_le ? " (archivée)" : ""}</option>

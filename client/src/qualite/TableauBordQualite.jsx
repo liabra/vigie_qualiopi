@@ -6,6 +6,7 @@ import { useTitrePage } from "../pages/titre.js";
 import { formaterDate, formaterDateHeure } from "../sessions/format.js";
 import { aujourdhuiISO } from "./format.js";
 import { TRIS_INDICATEURS, filtrerIndicateurs, libelleActivite, libelleType, lienObjet } from "./tableau-bord-format.js";
+import { libellePublic, moyenneSurEchelle } from "./satisfaction-format.js";
 
 const Tuile = ({ n, libelle, ton }) => (
   <div className={"qualite-compteur" + (ton === "alerte" && n > 0 ? " qualite-compteur--alerte" : "")}>
@@ -76,6 +77,23 @@ export function TableauBordQualite() {
             </div>
             <p className="sess-secondaire">« Sans preuve liée » est un repère de pilotage, pas une non-conformité.</p>
           </section>
+
+          {d.satisfaction && (
+            <section className="qualite-section" aria-labelledby="tdb-satisfaction">
+              <h2 id="tdb-satisfaction" className="qualite-section__titre">Satisfaction des parties prenantes</h2>
+              {d.satisfaction.reponses === 0 ? <p className="sess-secondaire">Aucune réponse enregistrée.</p> : (
+                <dl className="sess-chiffres">
+                  <div><dt>Réponses enregistrées</dt><dd>{d.satisfaction.reponses}</dd></div>
+                  <div><dt>Publics interrogés</dt><dd>{d.satisfaction.publics.map(libellePublic).join(", ")}</dd></div>
+                  <div><dt>Période</dt><dd>du {formaterDate(d.satisfaction.periode.du)} au {formaterDate(d.satisfaction.periode.au)}</dd></div>
+                  {d.satisfaction.echelles.map((e) => (
+                    <div key={e.echelle}><dt>Moyenne (échelle sur {e.echelle})</dt><dd>{moyenneSurEchelle(e.moyenne, e.echelle)} <span className="sess-secondaire">({e.reponses} note(s))</span></dd></div>
+                  ))}
+                </dl>
+              )}
+              <p><Link to="/synthese-satisfactions">Voir la synthèse des satisfactions</Link></p>
+            </section>
+          )}
 
           <section className="qualite-section" aria-labelledby="tdb-priorites">
             <h2 id="tdb-priorites" className="qualite-section__titre">Priorités du moment</h2>

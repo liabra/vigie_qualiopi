@@ -496,13 +496,13 @@ test("un contributeur ne peut pas rattacher un fichier Drive à une évaluation"
 
 // ── Droits ───────────────────────────────────────────────────
 
-test("un contributeur consulte, crée et modifie", async () => {
+test("un contributeur consulte, crée et modifie les évaluations ; satisfaction : écriture réservée à l'admin (Q3-2)", async () => {
   baseSimulee({ evaluations: [{ id: 1, inscription_id: 10, type: "qcm", date_passage: "2026-03-02" }] }).installer();
   assert.equal((await appel("/api/sessions/1/evaluations", { utilisateur: CONTRIBUTEUR })).statut, 200);
   assert.equal((await appel("/api/sessions/1/satisfactions", { utilisateur: CONTRIBUTEUR })).statut, 200);
   assert.equal((await creerEvaluation({ inscription_id: 10, type: "qcm", date_passage: "2026-03-02" }, CONTRIBUTEUR)).statut, 201);
   assert.equal((await appel("/api/evaluations/1", { methode: "PATCH", corps: { resultat: "valide" }, utilisateur: CONTRIBUTEUR })).statut, 200);
-  assert.equal((await creerSatisfaction({ type: "a_chaud", date_recueil: "2026-03-05" }, CONTRIBUTEUR)).statut, 201);
+  assert.equal((await creerSatisfaction({ type: "a_chaud", date_recueil: "2026-03-05" }, CONTRIBUTEUR)).statut, 403);
 });
 
 test("un visiteur anonyme est refusé partout (401)", async () => {

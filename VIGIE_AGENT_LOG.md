@@ -2756,3 +2756,15 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   commentaires libres.
 - Tests : **545/545 serveur**, **306/306 client**, build OK ; smoke Chrome 1440 / 390.
   Migrations **001 → 021** (aucune nouvelle).
+
+## 2026-10-02 — Q3-2-FINAL : exploitation des satisfactions (déployé) — Q3 terminé
+
+- Écritures de satisfaction (saisie, import, modification) réservées à l'admin (403 contributeur).
+- Synthèse multi-sessions admin (`/synthese-satisfactions`) : filtres, publics, moyennes et
+  répartitions par échelle (jamais mélangées), sessions sources, taux « non disponible ».
+- Migration **022** : origine `satisfaction` et provenance des actions qualité (réponse ou
+  synthèse) ; `FormulaireAction` réutilisé ; rien de la réponse recopié ; provenance immuable et
+  masquée au contributeur responsable. Aucune action automatique.
+- Tableau de bord : section « Satisfaction des parties prenantes ».
+- Tests fiabilisés : horloge maîtrisée côté client ; date d'abandon (Cayenne) côté serveur.
+- Tests : **555/555 serveur**, **314/314 client**, build OK ; smoke Chrome. Migrations **001 → 022**.

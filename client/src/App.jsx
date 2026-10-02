@@ -28,6 +28,7 @@ import { ActionFiche } from "./qualite/ActionFiche.jsx";
 import { SignalementsListe } from "./qualite/SignalementsListe.jsx";
 import { SignalementFiche } from "./qualite/SignalementFiche.jsx";
 import { TableauBordQualite } from "./qualite/TableauBordQualite.jsx";
+import { SyntheseSatisfactions } from "./qualite/SyntheseSatisfactions.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -186,6 +187,7 @@ export default function App() {
         <Route path="actions-qualite" element={<ActionsListe admin={isAdmin} />} />
         <Route path="actions-qualite/:actionId" element={<ActionPage admin={isAdmin} />} />
         <Route path="tableau-de-bord-qualite" element={admin(<TableauBordQualite />)} />
+        <Route path="synthese-satisfactions" element={admin(<SyntheseSatisfactions />)} />
         <Route path="signalements-qualite" element={admin(<SignalementsListe />)} />
         <Route path="signalements-qualite/:signalementId" element={admin(<SignalementPage />)} />
 

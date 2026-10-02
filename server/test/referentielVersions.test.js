@@ -18,7 +18,6 @@ const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
 const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
-const aujourdhui = () => new Date().toISOString().slice(0, 10);
 
 // Contenu technique minimal (fictif, non réglementaire) : une version qui en
 // dispose peut être activée, une coquille non. C'est la seule garde demandée :

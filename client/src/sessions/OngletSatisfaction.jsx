@@ -3,8 +3,10 @@ import { api } from "../api.js";
 import { RechercheDrive } from "../RechercheDrive.jsx";
 import { Alert, Badge, Button, Drawer, EmptyState, Field, FormSection } from "../ui/index.js";
 import { formaterDate } from "./format.js";
+import { FormulaireAction } from "../qualite/FormulaireAction.jsx";
+import { PUBLICS_SATISFACTION } from "../qualite/satisfaction-format.js";
 
-export const TYPES_SATISFACTION = { a_chaud: "À chaud", a_froid: "À froid", financeur: "Financeur", entreprise: "Entreprise", formateur: "Formateur", prescripteur: "Prescripteur", partenaire: "Partenaire" };
+export const TYPES_SATISFACTION = PUBLICS_SATISFACTION;
 const NOTE_MAX = 5; // échelle proposée par défaut ; les échelles existantes sont conservées
 const lienDrive = (id) => `https://drive.google.com/file/d/${id}/view`;
 const vide = () => ({ type: "a_chaud", inscription_id: "", date_recueil: "", note_globale: "", note_max: "5", commentaires: "", fichier: null });
@@ -12,15 +14,18 @@ export const MSG_INSUFFISANT = "Résultats insuffisants pour une restitution reg
 const AIDE_ANONYMAT = "Une réponse anonyme n'est rattachée à aucun stagiaire : ni nom ni adresse e-mail ne sont conservés. Les commentaires libres peuvent néanmoins permettre de reconnaître quelqu'un ; ils restent réservés à l'administrateur.";
 const moyenneTexte = (moyenne, echelle) => (moyenne !== null && moyenne !== undefined ? `${moyenne} / ${echelle}` : "Non calculable (échelles différentes)");
 
-// Onglet Satisfaction. ADMIN : réponses individuelles, commentaires, imports.
+// Onglet Satisfaction. ADMIN : réponses individuelles, commentaires, saisie,
+// imports, modification, action qualité depuis une réponse.
 // CONTRIBUTEUR : résultats REGROUPÉS par public seulement (le serveur ne lui
-// renvoie rien d'individuel), groupes de moins de 5 réponses non restitués.
+// renvoie rien d'individuel et refuse toute écriture), groupes de moins de 5
+// réponses non restitués.
 export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, notifier, archivee }) {
   const { session, stagiaires } = donnees;
   const sa = donnees.satisfactions;
   const [formulaire, setFormulaire] = useState(null);
   const [importOuvert, setImportOuvert] = useState(false);
-  const saisie = peutSaisir && !archivee;
+  const [actionDepuis, setActionDepuis] = useState(null); // réponse source d'une action qualité
+  const saisie = admin && peutSaisir && !archivee; // Q3-2 : écritures réservées à l'admin
 
   return (
     <div className="sess-sections">
@@ -29,12 +34,15 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
           <h2 id="titre-satisfaction" className="sess-section__titre">Satisfaction</h2>
           {saisie && (
             <div className="sess-actions">
-              {admin && <Button compact onClick={() => setImportOuvert(true)}>Importer des réponses (CSV Google Forms)</Button>}
+              <Button compact onClick={() => setImportOuvert(true)}>Importer des réponses (CSV Google Forms)</Button>
               <Button compact variante="primary" onClick={() => setFormulaire(vide())}>Ajouter un recueil</Button>
             </div>
           )}
         </div>
-        {sa.restreint ? <VueRegroupee sa={sa} /> : <VueAdmin sa={sa} saisie={saisie} onModifier={setFormulaire} onAjouter={() => setFormulaire(vide())} />}
+        {sa.restreint ? <VueRegroupee sa={sa} /> : (
+          <VueAdmin sa={sa} saisie={saisie} actions={admin} onModifier={setFormulaire} onAjouter={() => setFormulaire(vide())}
+            onAction={(f) => setActionDepuis({ mode: "reponse", satisfaction_id: f.id, session_id: session.id, type: f.type, date: f.date_recueil })} />
+        )}
       </section>
 
       {saisie && (
@@ -42,7 +50,11 @@ export function OngletSatisfaction({ donnees, admin, peutSaisir, recharger, noti
           onFermer={() => setFormulaire(null)}
           onFait={async (m) => { setFormulaire(null); notifier({ ton: "success", titre: m }); await recharger(); }} />
       )}
-      {saisie && admin && (
+      {actionDepuis && (
+        <FormulaireAction satisfactionSource={actionDepuis} onFermer={() => setActionDepuis(null)}
+          onEnregistre={(a) => { setActionDepuis(null); notifier({ ton: "success", titre: `Action ${a.reference} créée depuis ce retour de satisfaction.` }); }} />
+      )}
+      {saisie && (
         <DrawerImportSatisfaction ouvert={importOuvert} sessionId={session.id} onFermer={() => setImportOuvert(false)}
           onFait={async (b) => {
             setImportOuvert(false);
@@ -94,7 +106,7 @@ function VueRegroupee({ sa }) {
 }
 
 // Admin : réponses individuelles (répondant, commentaires, fichier source).
-function VueAdmin({ sa, saisie, onModifier, onAjouter }) {
+function VueAdmin({ sa, saisie, actions, onModifier, onAjouter, onAction }) {
   return (
     <>
       <Alert ton="info" titre="Confidentialité">{AIDE_ANONYMAT} Le contributeur ne voit que des résultats regroupés.</Alert>
@@ -128,12 +140,13 @@ function VueAdmin({ sa, saisie, onModifier, onAjouter }) {
                 <td data-label="Commentaire" className="sess-table__texte">{f.commentaires || "—"}</td>
                 <td className="sess-table__actions">
                   {f.drive_file_id && <a className="ui-btn ui-btn--ghost ui-btn--compact" href={lienDrive(f.drive_file_id)} target="_blank" rel="noreferrer">Pièce<span className="visually-hidden"> (nouvel onglet)</span></a>}
+                  {actions && <Button compact onClick={() => onAction(f)} aria-label={`Créer une action qualité depuis la réponse du ${formaterDate(f.date_recueil)}`}>Créer une action qualité</Button>}
                   {saisie && (
                     <Button compact onClick={() => onModifier({
                       id: f.id, type: f.type, inscription_id: f.inscription_id ? String(f.inscription_id) : "",
                       date_recueil: String(f.date_recueil || "").slice(0, 10), note_globale: f.note_globale ?? "",
                       note_max: String(Number(f.note_max)), commentaires: f.commentaires || "", fichier: null,
-                    })}>Modifier</Button>
+                    })}>Modifier la réponse</Button>
                   )}
                 </td>
               </tr>

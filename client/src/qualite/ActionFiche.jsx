@@ -7,6 +7,7 @@ import { FormulaireAction } from "./FormulaireAction.jsx";
 import { PreuvesLiees } from "./PreuvesLiees.jsx";
 import { ORIGINES, PRIORITES, STATUTS_ACTION, decrireEvenement, estEnRetard } from "./format.js";
 import { formaterDate, formaterDateHeure } from "../sessions/format.js";
+import { LIBELLE_ORIGINE_SATISFACTION, libellePublic, libelleProvenanceSynthese } from "./satisfaction-format.js";
 
 const Ligne = ({ libelle, children }) => (
   <div className="qualite-ligne">
@@ -101,8 +102,17 @@ export function ActionFiche({ actionId, admin }) {
         {action.origine === "signalement" && (
           <Badge ton="info">Signalement {action.signalement_reference}</Badge>
         )}
+        {action.origine === "satisfaction" && <Badge ton="info">{LIBELLE_ORIGINE_SATISFACTION}</Badge>}
         <span className="sess-secondaire">{action.reference} · {ORIGINES[action.origine] || action.origine}</span>
       </div>
+      {/* Provenance détaillée : admin seulement (le serveur ne l'envoie pas au contributeur). */}
+      {admin && action.origine === "satisfaction" && (
+        <p className="sess-secondaire">
+          {action.satisfaction_id
+            ? `Provenance : une réponse de satisfaction (${libellePublic(action.satisfaction_public)}) de la session liée — consultable dans son onglet Satisfaction.`
+            : `Provenance : ${libelleProvenanceSynthese({ du: action.satisfaction_du, au: action.satisfaction_au, type: action.satisfaction_public })}.`}
+        </p>
+      )}
 
       {erreurAction && <Alert ton="error" titre="L'action n'a pas pu être menée à bien.">{erreurAction}</Alert>}
 

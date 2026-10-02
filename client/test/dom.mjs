@@ -8,6 +8,7 @@ for (const cle of ["window", "document", "navigator", "HTMLElement", "Node", "Ev
   "KeyboardEvent", "PopStateEvent", "getComputedStyle", "sessionStorage", "localStorage"]) {
   Object.defineProperty(globalThis, cle, { value: cle === "window" ? w : w[cle], configurable: true, writable: true });
 }
+w.Date = globalThis.Date; // horloge maîtrisée installée par test/horloge.mjs
 globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
 globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

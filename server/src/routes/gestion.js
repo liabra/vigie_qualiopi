@@ -1715,7 +1715,9 @@ router.get("/sessions/:id/satisfactions", requireAuth, wrap(async (req, res) => 
   res.json({ satisfactions: rows, total: rows.length, agregation: agregerSatisfactions(rows), groupes: groupesSatisfaction(rows), seuil: SEUIL_RESTITUTION });
 }));
 
-router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, res) => {
+// Q3-2 : toute écriture de satisfaction (saisie, modification, import) est
+// réservée à l'admin ; le contributeur ne consulte que des résultats regroupés.
+router.post("/sessions/:id/satisfactions", requireAdmin, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   const corps = req.body || {};
@@ -1754,8 +1756,7 @@ router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, re
      VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
     valeurs
   );
-  // fix : le contributeur ne relit pas la réponse individuelle (ni commentaire, ni répondant, ni fichier).
-  res.status(201).json({ satisfaction: estAdmin(req.user) ? f : { id: f.id, session_id: f.session_id, type: f.type, date_recueil: f.date_recueil } });
+  res.status(201).json({ satisfaction: f });
 }));
 
 // Modification d'une réponse individuelle : admin seulement (le contributeur

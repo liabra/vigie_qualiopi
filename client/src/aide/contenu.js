@@ -177,6 +177,14 @@ const AIDE = {
       },
     ],
   },
+  syntheseSatisfactions: {
+    titre: "Synthèse des satisfactions",
+    sections: [
+      { titre: "À quoi sert cette page", lignes: ["Elle consolide les réponses de satisfaction de toutes les sessions, filtrables par période, formation, public et session.", "Chaque session renvoie à son onglet Satisfaction ; aucune réponse individuelle n'apparaît ici."] },
+      { titre: "Lire les résultats", lignes: ["Les moyennes sont calculées par échelle de notation (sur 5, sur 10…) et jamais mélangées.", "Le taux de réponse n'est pas affiché : le nombre de personnes réellement sollicitées n'est pas connu."] },
+      { titre: "Agir", lignes: ["« Créer une action qualité » enregistre la période, le public et, si vous les avez filtrées, la formation ou la session. La décision reste humaine : Vigie ne crée jamais d'action automatiquement."] },
+    ],
+  },
   tableauBordQualite: {
     titre: "Tableau de bord qualité",
     sections: [
@@ -275,6 +283,7 @@ const CLES = [
   ["/veille", "veille"],
   ["/audits", "audits"],
   ["/tableau-de-bord-qualite", "tableauBordQualite"],
+  ["/synthese-satisfactions", "syntheseSatisfactions"],
   ["/signalements-qualite", "signalements"],
   ["/actions-qualite", "actions"],
   ["/formations", "formations"],

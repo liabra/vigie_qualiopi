@@ -152,12 +152,12 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 
 // ── Migrations ───────────────────────────────────────────────
 
-test("migrations 001→021 appliquées depuis zéro, dans l'ordre", async () => {
+test("migrations 001→022 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 21, "21 migrations attendues");
+  assert.equal(noms.length, 22, "22 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
-  assert.match(noms[20], /^021_/, "finit par 021");
+  assert.match(noms[21], /^022_/, "finit par 022");
   // Tables clés présentes.
   for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite", "recueils_besoin", "adaptations_parcours", "suivis_inscription"]) {
     const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t]);
@@ -169,10 +169,10 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 21);
+  assert.equal(rows[0].n, 22);
 });
 
-test("montée incrémentale : base arrêtée à 010, données conservées après 011→021", async () => {
+test("montée incrémentale : base arrêtée à 010, données conservées après 011→022", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_incr");
@@ -193,11 +193,11 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
     "INSERT INTO inscriptions (stagiaire_id, session_id, statut, date_abandon, motif_abandon) SELECT $1, id, 'abandon', '2026-02-01', 'Motif historique' FROM sessions WHERE reference = 'SESS-HIST'",
     [st.id]);
 
-  // Finit la montée avec le vrai runner (011→021).
+  // Finit la montée avec le vrai runner (011→022).
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");
@@ -311,7 +311,7 @@ test("contributeur : saisies pédagogiques OK, administration refusée", async (
   assert.equal(sessions.statut, 200);
   const sessionId = sessions.corps.sessions[0].id;
 
-  // Autorisé : consulter, ajouter un stagiaire, une absence, une évaluation, une satisfaction.
+  // Autorisé : consulter, ajouter un stagiaire, une absence, une évaluation (pas la satisfaction : Q3-2).
   assert.equal((await api("GET", `/api/sessions/${sessionId}`, null, C)).statut, 200);
   const st = await api("POST", `/api/sessions/${sessionId}/stagiaires`, { nom: "Tonate", prenom: "Noé" }, C);
   assert.equal(st.statut, 201);
@@ -320,10 +320,11 @@ test("contributeur : saisies pédagogiques OK, administration refusée", async (
     date_passage: "2026-01-15", resultat: "non_determine",
   }, C);
   assert.equal(ev.statut, 201);
+  // Q3-2 : la satisfaction n'est plus saisie par le contributeur (403).
   const sat = await api("POST", `/api/sessions/${sessionId}/satisfactions`, {
     type: "a_froid", date_recueil: "2026-04-01", note_globale: 3, note_max: 5,
   }, C);
-  assert.equal(sat.statut, 201);
+  assert.equal(sat.statut, 403);
 
   // Refusé : administration / référentiel / veille / modèles / Drive / preuves.
   for (const [m, p, b] of [

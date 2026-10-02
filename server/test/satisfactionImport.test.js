@@ -112,9 +112,11 @@ test("préparation : session, deux stagiaires inscrits, session archivée", asyn
 
 test("migration 021 : publics prescripteur et partenaire acceptés ; type inconnu refusé ; réponses existantes intactes", async () => {
   for (const type of ["prescripteur", "partenaire"]) {
-    const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01", note_globale: 4, commentaires: "Avis fictif" }, C()));
+    const refus = await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01", note_globale: 4, commentaires: "Avis fictif" }, C());
+    assert.equal(refus.statut, 403, "Q3-2 : saisie manuelle refusée au contributeur");
+    assert.ok(!JSON.stringify(refus.corps).includes("Avis fictif"));
+    const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01", note_globale: 4 }, A()));
     assert.equal(r.satisfaction.type, type);
-    assert.deepEqual(Object.keys(r.satisfaction).sort(), ["date_recueil", "id", "session_id", "type"], "contributeur : réponse projetée, sans commentaire ni répondant");
   }
   assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "fournisseur", date_recueil: "2026-10-01" }, A())).statut, 400);
   await assert.rejects(pool.query("INSERT INTO satisfactions (session_id, type, date_recueil) VALUES ($1, 'fournisseur', '2026-10-01')", [F.session.id]));

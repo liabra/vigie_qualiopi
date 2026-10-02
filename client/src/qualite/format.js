@@ -22,6 +22,7 @@ export const PRIORITES = {
 export const ORIGINES = {
   manuel: "Manuelle",
   signalement: "Signalement",
+  satisfaction: "Retour de satisfaction",
 };
 
 // Date du jour LOCAL (même fuseau que l'utilisateur) au format ISO court.

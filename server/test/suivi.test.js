@@ -17,6 +17,7 @@ import { seedReferentiel } from "../src/seed.js";
 import { createApp } from "../src/app.js";
 import { encode } from "../src/session.js";
 import { lireAbandon, lireSuivi } from "../src/services/parcours.js";
+import { fixerHorlogeMetier } from "../src/services/dates.js";
 
 const PORT = 55452; // distinct des autres fichiers (55445-55447, 55449-55451)
 const DATA = path.join(os.tmpdir(), "vq-suivi-" + process.pid);
@@ -121,9 +122,11 @@ test("service : validation de l'abandon et du suivi, erreurs sans contenu", () =
 
 test("abandon historique (sans catégorie ni motif) : compatible, date par défaut inchangée, effectifs et assiduité inchangés", async () => {
   const avant = await nbInscritsSession();
-  const r = ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { statut: "abandon" }, C()));
+  fixerHorlogeMetier(() => new Date("2026-10-02T01:00:00Z")); // fix : horloge maîtrisée (1er octobre, 22 h à Cayenne)
+  let r;
+  try { r = ok(await api("PATCH", `/api/inscriptions/${F.lea}`, { statut: "abandon" }, C())); } finally { fixerHorlogeMetier(null); }
   assert.equal(r.inscription.statut, "abandon");
-  assert.equal(r.inscription.date_abandon, new Date().toISOString().slice(0, 10), "date du jour par défaut (règle existante)");
+  assert.equal(r.inscription.date_abandon, "2026-10-01", "date du jour (métier, Cayenne) par défaut");
   assert.equal(r.inscription.categorie_abandon, null);
   assert.equal(r.inscription.motif_abandon, null);
   assert.equal(await nbInscritsSession(), avant - 1, "sorti des effectifs attendus");

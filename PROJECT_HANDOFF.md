@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q3-1-FINAL** — satisfaction : import Google Forms (admin), publics prescripteur / partenaire, restitution regroupée au contributeur |
-| **Migration de production actuelle** | `021_satisfaction_publics.sql` (21 migrations, aucune 022) |
-| **Suite de tests** | **545/545 serveur + 306/306 client** (déployés avec Q3-1-FINAL) |
+| **Dernier lot validé en production** | **Q3-2-FINAL** — synthèse des satisfactions, actions qualité issues de la satisfaction (Q3 terminé) |
+| **Migration de production actuelle** | `022_actions_satisfaction.sql` (22 migrations, aucune 023) |
+| **Suite de tests** | **555/555 serveur + 314/314 client** (déployés avec Q3-2-FINAL) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2858,10 +2858,48 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
   garde sur les commentaires libres, compteur d'onglet masqué si résultats insuffisants.
 - Tests : `satisfactionImport.test.js` (port 55455) et `satisfaction-import.test.jsx` ; smoke
   Chrome 1440 / 390. Migrations : **001 → 021**.
-- Reste pour **Q3-2** : synthèse multi-sessions et taux de réponse, « Créer une action
-  qualité » depuis un avis, indicateurs de satisfaction au tableau de bord qualité.
-- Tests datés : `signalements-format.test.js` corrigé (02/10) ; d'autres jeux de test portent
-  des échéances proches (2026-10-15, 2026-10-19) : à surveiller.
+- Q3-2 et la fiabilisation des tests datés : voir la section suivante.
+
+### Q3-2 — Exploitation des satisfactions et amélioration continue (Q3 terminé)
+
+- **Droits de saisie (définitifs)** : ADMIN = réponses individuelles, saisie, import,
+  modification, synthèses, action qualité depuis un retour ; CONTRIBUTEUR = résultats regroupés
+  de l'onglet Satisfaction seulement (groupes < 5 masqués). `POST /sessions/:id/satisfactions`
+  passe en **`requireAdmin`** (403 au contributeur, comme `PATCH` et les imports) ; boutons
+  masqués dans React. Aucune réponse supprimée.
+- **Synthèse multi-sessions** (`GET /api/qualite/satisfactions/synthese`, `requireAdmin`,
+  page `/synthese-satisfactions`, menu Qualité) : filtres période (date de recueil),
+  formation, public, session ; réponses, répartition par public, **moyenne et répartition des
+  notes PAR échelle** (`note_max`), aucune moyenne globale dès que deux échelles coexistent ;
+  sessions concernées avec accès à leur onglet Satisfaction. Service pur
+  `services/satisfactionSynthese.js` ; aucune donnée individuelle lue (ni répondant,
+  commentaire, réponse, fichier).
+- **Taux de réponse** : toujours « Taux de réponse non disponible » — Vigie n'enregistre pas le
+  nombre de personnes réellement sollicitées et l'effectif d'une session n'est pas un
+  dénominateur fiable. À ajouter seulement si ce nombre est un jour saisi.
+- **Migration 022** `022_actions_satisfaction.sql` : `actions_qualite.origine` accepte
+  `satisfaction` ; colonnes `satisfaction_id` (FK `satisfactions`, `ON DELETE SET NULL`),
+  `satisfaction_public`, `satisfaction_du`, `satisfaction_au` ; contraintes : origine
+  satisfaction sans signalement, provenance seulement si origine satisfaction, période cohérente.
+- **Action qualité depuis un retour** (`POST /api/actions-qualite`, admin, `FormulaireAction`
+  réutilisé via `satisfactionSource`) :
+  - depuis une **réponse** : `satisfaction_id` ; session = celle de la réponse (imposée,
+    autre session ⇒ 400), public repris de la réponse ;
+  - depuis une **synthèse** : période, public, formation / session **seulement si filtrées**
+    (jamais de session unique inventée) ;
+  - rien n'est prérempli ni recopié (répondant, e-mail, commentaire, fichier) : l'admin rédige
+    titre et mesure ; provenance **non modifiable** ensuite (400) ;
+  - libellé neutre « Action issue d'un retour de satisfaction » ; un contributeur responsable
+    lit l'action mais **sans** `satisfaction_id` ni provenance (retirés par `actionPourRole`).
+- **Aucune automatisation** : aucune action, non-conformité ou seuil créé à partir des notes.
+- **Tableau de bord qualité** : section compacte « Satisfaction des parties prenantes »
+  (réponses, publics, période, moyenne par échelle) + lien vers la synthèse ; Q1 inchangé.
+- **Fiabilisation des tests** : horloge maîtrisée pour TOUS les tests client
+  (`client/test/horloge.mjs`, chargée par `enregistrer.mjs` : « maintenant » = 01/10/2026 12 h
+  à Cayenne) ; `suivi.test.js` comparait la date d'abandon au jour UTC (échec chaque soir entre
+  21 h et minuit depuis TIME-1) ⇒ horloge métier figée.
+- Tests : `satisfactionSynthese.test.js` (port 55456), `synthese-satisfactions.test.jsx` ;
+  smoke Chrome 1440 / 390. Migrations : **001 → 022**.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

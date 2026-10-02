@@ -211,6 +211,7 @@ export function ActionsListe({ admin }) {
                         {a.origine === "signalement" && (
                           <span className="sess-secondaire">Origine : Signalement {a.signalement_reference}</span>
                         )}
+                        {a.origine === "satisfaction" && <span className="sess-secondaire">Origine : retour de satisfaction</span>}
                         {retard && <Badge ton="error">En retard</Badge>}
                       </td>
                       <td data-label="Statut"><Badge ton={st.ton}>{st.libelle}</Badge></td>

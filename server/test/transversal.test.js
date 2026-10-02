@@ -152,14 +152,14 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 
 // ── Migrations ───────────────────────────────────────────────
 
-test("migrations 001→022 appliquées depuis zéro, dans l'ordre", async () => {
+test("migrations 001→023 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 22, "22 migrations attendues");
+  assert.equal(noms.length, 23, "23 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
-  assert.match(noms[21], /^022_/, "finit par 022");
+  assert.match(noms[22], /^023_/, "finit par 023");
   // Tables clés présentes.
-  for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite", "recueils_besoin", "adaptations_parcours", "suivis_inscription"]) {
+  for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite", "recueils_besoin", "adaptations_parcours", "suivis_inscription", "intervenants", "intervenants_sessions", "intervenants_groupes", "intervenants_formations"]) {
     const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t]);
     assert.equal(rowCount, 1, `table ${t} absente`);
   }
@@ -169,10 +169,10 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 22);
+  assert.equal(rows[0].n, 23);
 });
 
-test("montée incrémentale : base arrêtée à 010, données conservées après 011→022", async () => {
+test("montée incrémentale : base arrêtée à 010, données conservées après 011→023", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_incr");
@@ -193,11 +193,11 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
     "INSERT INTO inscriptions (stagiaire_id, session_id, statut, date_abandon, motif_abandon) SELECT $1, id, 'abandon', '2026-02-01', 'Motif historique' FROM sessions WHERE reference = 'SESS-HIST'",
     [st.id]);
 
-  // Finit la montée avec le vrai runner (011→022).
+  // Finit la montée avec le vrai runner (011→023).
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");

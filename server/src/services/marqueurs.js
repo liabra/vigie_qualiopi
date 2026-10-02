@@ -23,7 +23,12 @@
 //                            version de formation (duree_heures_defaut)
 //    {{intitule_formation}}  Intitulé de la formation
 //    {{lieu}}                Lieu du groupe, à défaut celui de la session
-//    {{formateur}}           Formateur du groupe, à défaut celui de la session
+//    {{formateur}}           Formateur(s) du groupe, à défaut de la session :
+//                            intervenants de fonction « formateur »
+//                            RATTACHÉS (annuaire, Q4-1) en priorité, sinon
+//                            le texte historique saisi — une session ou un
+//                            groupe jamais rattaché garde son rendu exact.
+//                            Plusieurs noms : « A, B et C » (triés par nom).
 //    {{nom_organisme}}       Nom de l'organisme (variable ORGANISME_NOM)
 //
 //  N'AJOUTEZ PAS de marqueur sans l'inscrire dans cette liste ET dans le
@@ -32,6 +37,8 @@
 //
 //  Module PUR : aucun appel réseau, entièrement testable hors ligne.
 // ─────────────────────────────────────────────────────────────
+
+import { nomsFormateurs } from "./intervenants.js";
 
 export const MARQUEURS = [
   "civilite",
@@ -88,7 +95,7 @@ const LIBELLE_STATUT = { planifiee: "Planifiée", en_cours: "En cours", terminee
 // valeur devient une chaîne vide : mieux vaut un blanc qu'un
 // « {{prenom_stagiaire}} » imprimé sur une convocation.
 // `assiduite` vient de calculerAssiduite (lot L2) : on ne RECALCULE rien ici.
-export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme, assiduite } = {}) {
+export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme, assiduite, formateursGroupe = [], formateursSession = [] } = {}) {
   const duree = session?.duree_heures_reelle ?? version?.duree_heures_defaut ?? null;
   return {
     civilite: stagiaire?.civilite ?? "",
@@ -101,7 +108,7 @@ export function valeursMarqueurs({ formation, version, session, groupe, stagiair
     duree: formaterDuree(duree),
     intitule_formation: formation?.intitule ?? "",
     lieu: groupe?.lieu || session?.lieu || "",
-    formateur: groupe?.formateur || session?.formateur || "",
+    formateur: nomsFormateurs(formateursGroupe) || groupe?.formateur || nomsFormateurs(formateursSession) || session?.formateur || "",
     nom_organisme: organisme ?? "",
     session_reference: session?.reference ?? "",
     session_statut: session?.statut ? (LIBELLE_STATUT[session.statut] ?? "") : "",

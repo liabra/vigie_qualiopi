@@ -91,6 +91,8 @@ export function routesParDefaut(role) {
       ],
     },
     "GET /api/sessions?etat=archivees": { sessions: [], total: 0 },
+    "GET /api/sessions/1/intervenants": { archivee: false, historique: { session: "M. Durand", groupes: [] }, session: [], groupes: {} },
+    "GET /api/intervenants": { intervenants: [], total: 0 },
     "POST /auth/logout": { ok: true },
     "GET /api/sessions/999": [404, { error: "Session introuvable." }],
     "GET /api/sessions/abc": [400, { error: "Identifiant de session invalide." }],

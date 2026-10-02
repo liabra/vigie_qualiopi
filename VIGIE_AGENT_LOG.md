@@ -2768,3 +2768,15 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Tableau de bord : section « Satisfaction des parties prenantes ».
 - Tests fiabilisés : horloge maîtrisée côté client ; date d'abandon (Cayenne) côté serveur.
 - Tests : **555/555 serveur**, **314/314 client**, build OK ; smoke Chrome. Migrations **001 → 022**.
+
+## 2026-10-02 — Q4-1-FINAL : annuaire des formateurs et intervenants (déployé)
+
+- Migration **023** : `intervenants` (+ formations, sessions, groupes), données professionnelles
+  seulement, aucun doublon, aucune suppression d'une personne déjà rattachée.
+- Page Formation › Intervenants (admin : création, modification, (dés)activation ; contributeur :
+  lecture limitée côté serveur) ; bloc « Intervenants » dans l'onglet Stagiaires avec
+  rapprochement MANUEL des formateurs historiques (textes conservés).
+- `{{formateur}}` : formateurs rattachés en priorité, sinon texte historique (rendu inchangé
+  pour l'existant) ; appui / référent handicap exclus ; « A, B et C ».
+- Session avec intervenants rattachés : non supprimable.
+- Tests : **565/565 serveur**, **321/321 client**, build OK ; smoke Chrome. Migrations **001 → 023**.

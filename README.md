@@ -268,7 +268,7 @@ d'origine n'est jamais modifié.
 | `{{duree}}` | durée prévue (déclarée) de la session — colonne `duree_heures_reelle` — à défaut celle de la version (`duree_heures_defaut`) |
 | `{{intitule_formation}}` | intitulé de la formation |
 | `{{lieu}}` | lieu du groupe, à défaut celui de la session |
-| `{{formateur}}` | formateur du groupe, à défaut celui de la session |
+| `{{formateur}}` | formateur(s) du groupe, à défaut de la session : intervenants « Formateur » rattachés depuis l'annuaire en priorité (« A, B et C », triés par nom), sinon le texte historique saisi — une session ou un groupe jamais rattaché garde son rendu exact |
 | `{{nom_organisme}}` | variable d'environnement `ORGANISME_NOM` |
 
 **N'ajoutez pas de marqueur sans l'inscrire ici et dans

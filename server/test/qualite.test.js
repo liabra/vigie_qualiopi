@@ -418,7 +418,7 @@ test("cohérence origine / signalement_id garantie par la base (CHECK)", async (
   );
 });
 
-test("installation existante 001→014 + données : 015 à 022 appliquées sans perte, preuves intactes", async () => {
+test("installation existante 001→014 + données : 015 à 023 appliquées sans perte, preuves intactes", async () => {
   const racine = cluster.getPgClient("postgres");
   await racine.connect();
   await racine.query("CREATE DATABASE vq_pre");
@@ -432,7 +432,7 @@ test("installation existante 001→014 + données : 015 à 022 appliquées sans 
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015", "016", "017", "018", "019", "020", "021", "022"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015", "016", "017", "018", "019", "020", "021", "022", "023"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-PRE'");
   assert.equal(n, 1, "la session antérieure a survécu à 015");

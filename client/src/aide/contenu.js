@@ -177,6 +177,13 @@ const AIDE = {
       },
     ],
   },
+  intervenants: {
+    titre: "Intervenants",
+    sections: [
+      { titre: "L'annuaire", lignes: ["Une fiche par personne : nom, fonction (formateur, référent handicap, personnel d'appui…), nature de l'intervention (salarié, extérieur, sous-traitant, porté), domaines de compétence et formations qu'elle peut animer.", "Données professionnelles uniquement. Une fiche se désactive mais ne se supprime pas : l'historique des sessions est conservé."] },
+      { titre: "Dans les sessions", lignes: ["Onglet Stagiaires › Intervenants : l'administrateur rattache une ou plusieurs fiches à la session et à chaque groupe.", "Un formateur saisi avant l'annuaire reste affiché tel quel ; « Rapprocher d'une fiche » permet de choisir soi-même la bonne personne. Le marqueur {{formateur}} utilise alors les formateurs rattachés."] },
+    ],
+  },
   syntheseSatisfactions: {
     titre: "Synthèse des satisfactions",
     sections: [
@@ -287,6 +294,7 @@ const CLES = [
   ["/signalements-qualite", "signalements"],
   ["/actions-qualite", "actions"],
   ["/formations", "formations"],
+  ["/intervenants", "intervenants"],
   ["/modeles", "modeles"],
   ["/prescripteurs", "prescripteurs"],
   ["/versions", "versions"],

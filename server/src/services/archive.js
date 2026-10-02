@@ -38,7 +38,8 @@ export const DEPENDANCES_SQL = `
     (SELECT count(*) FROM satisfactions f WHERE f.session_id = $1)::int AS satisfactions,
     (SELECT count(*) FROM generations g WHERE g.session_id = $1)::int AS generations,
     (SELECT count(*) FROM documents_generes d WHERE d.session_id = $1)::int AS documents_generes,
-    (SELECT count(*) FROM preuves p WHERE p.session_id = $1)::int AS preuves
+    (SELECT count(*) FROM preuves p WHERE p.session_id = $1)::int AS preuves,
+    (SELECT count(*) FROM intervenants_sessions x WHERE x.session_id = $1)::int AS intervenants
 `;
 
 // Renvoie { vide, blocages } : `blocages` = libellés des données présentes.
@@ -48,6 +49,7 @@ export async function dependancesSession(id) {
     groupes: "des groupes", inscriptions: "des inscriptions", absences: "des absences",
     resultats_qcm: "des évaluations", satisfactions: "des satisfactions",
     generations: "des générations", documents_generes: "des documents générés", preuves: "des preuves",
+    intervenants: "des intervenants rattachés", // Q4-1 : historique des intervenants jamais perdu par cascade
   };
   const blocages = Object.entries(d || {}).filter(([, n]) => Number(n) > 0).map(([cle]) => libelles[cle]);
   return { vide: blocages.length === 0, blocages };

@@ -16,6 +16,7 @@ export const NAVIGATION = [
     entrees: [
       { to: "/sessions", libelle: "Sessions" },
       { to: "/formations", libelle: "Formations", admin: true },
+      { to: "/intervenants", libelle: "Intervenants" },
     ],
   },
   {

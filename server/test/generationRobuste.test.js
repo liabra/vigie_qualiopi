@@ -73,6 +73,8 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     if (sql.startsWith("DELETE FROM preuve_fichiers")) return { rows: [] };
     if (sql.startsWith("INSERT INTO preuve_fichiers")) return { rows: [] };
     if (sql.startsWith("INSERT INTO documents_generes")) { noter("DB:documents_generes"); return { rows: [] }; }
+    // Q4-1 : intervenants rattachés — aucun (cas historique, rendu inchangé).
+    if (sql.startsWith("SELECT i.id, i.nom, i.prenom, i.fonction FROM intervenants_")) return { rows: [] };
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = {

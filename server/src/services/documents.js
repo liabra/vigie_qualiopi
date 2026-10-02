@@ -245,7 +245,13 @@ export async function contexteGeneration(sessionId, groupeId) {
     groupe = rows[0] || null;
     if (!groupe) throw new Error("Groupe introuvable dans cette session.");
   }
-  return { session, groupe, formation: { intitule: session.intitule }, version: { duree_heures_defaut: session.duree_heures_defaut },
+  // Q4-1 : intervenants rattachés (annuaire), une requête chacun, triés.
+  const formateurs = async (table, cle, id) => (id ? (await query(
+    `SELECT i.id, i.nom, i.prenom, i.fonction FROM ${table} l JOIN intervenants i ON i.id = l.intervenant_id
+     WHERE l.${cle} = $1 ORDER BY i.nom, i.prenom, i.id`, [id])).rows : []);
+  const formateursSession = await formateurs("intervenants_sessions", "session_id", session.id);
+  const formateursGroupe = await formateurs("intervenants_groupes", "groupe_id", groupe?.id);
+  return { session, groupe, formateursSession, formateursGroupe, formation: { intitule: session.intitule }, version: { duree_heures_defaut: session.duree_heures_defaut },
            // Durée prévue réellement déclarée, à défaut celle de la version
            // figée : la source unique du calcul d'assiduité (lot L2).
            heuresPrevues: session.duree_heures_reelle ?? session.duree_heures_defaut ?? null };

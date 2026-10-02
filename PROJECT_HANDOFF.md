@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q3-2-FINAL** — synthèse des satisfactions, actions qualité issues de la satisfaction (Q3 terminé) |
-| **Migration de production actuelle** | `022_actions_satisfaction.sql` (22 migrations, aucune 023) |
-| **Suite de tests** | **555/555 serveur + 314/314 client** (déployés avec Q3-2-FINAL) |
+| **Dernier lot validé en production** | **Q4-1-FINAL** — annuaire des formateurs et intervenants, rattachements sessions / groupes |
+| **Migration de production actuelle** | `023_intervenants.sql` (23 migrations, aucune 024) |
+| **Suite de tests** | **565/565 serveur + 321/321 client** (déployés avec Q4-1-FINAL) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2900,6 +2900,47 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
   21 h et minuit depuis TIME-1) ⇒ horloge métier figée.
 - Tests : `satisfactionSynthese.test.js` (port 55456), `synthese-satisfactions.test.jsx` ;
   smoke Chrome 1440 / 390. Migrations : **001 → 022**.
+
+### Q4-1 — Annuaire des formateurs et intervenants
+
+- **Migration 023** `023_intervenants.sql` : `intervenants` (civilité M./Mme facultative, nom,
+  prénom, e-mail professionnel facultatif et unique sans casse, `fonction` = formateur /
+  referent_handicap / appui / autre, `nature` = salarie / exterieur / sous_traitant / porte,
+  `domaines` text[], `actif`) ; associations `intervenants_formations`,
+  `intervenants_sessions`, `intervenants_groupes` (clés primaires composées = aucun doublon ;
+  `ON DELETE RESTRICT` côté personne : une personne déjà rattachée ne peut pas être supprimée).
+  Aucune colonne pour adresse, date de naissance, NIR, coordonnées bancaires ou santé ;
+  le corps des requêtes est filtré par liste blanche.
+- **API** (`server/src/routes/intervenants.js`) : `GET /api/intervenants` (recherche et
+  filtres, un appel), `GET /api/intervenants/:id` (admin : formations + historique des
+  sessions et groupes), `POST` / `PATCH` (admin ; désactivation / réactivation par `actif`, pas
+  de suppression) ; `GET /api/sessions/:id/intervenants` (rattachements + textes historiques) ;
+  `POST` / `DELETE` sur `/api/sessions/:id/intervenants[/:id]` et
+  `/api/sessions/:id/groupes/:groupeId/intervenants[/:id]` (admin ; groupe de CETTE session
+  sinon 404 ; doublon 409 ; inactif non rattachable 400 ; session archivée 409).
+- **Droits (serveur)** : CONTRIBUTEUR = nom, civilité, fonction, domaines, statut ; jamais
+  l'e-mail, la nature, les formations ni l'historique ; aucune écriture (403).
+- **Interface** : page **Formation › Intervenants** (recherche et filtres locaux, fiche,
+  formations animables, historique, (dés)activation confirmée) ; onglet **Stagiaires** de la
+  session : bloc « Intervenants » (session et chaque groupe), « Ajouter un intervenant »,
+  « Retirer », et pour un formateur saisi avant l'annuaire « Rapprocher d'une fiche » —
+  recherche pré-remplie avec le texte, choix toujours explicite, jamais de fusion par
+  ressemblance de noms. Lecture seule pour le contributeur et les sessions archivées.
+- **Textes historiques conservés** : `sessions.formateur` / `groupes.formateur` ne sont jamais
+  modifiés ; ils restent affichés.
+- **Marqueur `{{formateur}}`** : formateurs (fonction « formateur » seulement) rattachés au
+  groupe, sinon texte du groupe, sinon formateurs rattachés à la session, sinon texte de la
+  session — une session ou un groupe jamais rattaché garde son rendu exact ; plusieurs noms :
+  « Prénom Nom, Prénom Nom et Prénom Nom » triés par nom ; personnel d'appui et référent
+  handicap jamais ajoutés ; une fiche désactivée reste dans les documents (historique).
+- **Suppression de session** : une session ayant des intervenants rattachés n'est plus
+  supprimable (ajout à `DEPENDANCES_SQL`), pour ne jamais perdre l'historique par cascade.
+- Tests : `intervenants.test.js` (port 55457), `intervenants.test.jsx` ; smoke Chrome 1440 /
+  390 (rendu `{{formateur}}` vérifié avec le vrai code de génération sur base jetable ; la
+  copie Google Drive n'est pas exercée en local). Migrations : **001 → 023**.
+- **Pour Q4-2** : justificatifs par intervenant (CV, diplômes, contrats) en réutilisant les
+  preuves / Drive, dates de validité et alertes, sous-traitance (indicateur 27, V10 au
+  01/11/2026), liste fermée des justificatifs à valider par Mme Stark.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

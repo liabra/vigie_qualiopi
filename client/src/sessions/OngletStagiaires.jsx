@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { Alert, Badge, Button, Checkbox, ConfirmDialog, Drawer, EmptyState, Field, FormSection } from "../ui/index.js";
 import { CIVILITES, formaterDate, libellePrescripteur } from "./format.js";
 import { AIDE_ABANDON, CATEGORIES_ABANDON, MAX_MOTIF_ABANDON, corpsAbandon } from "./parcours-format.js";
+import { IntervenantsSession } from "../intervenants/IntervenantsSession.jsx";
 
 // Onglet Stagiaires : groupes, inscriptions, ajout, import CSV, dossier,
 // abandon. Lecture d'abord : les formulaires s'ouvrent à la demande.
@@ -44,6 +45,8 @@ export function OngletStagiaires({ donnees, annexes, admin, peutSaisir, recharge
 
   return (
     <div className="sess-sections">
+      {/* Q4-1 : remonté à chaque nouveau groupe pour proposer ses rattachements. */}
+      <IntervenantsSession key={groupes.map((g) => g.id).join("-")} sessionId={session.id} admin={admin} archivee={archivee} notifier={notifier} />
       <section className="sess-section" aria-labelledby="titre-groupes">
         <div className="sess-section__tete">
           <h2 id="titre-groupes" className="sess-section__titre">Groupes</h2>

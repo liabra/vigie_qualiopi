@@ -2793,3 +2793,11 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   automatique.
 - Tests : **576/576 serveur**, **329/329 client**, build OK ; smoke Chrome (admin + contributeur,
   réseau inspecté). Migrations **001 → 024**.
+
+## 2026-10-02 — Q4-2 : finition confidentialité (déployé)
+
+- Compteurs du référentiel hors admin limités aux preuves accessibles (« preuve(s)
+  accessible(s) ») ; admin inchangé ; statut des indicateurs identique pour tous.
+- Rattachement d'une preuve à un intervenant : confirmation explicite avec l'avertissement de
+  confidentialité (Drive inchangé). Aucune migration, aucun justificatif modifié.
+- Tests : **577/577 serveur**, **330/330 client**, build OK.

@@ -178,7 +178,7 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
           )}
         </div>
         <div className="muted small">
-          {data.score.preuves} preuve(s) rattachée(s)
+          {data.score.preuves} {data.perimetre_preuves === "accessibles" ? "preuve(s) accessible(s)" : "preuve(s) rattachée(s)"}
           {data.score.a_confirmer > 0 && (
             <span className="text-erreur"> · {data.score.a_confirmer} à confirmer</span>
           )}
@@ -217,7 +217,7 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
                       <p>{i.libelle}</p>
                       <div className="tags">
                         <span className={"pill statut-" + i.statut}>{STATUTS[i.statut]}</span>
-                        <span className="pill">{i.nb_preuves} preuve(s)</span>
+                        <span className="pill">{i.nb_preuves} {data.perimetre_preuves === "accessibles" ? "preuve(s) accessible(s)" : "preuve(s)"}</span>
                         {i.nb_a_confirmer > 0 && <span className="pill warn">{i.nb_a_confirmer} à confirmer</span>}
                         {i.type === "specifique" && <span className="pill spec">Spécifique</span>}
                         {TOUTES_CATEGORIES.every((c) => i.categories.includes(c))
@@ -261,7 +261,7 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
               {detail.non_applicable_force
                 ? <span className="pill statut-non_applicable">Non applicable{detail.non_applicable_motif ? ` · ${detail.non_applicable_motif}` : ""}</span>
                 : <span className="pill">Applicable</span>}
-              <span className="pill">{detail.nb_preuves} preuve(s)</span>
+              <span className="pill">{detail.nb_preuves} {data.perimetre_preuves === "accessibles" ? "preuve(s) accessible(s)" : "preuve(s)"}</span>
               {detail.nb_a_confirmer > 0 && <span className="pill warn">{detail.nb_a_confirmer} à confirmer</span>}
             </div>
             {detail.categories?.length > 0 && (

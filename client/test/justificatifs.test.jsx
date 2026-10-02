@@ -86,18 +86,30 @@ test("définir les pièces attendues : PUT de la liste choisie", async () => {
   assert.deepEqual(ecritures(appels)[0], { methode: "PUT", chemin: "/api/intervenants/2/justificatifs/attendus", corps: { categories: ["cv", "contrat", "certification"] } });
 });
 
-test("rattacher une preuve : avertissement de confidentialité, catégorie obligatoire, corps exact ; erreur ⇒ panneau ouvert ; double clic ⇒ un seul POST", async () => {
+const AVERTISSEMENT = "Attention : cette preuve deviendra confidentielle dans Vigie. Les contributeurs ne pourront plus la consulter, même si vous retirez ensuite ce rattachement. Ses autorisations Google Drive restent indépendantes.";
+const alerte = () => document.querySelector('[role="alertdialog"]');
+
+test("rattacher une preuve : confirmation EXPLICITE avec l'avertissement exact ; Annuler n'envoie rien ; corps exact ; erreur ⇒ saisie conservée ; double clic ⇒ un seul POST", async () => {
   const v = vanne();
   const appels = await ouvrirFiche({ "POST /api/intervenants/2/justificatifs": async () => { await v.attendre(); return [409, { error: "Cette preuve est déjà rattachée à cet intervenant." }]; } });
   await cliquer(bouton("Rattacher une preuve"));
   await attendre(() => dialogue().querySelector('button[aria-label="Rattacher la preuve Diplôme fictif"]'));
-  assert.ok(dialogue().textContent.includes("devient définitivement réservée à l'administrateur"));
+  assert.ok(dialogue().textContent.includes(AVERTISSEMENT), "avertissement affiché avant le choix");
   assert.equal(dialogue().querySelector('button[aria-label="Rattacher la preuve Diplôme fictif"]').disabled, true, "catégorie d'abord");
   await saisir(champ("Catégorie du justificatif"), "diplome");
   await saisir(champ("Date du document"), "2015-06-30");
   await saisir(champ("Rechercher une preuve"), "dipl");
   assert.ok(!dialogue().textContent.includes("Procédure d'accueil"), "recherche locale");
-  const b = dialogue().querySelector('button[aria-label="Rattacher la preuve Diplôme fictif"]');
+  await cliquer(dialogue().querySelector('button[aria-label="Rattacher la preuve Diplôme fictif"]'));
+  await attendre(() => alerte());
+  assert.ok(alerte().textContent.includes(AVERTISSEMENT) && alerte().textContent.includes("Diplôme fictif"));
+  assert.equal(ecritures(appels).length, 0, "rien avant confirmation");
+  await cliquer([...alerte().querySelectorAll("button")].find((x) => x.textContent === "Annuler"));
+  await attendre(() => !alerte());
+  assert.equal(ecritures(appels).length, 0, "Annuler n'envoie rien");
+  await cliquer(dialogue().querySelector('button[aria-label="Rattacher la preuve Diplôme fictif"]'));
+  await attendre(() => alerte());
+  const b = [...alerte().querySelectorAll("button")].find((x) => x.textContent === "Rattacher et rendre confidentielle");
   await cliquer(b); await cliquer(b);
   v.ouvrir();
   await attendre(() => dialogue()?.textContent.includes("déjà rattachée à cet intervenant"));
@@ -161,4 +173,23 @@ test("tableau de bord : section compacte et lien vers la synthèse", async () =>
   await attendre(() => texte().includes("Justificatifs des intervenants"));
   assert.ok(texte().includes("Pièces attendues manquantes") && texte().includes("Repère de suivi, pas une non-conformité."));
   assert.ok([...document.querySelectorAll('a[href="/justificatifs-intervenants"]')].some((a) => a.textContent === "Voir les justificatifs des intervenants"));
+});
+
+test("compteurs : « preuve(s) accessible(s) » pour le contributeur (Indicateurs) ; libellé complet pour l'admin ; Accueil : compteurs réservés à l'admin", async () => {
+  const REF = (perimetre) => ({
+    version: { id: 1, code: "V9" }, totalIndicateurs: 1, perimetre_preuves: perimetre,
+    score: { maitrise: 0, a_consolider: 0, a_risque: 1, non_applicable: 0, total: 1, preuves: 7, a_confirmer: 0 },
+    criteres: [{ id: 5, numero: 5, libelle: "Qualification des personnels", indicateurs: [
+      { id: 21, critere_id: 5, numero: 21, libelle: "Compétences des intervenants", type: "commun", statut: "a_risque", nb_preuves: 7, nb_a_confirmer: 0 }] }],
+  });
+  const resume = () => [...document.querySelectorAll(".muted.small")].map((e) => e.textContent).find((t) => /preuve\(s\)/.test(t)) || "";
+  await monter("/indicateurs", "contributeur", { "GET /api/referentiel": REF("accessibles") });
+  await attendre(() => resume().startsWith("7 preuve(s) accessible(s)"));
+  await demonter();
+  await monter("/indicateurs", "admin", { "GET /api/referentiel": REF("toutes") });
+  await attendre(() => resume().startsWith("7 preuve(s) rattachée(s)"));
+  await demonter();
+  await monter("/accueil", "contributeur", { "GET /api/referentiel": REF("accessibles") });
+  await attendre(() => texte().includes("Raccourcis"));
+  assert.ok(!texte().includes("Preuves rattachées") && !texte().includes("Indicateurs au vert"), "aucun compteur de preuves sur l'Accueil du contributeur");
 });

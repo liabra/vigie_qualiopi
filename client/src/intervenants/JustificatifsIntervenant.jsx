@@ -17,6 +17,7 @@ export function JustificatifsIntervenant({ intervenant }) {
   const [ajout, setAjout] = useState(null); // { categorie, date_document, q }
   const [preuves, setPreuves] = useState(null);
   const [aRetirer, setARetirer] = useState(null);
+  const [aRattacher, setARattacher] = useState(null); // preuve en attente de confirmation explicite
   const [erreurAction, setErreurAction] = useState(null);
   const [enCours, setEnCours] = useState(false);
   const verrou = useRef(false);
@@ -128,7 +129,7 @@ export function JustificatifsIntervenant({ intervenant }) {
                 <li key={p.id} className="suivi-inscription">
                   <span>{p.titre} <span className="sess-secondaire">— indicateur {p.indicateur}</span></span>
                   <Button compact variante="primary" disabled={enCours || !ajout.categorie} aria-label={`Rattacher la preuve ${p.titre}`}
-                    onClick={async () => { if (await executer(() => api(base, { method: "POST", body: JSON.stringify({ preuve_id: p.id, categorie: ajout.categorie, date_document: ajout.date_document || null }) }))) setAjout(null); }}>
+                    onClick={() => setARattacher(p)}>
                     Rattacher
                   </Button>
                 </li>
@@ -140,6 +141,17 @@ export function JustificatifsIntervenant({ intervenant }) {
         </div>
       )}
 
+      {/* Confirmation EXPLICITE avant de rendre une preuve confidentielle. */}
+      <ConfirmDialog ouvert={!!aRattacher} titre="Rendre cette preuve confidentielle ?" libelleConfirmer="Rattacher et rendre confidentielle" ton="danger" enCours={enCours}
+        onAnnuler={() => setARattacher(null)}
+        onConfirmer={async () => {
+          const p = aRattacher;
+          const fait = await executer(() => api(base, { method: "POST", body: JSON.stringify({ preuve_id: p.id, categorie: ajout.categorie, date_document: ajout.date_document || null }) }));
+          setARattacher(null);
+          if (fait) setAjout(null);
+        }}>
+        {aRattacher && <><p><strong>{aRattacher.titre}</strong></p><p>{AVERTISSEMENT_CONFIDENTIEL}</p></>}
+      </ConfirmDialog>
       <ConfirmDialog ouvert={!!aRetirer} titre="Retirer ce justificatif ?" libelleConfirmer="Retirer le lien" ton="danger" enCours={enCours}
         onAnnuler={() => setARetirer(null)}
         onConfirmer={async () => { await executer(() => api(`${base}/${aRetirer.id}`, { method: "DELETE" })); setARetirer(null); }}>

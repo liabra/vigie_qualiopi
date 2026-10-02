@@ -211,6 +211,23 @@ test("CONFIDENTIALITÉ : document généré d'une session devenu justificatif �
   assert.equal(ok(await api("GET", `/api/sessions/${F.session}`, undefined, A())).documents.length, 1, "admin : inchangé");
 });
 
+test("CONFIDENTIALITÉ : compteurs du référentiel — « preuves accessibles » pour le contributeur, comptes complets pour l'admin, même statut", async () => {
+  const { rows: [b] } = await pool.query(`SELECT count(*)::int AS toutes,
+      count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM preuves_confidentielles pc WHERE pc.preuve_id = p.id))::int AS accessibles,
+      (SELECT count(*)::int FROM preuves) AS total_toutes,
+      (SELECT count(*)::int FROM preuves q WHERE NOT EXISTS (SELECT 1 FROM preuves_confidentielles pc WHERE pc.preuve_id = q.id)) AS total_accessibles
+    FROM preuves p WHERE p.indicateur_id = $1`, [indicateurId]);
+  assert.ok(b.toutes > b.accessibles, "des justificatifs confidentiels existent sur l'indicateur");
+  const ind = (r) => r.criteres.flatMap((c) => c.indicateurs).find((i) => i.id === indicateurId);
+  const a = ok(await api("GET", "/api/referentiel", undefined, A()));
+  const c = ok(await api("GET", "/api/referentiel", undefined, C()));
+  assert.deepEqual([a.perimetre_preuves, c.perimetre_preuves], ["toutes", "accessibles"]);
+  assert.deepEqual([ind(a).nb_preuves, ind(c).nb_preuves], [b.toutes, b.accessibles]);
+  assert.deepEqual([a.score.preuves, c.score.preuves], [b.total_toutes, b.total_accessibles]);
+  assert.equal(ind(c).statut, ind(a).statut, "le statut officiel de l'indicateur est identique");
+  assert.ok(!JSON.stringify(c).includes(CV));
+});
+
 test("non-régression Q4-1 : annuaire contributeur inchangé, sans données documentaires", async () => {
   const c = ok(await api("GET", `/api/intervenants/${F.zoe}`, undefined, C()));
   assert.deepEqual(Object.keys(c.intervenant).sort(), ["actif", "civilite", "domaines", "fonction", "id", "nom", "prenom"]);

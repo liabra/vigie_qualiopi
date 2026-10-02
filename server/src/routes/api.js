@@ -46,7 +46,12 @@ router.get("/me", (req, res) => {
 });
 
 // Référentiel actif + tableau de bord de conformité.
-router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
+router.get("/referentiel", requireAuth, wrap(async (req, res) => {
+  // fix Q4-2 : hors admin, les COMPTES ne portent que sur les preuves
+  // accessibles (justificatifs confidentiels exclus). Le STATUT de
+  // l'indicateur reste l'état officiel, calculé sur toutes les preuves.
+  const admin = req.user.role === "admin";
+  const vis = admin ? "TRUE" : "pc.preuve_id IS NULL";
   const { rows: [version] } = await query(
     "SELECT id, code, libelle, date_publication, date_application, source, note FROM referentiel_versions WHERE est_active"
   );
@@ -55,18 +60,19 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
     query("SELECT id, numero, libelle FROM criteres WHERE version_id = $1 ORDER BY numero", [version.id]),
     query(
       `SELECT i.id, i.critere_id, i.numero, i.libelle, i.type, i.categories, i.gradation, i.texte_source_verifie,
-              count(p.id)::int AS nb_preuves,
-              count(p.id) FILTER (WHERE p.a_confirmer)::int AS nb_a_confirmer,
-              count(p.id) FILTER (WHERE p.incomplet)::int AS nb_incomplets,
-              count(p.id) FILTER (WHERE p.statut_effectif = 'maitrise')::int AS nb_maitrise,
-              count(p.id) FILTER (WHERE p.statut_effectif = 'a_consolider')::int AS nb_a_consolider,
-              count(p.id) FILTER (WHERE p.statut_effectif = 'a_risque')::int AS nb_a_risque,
-              count(p.id) FILTER (WHERE p.statut_effectif = 'non_applicable')::int AS nb_non_applicable,
+              count(p.id) FILTER (WHERE ${vis})::int AS nb_preuves,
+              count(p.id) FILTER (WHERE ${vis} AND p.a_confirmer)::int AS nb_a_confirmer,
+              count(p.id) FILTER (WHERE ${vis} AND p.incomplet)::int AS nb_incomplets,
+              count(p.id) FILTER (WHERE ${vis} AND p.statut_effectif = 'maitrise')::int AS nb_maitrise,
+              count(p.id) FILTER (WHERE ${vis} AND p.statut_effectif = 'a_consolider')::int AS nb_a_consolider,
+              count(p.id) FILTER (WHERE ${vis} AND p.statut_effectif = 'a_risque')::int AS nb_a_risque,
+              count(p.id) FILTER (WHERE ${vis} AND p.statut_effectif = 'non_applicable')::int AS nb_non_applicable,
               na.indicateur_id IS NOT NULL AS non_applicable_force,
               na.motif AS non_applicable_motif,
               ${STATUT_SQL} AS statut
        FROM indicateurs i
        LEFT JOIN preuves_enrichies p ON p.indicateur_id = i.id
+       LEFT JOIN preuves_confidentielles pc ON pc.preuve_id = p.id
        LEFT JOIN indicateurs_non_applicables na ON na.indicateur_id = i.id
        WHERE i.version_id = $1
        GROUP BY i.id, na.indicateur_id, na.motif ORDER BY i.numero`,
@@ -77,6 +83,8 @@ router.get("/referentiel", requireAuth, wrap(async (_req, res) => {
   res.json({
     version,
     totalIndicateurs: indicateurs.length,
+    // « toutes » (admin) ou « accessibles » (contributeur) : libellé côté écran.
+    perimetre_preuves: admin ? "toutes" : "accessibles",
     score: {
       total: indicateurs.length,
       maitrise: parStatut.maitrise || 0,

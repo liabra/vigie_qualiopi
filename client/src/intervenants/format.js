@@ -62,7 +62,7 @@ export const ETATS_JUSTIFICATIF = {
   manquant: { libelle: "Manquant", ton: "warning" },
 };
 export const MSG_PAS_NON_CONFORMITE = "Repère de suivi : une pièce manquante ou à renouveler n'est pas, en soi, une non-conformité Qualiopi.";
-export const AVERTISSEMENT_CONFIDENTIEL = "La preuve rattachée devient définitivement réservée à l'administrateur : les contributeurs ne la verront plus, nulle part dans Vigie.";
+export const AVERTISSEMENT_CONFIDENTIEL = "Attention : cette preuve deviendra confidentielle dans Vigie. Les contributeurs ne pourront plus la consulter, même si vous retirez ensuite ce rattachement. Ses autorisations Google Drive restent indépendantes.";
 // Validité affichée d'après la preuve (même système d'alertes que le module Preuves).
 export function validite(j) {
   const d = (x) => String(x).slice(0, 10).split("-").reverse().join("/");

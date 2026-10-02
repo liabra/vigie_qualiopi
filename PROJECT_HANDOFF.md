@@ -7,7 +7,7 @@
 | **État validé au** | 01/10/2026 |
 | **Dernier lot validé en production** | **Q4-2-FINAL** — justificatifs des intervenants, alertes, confidentialité des preuves |
 | **Migration de production actuelle** | `024_justificatifs_intervenants.sql` (24 migrations, aucune 025) |
-| **Suite de tests** | **576/576 serveur + 329/329 client** (déployés avec Q4-2-FINAL) |
+| **Suite de tests** | **577/577 serveur + 330/330 client** (déployés avec la finition Q4-2) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2964,8 +2964,12 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
   que par ces réponses. Filtre SQL **unique** `preuveVisibleContributeur()`
   (`services/confidentialite.js`) appliqué à ces cinq routes pour tout non-admin (accès direct
   ⇒ 404). Une preuve rattachée devient **définitivement** confidentielle (retirer le lien ne la
-  rend pas visible). Limite : les comptes par indicateur (`/api/referentiel`) incluent ces
-  preuves (aucun titre ni lien) ; le partage Drive lui-même reste géré dans Google Drive.
+  rend pas visible). **Finition** : les comptes de `/api/referentiel` (par indicateur et
+  totaux) excluent aussi ces preuves pour le contributeur (`perimetre_preuves: "accessibles"`,
+  libellé « preuve(s) accessible(s) ») ; l'admin garde les comptes complets ; le **statut**
+  officiel de l'indicateur reste calculé sur toutes les preuves (identique pour tous). Les
+  compteurs Qualité de l'Accueil sont déjà réservés à l'admin. Le partage Drive lui-même reste
+  géré dans Google Drive (aucune permission modifiée).
 - **API (admin uniquement)** : `GET /api/intervenants/:id/justificatifs` (lignes par catégorie,
   documents, sous-traitance), `PUT …/justificatifs/attendus`, `POST …/justificatifs`
   (preuve existante, catégorie, date du document ; doublon 409), `DELETE
@@ -2977,7 +2981,9 @@ définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et conf
 - **Sous-traitants** : bloc « Suivi de la sous-traitance » (contrat attendu ou non, état, contrat
   rattaché avec date du contrat et échéance de la preuve) ; ni facturation, ni paie, ni règle V10.
 - **Interface** : fiche intervenant › « Justificatifs professionnels » (définir les pièces
-  attendues, rattacher une preuve avec avertissement de confidentialité, ouvrir le document,
+  attendues, rattacher une preuve après CONFIRMATION explicite de l'avertissement « Attention :
+  cette preuve deviendra confidentielle dans Vigie… autorisations Google Drive indépendantes »,
+  ouvrir le document,
   retirer le lien confirmé) ; page admin **Formation › Justificatifs des intervenants** (résumé,
   filtre par état, ouverture de la fiche `/intervenants?fiche=ID`) ; section compacte au tableau
   de bord Qualité (requêtes toujours ≤ 15).

@@ -209,7 +209,7 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
           { to: `${base}/parcours`, libelle: "Accompagnement" },
           { to: `${base}/assiduite`, libelle: "Assiduité" },
           { to: `${base}/evaluations`, libelle: "Évaluations", compteur: donnees.evaluations?.agregation?.total ?? 0 },
-          { to: `${base}/satisfaction`, libelle: "Satisfaction", compteur: donnees.satisfactions?.agregation?.reponses ?? 0 },
+          { to: `${base}/satisfaction`, libelle: "Satisfaction", compteur: donnees.satisfactions?.agregation?.insuffisant ? null : (donnees.satisfactions?.agregation?.reponses ?? 0) },
           { to: `${base}/documents`, libelle: "Documents", compteur: donnees.documents.length + donnees.externes.length },
         ]}
       />

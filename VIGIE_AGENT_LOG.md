@@ -2743,3 +2743,16 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   e-mail jamais stocké, doublons détectés.
 - Test daté `signalements-format.test.js` corrigé (échéance devenue passée le 02/10).
 - Tests : **543/543 serveur**, **305/305 client**, build OK ; smoke Chrome. Migrations **001 → 021**.
+
+## 2026-10-02 — Q3-1-FINAL : satisfaction, décisions PO définitives (déployé)
+
+- Échelles de notation existantes conservées (la note « sur 5 » imposée par `81490f3` est
+  retirée) ; échelle du formulaire choisie à l'import ; moyennes jamais mélangées.
+- Confidentialité côté serveur : le contributeur ne reçoit que des résultats regroupés par
+  public, groupes de 1 à 4 réponses non restitués ; aucun nom, commentaire, réponse ni fichier.
+  Import et modification réservés à l'admin ; saisie manuelle contributeur conservée (réponse
+  projetée).
+- Import : questionnaire anonyme (défaut) ou nominatif (e-mail exact), mise en garde sur les
+  commentaires libres.
+- Tests : **545/545 serveur**, **306/306 client**, build OK ; smoke Chrome 1440 / 390.
+  Migrations **001 → 021** (aucune nouvelle).

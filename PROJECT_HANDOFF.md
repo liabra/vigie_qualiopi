@@ -5,9 +5,9 @@
 | **Projet** | `liabra/vigie_qualiopi` — branche `main` |
 | **Production** | Railway |
 | **État validé au** | 01/10/2026 |
-| **Dernier lot validé en production** | **Q3-1** — satisfaction : import Google Forms, publics prescripteur / partenaire, note sur 5 |
+| **Dernier lot validé en production** | **Q3-1-FINAL** — satisfaction : import Google Forms (admin), publics prescripteur / partenaire, restitution regroupée au contributeur |
 | **Migration de production actuelle** | `021_satisfaction_publics.sql` (21 migrations, aucune 022) |
-| **Suite de tests** | **543/543 serveur + 305/305 client** (déployés avec Q3-1) |
+| **Suite de tests** | **545/545 serveur + 306/306 client** (déployés avec Q3-1-FINAL) |
 | **Source de suivi récente** | `VIGIE_AGENT_LOG.md` |
 
 Ce document remplace le handoff Codex historique comme document de passation général du projet.  
@@ -2819,31 +2819,49 @@ Q1-B5 (tableau de bord qualité) : livré, voir ci-dessous.
 
 ### Q3-1 — Satisfaction : recueillir les avis (Google Forms reste l'outil de collecte)
 
-- **Décisions PO (02/10/2026)** : une enquête est **toujours rattachée à une session** ;
-  anonymat **inchangé** (admin et contributeur voient noms et commentaires, comme avant) ;
-  **note sur 5 imposée** pour les nouvelles réponses (les réponses historiques gardent leur
-  échelle) ; import **anonyme par défaut**, rapprochement par e-mail **seulement sur option**.
-- **Migration 021** `021_satisfaction_publics.sql` : publics `prescripteur` et `partenaire`
-  ajoutés à la liste fermée (`satisfactions_type_check` élargie, aucune donnée touchée).
-- **Note sur 5** : appliquée par l'API (`champsSatisfaction`) — `note_max` ≠ 5 refusé, sauf à
-  renvoyer l'échelle déjà enregistrée d'une réponse historique ; aucune contrainte SQL (les
-  anciennes réponses restent valides). Écran : « Note (sur 5) », plus de champ d'échelle.
-- **Import Google Forms** (`POST /api/sessions/:id/satisfactions/import-apercu` puis
-  `/import`, `requireRedacteur`, archivée ⇒ 409, transaction) : CSV de la feuille de réponses
-  lu par un parseur RFC 4180 dédié (`services/satisfactionImport.js` : cellules multilignes,
-  guillemets) ; horodateur ⇒ date du recueil (sinon date saisie à l'import) ; question de note
-  et de commentaire proposées puis ajustables ; note 0–5 (« 4 », « 4,5 », « 4 - Satisfait ») ;
-  toutes les réponses conservées dans `reponses` **sauf colonnes d'identité** (e-mail, nom,
-  prénom, téléphone…) ; e-mail jamais stocké ni renvoyé ; doublons détectés (réponse
-  identique, horodateur compris, déjà importée pour ce public) ; limites 2 000 réponses,
-  80 colonnes, 5 000 caractères par réponse.
-- Tests : `satisfactionImport.test.js` (port 55455) et `satisfaction-import.test.jsx` ;
-  smoke Chrome (1440 / 390) avec un vrai fichier CSV multiligne. Migrations : **001 → 021**.
-- Reste pour **Q3-2** (exploiter) : synthèse multi-sessions et taux de réponse, « Créer une
-  action qualité » depuis un avis, indicateurs de satisfaction au tableau de bord qualité.
-- Tests de dates figées : `signalements-format.test.js` dépendait de la date du jour
-  (échéance « 2026-10-01 » devenue passée) — corrigé (échéance 2099). D'autres jeux de test
-  portent des échéances proches (2026-10-15, 2026-10-19) : à surveiller.
+Livré en deux temps : `81490f3` (Q3-1), puis **Q3-1-FINAL** qui applique les décisions PO
+définitives ci-dessous (elles remplacent celles de `81490f3` : échelle et confidentialité).
+
+- **Décisions PO validées** : enquête **toujours liée à une session** (aucune enquête annuelle
+  ou hors session) ; publics **Prescripteur** et **Partenaire** ajoutés ; Google Forms reste
+  l'outil de collecte ; **échelles de notation existantes conservées** (jamais de moyenne entre
+  échelles différentes) ; aucune action qualité automatique ; confidentialité appliquée
+  **côté serveur**.
+- **Modèle** : `satisfactions.type` mélange des moments (`a_chaud`, `a_froid`) et des publics
+  (`financeur`, `entreprise`, `formateur`, puis `prescripteur`, `partenaire`). Conservé tel quel
+  pour la compatibilité (aucune réorganisation) ; affiché « Public interrogé ».
+- **Migration 021** `021_satisfaction_publics.sql` (déployée avec `81490f3`) : liste fermée
+  élargie aux deux publics, aucune donnée touchée. Son commentaire mentionne une note « sur 5 »
+  imposée par l'API : **règle retirée par Q3-1-FINAL** (migration déjà appliquée, non modifiée).
+- **Droits (API)** :
+  - ADMIN : réponses individuelles, commentaires, fichiers sources, modification, imports ;
+  - CONTRIBUTEUR : `GET /sessions/:id/satisfactions` ne renvoie que `{ restreint, seuil,
+    agregation, groupes }` regroupés par public — aucun répondant, commentaire, réponse
+    individuelle, `inscription_id` ni `drive_file_id` ; un groupe (et une session) de **1 à 4
+    réponses** n'est pas restitué (« Résultats insuffisants pour une restitution regroupée ») —
+    précaution, pas une garantie absolue d'anonymat ;
+  - le contributeur garde la **saisie manuelle** (`POST`), dont la réponse est projetée
+    (`id, session_id, type, date_recueil`) ; `PATCH /satisfactions/:id` et les deux routes
+    d'import passent en **`requireAdmin`**.
+- **Import Google Forms (admin)** : `POST /api/sessions/:id/satisfactions/import-apercu` puis
+  `/import` (transaction, archivée ⇒ 409) ; parseur RFC 4180 dédié
+  (`services/satisfactionImport.js` : cellules multilignes) ; horodateur ⇒ date (sinon date
+  saisie) ; question de note / commentaire proposées puis ajustables ; **échelle du
+  formulaire** saisie à l'import (5 par défaut, 1 à 100), conservée en `note_max` ;
+  questionnaire **anonyme** (défaut : aucun identifiant conservé) ou **nominatif**
+  (rapprochement par e-mail exact, inconnu ⇒ refusé, jamais d'association approximative) ;
+  e-mail et colonnes d'identité jamais stockés ni renvoyés ; CSV brut jamais enregistré ;
+  doublons (réponse identique, horodateur compris, déjà importée pour ce public) ignorés ;
+  objet de réponses sans prototype ; limites 2 000 réponses, 80 colonnes, 5 000 caractères,
+  corps 1 Mo.
+- **Écran** : explication de la confidentialité (admin), vue regroupée (contributeur), mise en
+  garde sur les commentaires libres, compteur d'onglet masqué si résultats insuffisants.
+- Tests : `satisfactionImport.test.js` (port 55455) et `satisfaction-import.test.jsx` ; smoke
+  Chrome 1440 / 390. Migrations : **001 → 021**.
+- Reste pour **Q3-2** : synthèse multi-sessions et taux de réponse, « Créer une action
+  qualité » depuis un avis, indicateurs de satisfaction au tableau de bord qualité.
+- Tests datés : `signalements-format.test.js` corrigé (02/10) ; d'autres jeux de test portent
+  des échéances proches (2026-10-15, 2026-10-19) : à surveiller.
 
 ### Inventaire RGPD technique (Q2-3) — à valider, rien n'est automatisé
 

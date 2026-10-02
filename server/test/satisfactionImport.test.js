@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────
-//  Q3-1 — Import des réponses Google Forms de satisfaction, publics
-//  prescripteur / partenaire, note sur 5. Base PostgreSQL RÉELLE et
-//  vierge + Express réelle. Données entièrement fictives.
+//  Q3-1 — Import des réponses Google Forms de satisfaction (admin), publics
+//  prescripteur / partenaire, échelles conservées, restitution REGROUPÉE au
+//  contributeur (seuil de 5 réponses). Base PostgreSQL RÉELLE et vierge +
+//  Express réelle. Données entièrement fictives.
 // ─────────────────────────────────────────────────────────────
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +17,7 @@ import { migrate } from "../src/migrate.js";
 import { seedReferentiel } from "../src/seed.js";
 import { createApp } from "../src/app.js";
 import { encode } from "../src/session.js";
-import { classerReponses, dateHorodateur, devinerColonnes, noteSur5, parserCsvComplet } from "../src/services/satisfactionImport.js";
+import { classerReponses, dateHorodateur, devinerColonnes, noteSurEchelle, parserCsvComplet } from "../src/services/satisfactionImport.js";
 
 const PORT = 55455; // distinct des autres fichiers (55445-55447, 55449-55454)
 const DATA = path.join(os.tmpdir(), "vq-satimport-" + process.pid);
@@ -87,10 +88,11 @@ test("pur : CSV multiligne, horodateur, note sur 5, colonnes proposées", () => 
   assert.equal(dateHorodateur("01/10/2026 18:12:05"), "2026-10-01");
   assert.equal(dateHorodateur("2026-10-01 18:12:05"), "2026-10-01");
   assert.equal(dateHorodateur("31/02/2026 10:00:00"), null);
-  assert.deepEqual(noteSur5("4 - Satisfait"), { valeur: 4 });
-  assert.deepEqual(noteSur5("3,5"), { valeur: 3.5 });
-  assert.deepEqual(noteSur5(""), { valeur: null });
-  assert.ok(noteSur5("6").erreur && noteSur5("Très satisfait").erreur);
+  assert.deepEqual(noteSurEchelle("4 - Satisfait"), { valeur: 4 });
+  assert.deepEqual(noteSurEchelle("3,5"), { valeur: 3.5 });
+  assert.deepEqual(noteSurEchelle(""), { valeur: null });
+  assert.ok(noteSurEchelle("6").erreur && noteSurEchelle("Très satisfait").erreur, "échelle par défaut : 5");
+  assert.deepEqual(noteSurEchelle("8", 10), { valeur: 8 }, "échelle du formulaire conservée");
   assert.equal(parserCsvComplet('a,b\n"non fermé,1').erreur, "Fichier mal formé : un guillemet n'est pas refermé.");
   const proto = classerReponses({ enTetes: ["Horodateur", "__proto__", "constructor"], lignes: [["01/10/2026 10:00:00", "{\"pollue\":1}", "x"]], options: {} });
   assert.equal(proto.resultats[0].reponses["__proto__"], "{\"pollue\":1}", "en-tête « __proto__ » = simple clé");
@@ -110,28 +112,28 @@ test("préparation : session, deux stagiaires inscrits, session archivée", asyn
 
 test("migration 021 : publics prescripteur et partenaire acceptés ; type inconnu refusé ; réponses existantes intactes", async () => {
   for (const type of ["prescripteur", "partenaire"]) {
-    const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01", note_globale: 4 }, C()));
+    const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01", note_globale: 4, commentaires: "Avis fictif" }, C()));
     assert.equal(r.satisfaction.type, type);
-    assert.equal(Number(r.satisfaction.note_max), 5);
+    assert.deepEqual(Object.keys(r.satisfaction).sort(), ["date_recueil", "id", "session_id", "type"], "contributeur : réponse projetée, sans commentaire ni répondant");
   }
   assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "fournisseur", date_recueil: "2026-10-01" }, A())).statut, 400);
   await assert.rejects(pool.query("INSERT INTO satisfactions (session_id, type, date_recueil) VALUES ($1, 'fournisseur', '2026-10-01')", [F.session.id]));
   await pool.query("DELETE FROM satisfactions");
 });
 
-test("note sur 5 imposée pour les nouvelles réponses ; réponse historique sur 10 conservée et modifiable", async () => {
-  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "a_chaud", date_recueil: "2026-10-01", note_globale: 8, note_max: 10 }, A())).corps.error, "La note de satisfaction se donne sur 5.");
-  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "a_chaud", date_recueil: "2026-10-01", note_globale: 6 }, A())).statut, 400);
-  const { rows: [h] } = await pool.query("INSERT INTO satisfactions (session_id, type, date_recueil, note_globale, note_max) VALUES ($1, 'a_chaud', '2026-09-30', 8, 10) RETURNING id", [F.session.id]);
-  ok(await api("PATCH", `/api/satisfactions/${h.id}`, { commentaires: "Corrigé", note_globale: 9, note_max: 10 }, A()));
-  assert.equal((await api("PATCH", `/api/satisfactions/${h.id}`, { note_max: 20 }, A())).statut, 400, "aucune nouvelle échelle");
-  const { rows: [apres] } = await pool.query("SELECT note_globale, note_max FROM satisfactions WHERE id = $1", [h.id]);
-  assert.deepEqual([Number(apres.note_globale), Number(apres.note_max)], [9, 10], "échelle historique intacte");
+test("échelles conservées : réponse sur 10 acceptée ; réponse historique intacte ; moyennes jamais mélangées entre échelles", async () => {
+  ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "a_chaud", date_recueil: "2026-10-01", note_globale: 8, note_max: 10 }, A()));
+  ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "a_chaud", date_recueil: "2026-10-01", note_globale: 4, note_max: 5 }, A()));
+  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type: "a_chaud", date_recueil: "2026-10-01", note_globale: 6, note_max: 5 }, A())).statut, 400, "note > échelle refusée");
+  const g = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, A()));
+  assert.equal(g.agregation.moyenne, null, "échelles différentes : aucune moyenne");
+  assert.deepEqual(g.groupes.map((x) => [x.type, x.reponses, x.moyenne, x.echelle]), [["a_chaud", 2, null, null]]);
   await pool.query("DELETE FROM satisfactions");
 });
 
 test("aperçu anonyme (défaut) : aucune écriture, e-mail jamais renvoyé, colonnes d'identité écartées", async () => {
-  const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_chaud" }, C()));
+  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_chaud" }, C())).statut, 403, "import réservé à l'admin");
+  const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_chaud" }, A()));
   assert.equal(await nbSatisfactions(), 0, "aperçu sans écriture");
   assert.deepEqual(r.resume, { importables: 3, invalides: 0, aVerifier: 0, doublons: 0 });
   assert.equal(r.rapprochement, false);
@@ -143,7 +145,9 @@ test("aperçu anonyme (défaut) : aucune écriture, e-mail jamais renvoyé, colo
 });
 
 test("import anonyme : 3 réponses, note sur 5, réponses sans e-mail ; réimport ⇒ doublons, aucune écriture", async () => {
-  const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, C()));
+  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, C())).statut, 403);
+  assert.equal(await nbSatisfactions(), 0);
+  const r = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, A()));
   assert.deepEqual([r.bilan.importees, r.bilan.anonymes, r.bilan.nominatives], [3, 3, 0]);
   const { rows } = await pool.query("SELECT inscription_id, type, date_recueil, note_globale, note_max, commentaires, reponses FROM satisfactions ORDER BY id");
   assert.ok(rows.every((x) => x.inscription_id === null && x.type === "a_chaud" && Number(x.note_max) === 5));
@@ -152,13 +156,13 @@ test("import anonyme : 3 réponses, note sur 5, réponses sans e-mail ; réimpor
   assert.equal(rows[0].reponses["Qu'avez-vous apprécié ?"], "Les mises en situation");
   assert.equal(rows[0].reponses.Horodateur, "01/10/2026 18:12:05");
   assert.ok(rows.every((x) => !JSON.stringify(x.reponses).includes("@")), "e-mail jamais stocké");
-  const ap = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_chaud" }, C()));
+  const ap = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_chaud" }, A()));
   assert.equal(ap.resume.doublons, 3);
-  assert.equal(ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, C())).bilan.importees, 0);
+  assert.equal(ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, A())).bilan.importees, 0);
   assert.equal(await nbSatisfactions(), 3);
   // Même fichier pour un AUTRE public : ce ne sont pas des doublons.
-  assert.equal(ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_froid" }, C())).resume.importables, 3);
-  const g = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, C()));
+  assert.equal(ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: FORMS, type: "a_froid" }, A())).resume.importables, 3);
+  const g = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, A()));
   assert.equal(g.agregation.anonymes, 3);
   assert.equal(g.agregation.moyenne, 4.17);
   await pool.query("DELETE FROM satisfactions");
@@ -179,6 +183,9 @@ test("rapprochement par e-mail (option) : nominatives pour les inscrits, e-mail 
 
 test("colonnes choisies, date du recueil sans horodateur, note hors échelle invalide, aucune écriture partielle", async () => {
   const sans = "Note,Remarque,Nom\n4,Bien,Martin\n7,Trop long,Bernard\n,,\n";
+  const sur10 = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: sans, type: "formateur", date_defaut: "2026-09-30", note_max: 10 }, A()));
+  assert.equal(sur10.resume.importables, 2, "échelle du formulaire sur 10 : 7 est valide");
+  assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: sans, type: "formateur", date_defaut: "2026-09-30", note_max: 0 }, A())).statut, 400, "échelle invalide");
   assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: sans, type: "formateur" }, A())).corps.error,
     "Le fichier n'a pas d'horodateur : indiquez la date du recueil.");
   const ap = ok(await api("POST", `/api/sessions/${F.session.id}/satisfactions/import-apercu`, { texte: sans, type: "formateur", date_defaut: "2026-09-30" }, A()));
@@ -206,4 +213,46 @@ test("garde-fous : public obligatoire, rapprochement sans colonne e-mail, fichie
   assert.equal((await api("POST", `/api/sessions/${F.archive.id}/satisfactions/import`, { texte: FORMS, type: "a_chaud" }, A())).statut, 409);
   assert.equal(await nbSatisfactions(), 0);
   assert.ok(!journal.some((l) => l.includes("@exemple.fr") || l.includes("Salle trop chaude")), "journaux sans e-mail ni réponse");
+});
+
+test("contributeur : résultats REGROUPÉS uniquement (aucun nom, commentaire, réponse ni fichier) ; groupe < 5 non restitué", async () => {
+  // 4 réponses « à chaud » (dont une nominative, avec fichier source), 6 « prescripteur » sur 5.
+  await pool.query(`INSERT INTO satisfactions (session_id, inscription_id, type, date_recueil, note_globale, note_max, commentaires, reponses, drive_file_id)
+    VALUES ($1, $2, 'a_chaud', '2026-09-30', 4, 5, 'Commentaire-identifiant-fictif', '{"Q":"R-fictive"}', 'DRV-SOURCE')`, [F.session.id, F.alice]);
+  for (let i = 0; i < 3; i++) await pool.query("INSERT INTO satisfactions (session_id, type, date_recueil, note_globale, note_max) VALUES ($1, 'a_chaud', '2026-09-30', 5, 5)", [F.session.id]);
+  for (let i = 0; i < 6; i++) await pool.query("INSERT INTO satisfactions (session_id, type, date_recueil, note_globale, note_max) VALUES ($1, 'prescripteur', '2026-09-30', $2, 5)", [F.session.id, 3 + (i % 2)]);
+  const c = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, C()));
+  const brut = JSON.stringify(c);
+  for (const interdit of ["Commentaire-identifiant-fictif", "R-fictive", "DRV-SOURCE", "Martin", "Alice", "inscription_id", "commentaires", "drive_file_id", "\"satisfactions\"", "anonymes", "nominatives"]) {
+    assert.ok(!brut.includes(interdit), `aucun « ${interdit} » pour le contributeur`);
+  }
+  assert.equal(c.restreint, true); assert.equal(c.seuil, 5);
+  assert.deepEqual(c.agregation, { reponses: 10, insuffisant: false, moyenne: 4, echelleHomogene: 5 });
+  assert.deepEqual(c.groupes.find((g) => g.type === "a_chaud"), { type: "a_chaud", insuffisant: true }, "4 réponses : non restitué");
+  assert.deepEqual(c.groupes.find((g) => g.type === "prescripteur"), { type: "prescripteur", insuffisant: false, reponses: 6, moyenne: 3.5, echelle: 5 });
+  // Admin : accès individuel complet, groupes inclus.
+  const a = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, A()));
+  assert.equal(a.satisfactions.length, 10);
+  assert.ok(JSON.stringify(a).includes("Commentaire-identifiant-fictif") && a.satisfactions.some((x) => x.nom === "Martin" && x.drive_file_id === "DRV-SOURCE"));
+  // Session de 1 à 4 réponses au total : rien de détaillé.
+  await pool.query("DELETE FROM satisfactions WHERE type = 'prescripteur'");
+  const peu = ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, C()));
+  assert.deepEqual(peu.agregation, { reponses: null, insuffisant: true, moyenne: null, echelleHomogene: null });
+  // Session sans réponse : simplement vide.
+  await pool.query("DELETE FROM satisfactions");
+  assert.deepEqual(ok(await api("GET", `/api/sessions/${F.session.id}/satisfactions`, undefined, C())).agregation, { reponses: 0, insuffisant: false, moyenne: null, echelleHomogene: null });
+});
+
+test("contributeur : modification d'une réponse refusée (403, rien d'écrit, rien renvoyé) ; anciens types et données historiques conservés", async () => {
+  const { rows: [h] } = await pool.query("INSERT INTO satisfactions (session_id, type, date_recueil, note_globale, note_max, commentaires) VALUES ($1, 'entreprise', '2025-12-01', 7, 10, 'Historique fictif') RETURNING id", [F.session.id]);
+  const r = await api("PATCH", `/api/satisfactions/${h.id}`, { commentaires: "x" }, C());
+  assert.equal(r.statut, 403);
+  assert.ok(!JSON.stringify(r.corps).includes("Historique fictif"));
+  for (const type of ["a_chaud", "a_froid", "financeur", "entreprise", "formateur"]) {
+    assert.equal((await api("POST", `/api/sessions/${F.session.id}/satisfactions`, { type, date_recueil: "2026-10-01" }, A())).statut, 201, type);
+  }
+  ok(await api("PATCH", `/api/satisfactions/${h.id}`, { note_globale: 8 }, A()));
+  const { rows: [apres] } = await pool.query("SELECT note_globale, note_max, commentaires FROM satisfactions WHERE id = $1", [h.id]);
+  assert.deepEqual([Number(apres.note_globale), Number(apres.note_max), apres.commentaires], [8, 10, "Historique fictif"], "échelle et commentaire historiques intacts");
+  await pool.query("DELETE FROM satisfactions");
 });

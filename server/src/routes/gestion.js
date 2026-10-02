@@ -28,7 +28,7 @@ import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "..
 import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
-import { NOTE_MAX_SATISFACTION, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
+import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -1663,6 +1663,38 @@ function agregerSatisfactions(rows) {
   return { reponses, anonymes, nominatives: reponses - anonymes, moyenne, echelleHomogene, echelles };
 }
 
+// Q3-1 : restitution REGROUPÉE par public (type). Une moyenne n'est calculée
+// que sur une échelle homogène : jamais de comparaison entre échelles.
+export const SEUIL_RESTITUTION = 5;
+function groupesSatisfaction(rows) {
+  const parType = new Map();
+  for (const r of rows) {
+    if (!parType.has(r.type)) parType.set(r.type, []);
+    parType.get(r.type).push(r);
+  }
+  return [...parType.entries()].map(([type, liste]) => {
+    const a = agregerSatisfactions(liste);
+    return { type, reponses: a.reponses, moyenne: a.moyenne, echelle: a.echelleHomogene, echelles: a.echelles };
+  });
+}
+// Vue CONTRIBUTEUR (fix confidentialité, appliquée côté serveur) : aucun
+// répondant, aucun commentaire, aucune réponse individuelle, aucun fichier
+// source ; un groupe de 1 à 4 réponses n'est pas restitué.
+function vueRegroupee(rows) {
+  const insuffisant = (n) => n > 0 && n < SEUIL_RESTITUTION;
+  const a = agregerSatisfactions(rows);
+  return {
+    restreint: true,
+    seuil: SEUIL_RESTITUTION,
+    agregation: insuffisant(a.reponses)
+      ? { reponses: null, insuffisant: true, moyenne: null, echelleHomogene: null }
+      : { reponses: a.reponses, insuffisant: false, moyenne: a.moyenne, echelleHomogene: a.echelleHomogene },
+    groupes: groupesSatisfaction(rows).map((g) => (insuffisant(g.reponses)
+      ? { type: g.type, insuffisant: true }
+      : { type: g.type, insuffisant: false, reponses: g.reponses, moyenne: g.moyenne, echelle: g.echelle })),
+  };
+}
+
 router.get("/sessions/:id/satisfactions", requireAuth, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
@@ -1679,7 +1711,8 @@ router.get("/sessions/:id/satisfactions", requireAuth, wrap(async (req, res) => 
      ORDER BY f.date_recueil DESC, f.id DESC`,
     [sessionId]
   );
-  res.json({ satisfactions: rows, total: rows.length, agregation: agregerSatisfactions(rows) });
+  if (!estAdmin(req.user)) return res.json(vueRegroupee(rows)); // fix : contributeur = résultats regroupés seulement
+  res.json({ satisfactions: rows, total: rows.length, agregation: agregerSatisfactions(rows), groupes: groupesSatisfaction(rows), seuil: SEUIL_RESTITUTION });
 }));
 
 router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, res) => {
@@ -1721,10 +1754,13 @@ router.post("/sessions/:id/satisfactions", requireRedacteur, wrap(async (req, re
      VALUES (${colonnes.map((_, i) => "$" + (i + 1)).join(", ")}) RETURNING *`,
     valeurs
   );
-  res.status(201).json({ satisfaction: f });
+  // fix : le contributeur ne relit pas la réponse individuelle (ni commentaire, ni répondant, ni fichier).
+  res.status(201).json({ satisfaction: estAdmin(req.user) ? f : { id: f.id, session_id: f.session_id, type: f.type, date_recueil: f.date_recueil } });
 }));
 
-router.patch("/satisfactions/:id", requireRedacteur, wrap(async (req, res) => {
+// Modification d'une réponse individuelle : admin seulement (le contributeur
+// n'a accès qu'aux résultats regroupés).
+router.patch("/satisfactions/:id", requireAdmin, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de satisfaction invalide." });
   const { rows: [avant] } = await query("SELECT * FROM satisfactions WHERE id = $1", [id]);
@@ -1776,7 +1812,9 @@ async function analyserImportSatisfaction(req, sessionId, corps) {
     colonne_commentaire: corps.colonne_commentaire === undefined ? proposees.colonne_commentaire : corps.colonne_commentaire,
     rapprocher_email: corps.rapprocher_email === true,
     date_defaut: corps.date_defaut || null,
+    note_max: corps.note_max === undefined || corps.note_max === null || corps.note_max === "" ? NOTE_MAX_DEFAUT : Number(corps.note_max),
   };
+  if (!Number.isFinite(options.note_max) || options.note_max <= 0 || options.note_max > 100) return { erreur: "Échelle de note invalide (nombre positif, 100 au plus)." };
   let parEmail = new Map();
   if (options.rapprocher_email) {
     const { rows } = await req(
@@ -1801,7 +1839,7 @@ function vueApercuSatisfaction(r) {
     enTetes: r.enTetes, resume: r.resume, horodateur: r.horodateur, rapprochement: r.rapprochement,
     colonneEmailPresente: r.colonneEmailPresente, colonnesEcartees: r.colonnesEcartees,
     colonne_horodateur: r.colonneHorodateur >= 0 ? r.colonneHorodateur : null,
-    colonne_note: r.options.colonne_note, colonne_commentaire: r.options.colonne_commentaire,
+    colonne_note: r.options.colonne_note, colonne_commentaire: r.options.colonne_commentaire, note_max: r.options.note_max,
     lignes: r.resultats.map((l) => ({
       index: l.index, statut: l.statut, motif: l.motif, stagiaire: l.stagiaire ?? null,
       date: l.date ?? null, note: l.note ?? null, commentaire: l.commentaire ?? null,
@@ -1809,7 +1847,7 @@ function vueApercuSatisfaction(r) {
   };
 }
 
-router.post("/sessions/:id/satisfactions/import-apercu", requireRedacteur, wrap(async (req, res) => {
+router.post("/sessions/:id/satisfactions/import-apercu", requireAdmin, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   if (!req.body?.texte || !String(req.body.texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
@@ -1820,7 +1858,7 @@ router.post("/sessions/:id/satisfactions/import-apercu", requireRedacteur, wrap(
   res.json(vueApercuSatisfaction(r));
 }));
 
-router.post("/sessions/:id/satisfactions/import", requireRedacteur, wrap(async (req, res) => {
+router.post("/sessions/:id/satisfactions/import", requireAdmin, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });
   if (!req.body?.texte || !String(req.body.texte).trim()) return res.status(400).json({ error: "Le fichier est vide." });
@@ -1838,7 +1876,7 @@ router.post("/sessions/:id/satisfactions/import", requireRedacteur, wrap(async (
       await cx.query(
         `INSERT INTO satisfactions (session_id, inscription_id, type, date_recueil, note_globale, note_max, commentaires, reponses)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [sessionId, l.inscriptionId ?? null, req.body.type, l.date, l.note, NOTE_MAX_SATISFACTION, l.commentaire, JSON.stringify(l.reponses)]
+        [sessionId, l.inscriptionId ?? null, req.body.type, l.date, l.note, r.options.note_max, l.commentaire, JSON.stringify(l.reponses)]
       );
       bilan.importees++;
       if (l.inscriptionId) bilan.nominatives++; else bilan.anonymes++;

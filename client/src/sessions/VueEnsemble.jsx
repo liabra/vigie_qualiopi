@@ -68,7 +68,9 @@ export function VueEnsemble({ donnees, base }) {
       </Carte>
 
       <Carte titre="Satisfaction" lien={`${base}/satisfaction`} libelleLien="Voir la satisfaction">
-        {sa && sa.reponses > 0 ? (
+        {sa?.insuffisant ? (
+          <p className="sess-secondaire">Résultats insuffisants pour une restitution regroupée.</p>
+        ) : sa && sa.reponses > 0 ? (
           <dl>
             <Ligne libelle="Réponses" valeur={sa.reponses} />
             <Ligne

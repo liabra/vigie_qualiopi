@@ -1,6 +1,7 @@
-// Q3-1 — Satisfaction : import des réponses Google Forms (aperçu, colonnes,
-// anonymat par défaut, rapprochement par e-mail sur option, confirmation),
-// publics prescripteur / partenaire, note sur 5. API simulée, données fictives.
+// Q3-1 — Satisfaction : import des réponses Google Forms (admin : aperçu,
+// colonnes, questionnaire anonyme ou nominatif, échelle conservée,
+// confirmation), publics prescripteur / partenaire, restitution REGROUPÉE au
+// contributeur (seuil de 5). API simulée, données fictives.
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,15 +21,22 @@ afterEach(async () => {
   await demonter();
 });
 
+const IMPORTER = "Importer des réponses (CSV Google Forms)";
 const CSV = "Horodateur,Adresse e-mail,Note globale,Commentaires\n\"01/10/2026 18:12:05\",alice@exemple.fr,5,Très bien\n";
 const APERCU = (sur = {}) => ({
   enTetes: ["Horodateur", "Adresse e-mail", "Note globale", "Commentaires"], horodateur: true, rapprochement: false,
-  colonneEmailPresente: true, colonnesEcartees: ["Adresse e-mail"], colonne_horodateur: 0, colonne_note: 2, colonne_commentaire: 3,
+  colonneEmailPresente: true, colonnesEcartees: ["Adresse e-mail"], colonne_horodateur: 0, colonne_note: 2, colonne_commentaire: 3, note_max: 5,
   resume: { importables: 1, invalides: 1, aVerifier: 0, doublons: 0 },
   lignes: [
     { index: 0, statut: "pret", motif: null, stagiaire: null, date: "2026-10-01", note: 5, commentaire: "Très bien" },
     { index: 1, statut: "invalide", motif: "note hors de l'échelle 0 à 5", stagiaire: null, date: "2026-10-01", note: null, commentaire: null },
   ],
+  ...sur,
+});
+const REGROUPE = (sur = {}) => ({
+  restreint: true, seuil: 5,
+  agregation: { reponses: 9, insuffisant: false, moyenne: 4.2, echelleHomogene: 5 },
+  groupes: [{ type: "a_chaud", insuffisant: true }, { type: "prescripteur", insuffisant: false, reponses: 6, moyenne: 3.5, echelle: 5 }],
   ...sur,
 });
 const champ = (libelle) => {
@@ -42,56 +50,55 @@ async function choisirFichier(input, contenu, nom = "reponses.csv") {
 }
 const apercus = (appels) => appels.filter((a) => a.chemin === "/api/sessions/1/satisfactions/import-apercu");
 const imports = (appels) => appels.filter((a) => a.chemin === "/api/sessions/1/satisfactions/import");
-async function ouvrirImport(role = "admin", sur = {}) {
-  const appels = await monter("/sessions/1/satisfaction", role, sur);
-  await attendre(() => bouton("Importer des réponses Google Forms"));
-  await cliquer(bouton("Importer des réponses Google Forms"));
-  await attendre(() => dialogue()?.textContent.includes("Importer des réponses Google Forms"));
+async function ouvrirImport(sur = {}) {
+  const appels = await monter("/sessions/1/satisfaction", "admin", sur);
+  await attendre(() => bouton(IMPORTER));
+  await cliquer(bouton(IMPORTER));
+  await attendre(() => dialogue()?.textContent.includes("Afficher dans Sheets"));
   return appels;
 }
 
-test("import : anonyme par défaut, public choisi, aperçu sans écriture, colonnes d'identité signalées", async () => {
-  const appels = await ouvrirImport("contributeur", { "POST /api/sessions/1/satisfactions/import-apercu": () => APERCU() });
-  assert.ok(dialogue().textContent.includes("Afficher dans Sheets"), "mode d'emploi Google Forms");
-  assert.equal(champ("Rapprocher les réponses").checked, false, "anonyme par défaut");
-  assert.ok(dialogue().textContent.includes("L'adresse e-mail n'est jamais conservée."));
+test("import (admin) : questionnaire anonyme par défaut, public et échelle, aperçu sans écriture, colonnes d'identité signalées", async () => {
+  const appels = await ouvrirImport({ "POST /api/sessions/1/satisfactions/import-apercu": () => APERCU() });
+  assert.equal(champ("Anonyme (recommandé)").checked, true, "anonyme par défaut");
+  assert.equal(champ("Nominatif").checked, false);
+  assert.ok(dialogue().textContent.includes("Un commentaire peut permettre de reconnaître son auteur"), "prudence sur les commentaires libres");
+  assert.equal(champ("Échelle de la note").value, "5");
   await saisir(champ("Public interrogé"), "prescripteur");
   await choisirFichier(dialogue().querySelector('input[type="file"]'), CSV);
   await attendre(() => dialogue().textContent.includes("Aperçu — rien n'a encore été enregistré."));
-  assert.deepEqual(apercus(appels).at(-1).corps, { texte: CSV, type: "prescripteur", rapprocher_email: false });
+  assert.deepEqual(apercus(appels).at(-1).corps, { texte: CSV, type: "prescripteur", rapprocher_email: false, note_max: 5 });
   const t = dialogue().textContent;
-  for (const x of ["1 à importer", "1 invalide(s)", "sauf les colonnes d'identité (Adresse e-mail)", "Anonyme", "5 / 5", "Très bien", "note hors de l'échelle 0 à 5"]) assert.ok(t.includes(x), x);
+  for (const x of ["1 à importer", "1 invalide(s)", "sauf les colonnes d'identité (Adresse e-mail)", "Anonyme", "5 / 5", "note hors de l'échelle 0 à 5"]) assert.ok(t.includes(x), x);
   assert.equal(champ("Note globale (sur 5)").value, "2", "question de note proposée");
   assert.ok(![...champ("Note globale (sur 5)").options].some((o) => o.textContent === "Adresse e-mail"), "colonne d'identité jamais proposée");
   assert.equal(imports(appels).length, 0);
-  assert.equal(bouton("Importer 1 réponse(s)").disabled, false);
 });
 
-test("import : réglages relancés (question de note, rapprochement par e-mail), confirmation avec le même corps", async () => {
-  const appels = await ouvrirImport("admin", {
-    "POST /api/sessions/1/satisfactions/import-apercu": (c) => APERCU({ colonne_note: "colonne_note" in c ? c.colonne_note : 2, rapprochement: c.rapprocher_email === true,
-      lignes: [{ index: 0, statut: "pret", motif: null, stagiaire: c.rapprocher_email ? { nom: "Martin", prenom: "Alice" } : null, date: "2026-10-01", note: null, commentaire: null }],
+test("import (admin) : échelle sur 10, question de note, questionnaire nominatif, confirmation avec le même corps", async () => {
+  const appels = await ouvrirImport({
+    "POST /api/sessions/1/satisfactions/import-apercu": (c) => APERCU({ colonne_note: "colonne_note" in c ? c.colonne_note : 2, note_max: c.note_max, rapprochement: c.rapprocher_email === true,
+      lignes: [{ index: 0, statut: "pret", motif: null, stagiaire: c.rapprocher_email ? { nom: "Martin", prenom: "Alice" } : null, date: "2026-10-01", note: 8, commentaire: null }],
       resume: { importables: 1, invalides: 0, aVerifier: 0, doublons: 0 } }),
     "POST /api/sessions/1/satisfactions/import": () => ({ bilan: { importees: 1, anonymes: 0, nominatives: 1, ignorees: [] } }),
   });
   await choisirFichier(dialogue().querySelector('input[type="file"]'), CSV);
-  await attendre(() => champ("Note globale (sur 5)"));
-  await saisir(champ("Note globale (sur 5)"), "");
-  await attendre(() => apercus(appels).length === 2);
-  assert.equal(apercus(appels)[1].corps.colonne_note, null, "« Aucune » question de note");
-  await cliquer(champ("Rapprocher les réponses"));
-  await attendre(() => apercus(appels).length === 3 && dialogue().textContent.includes("Martin Alice"));
-  assert.equal(apercus(appels)[2].corps.rapprocher_email, true);
+  await attendre(() => champ("Note globale"));
+  await saisir(champ("Échelle de la note"), "10");
+  await attendre(() => apercus(appels).at(-1).corps.note_max === 10 && champ("Note globale (sur 10)"));
+  assert.ok(dialogue().textContent.includes("8 / 10"), "échelle du formulaire conservée");
+  await cliquer(champ("Nominatif"));
+  await attendre(() => apercus(appels).at(-1).corps.rapprocher_email === true && dialogue().textContent.includes("Martin Alice"));
   await cliquer(bouton("Importer 1 réponse(s)"));
   await attendre(() => !dialogue());
-  assert.deepEqual(imports(appels)[0].corps, { texte: CSV, type: "a_chaud", rapprocher_email: true, colonne_note: null, colonne_commentaire: 3 });
+  assert.deepEqual(imports(appels)[0].corps, { texte: CSV, type: "a_chaud", rapprocher_email: true, note_max: 10, colonne_note: 2, colonne_commentaire: 3 });
   await attendre(() => texte().includes("1 réponse(s) importée(s) : 0 anonyme(s), 1 nominative(s)."));
 });
 
-test("import : erreur d'aperçu affichée ; rien à importer ⇒ bouton désactivé ; date du recueil sans horodateur", async () => {
+test("import : erreur de colonnes affichée ; rien à importer ⇒ bouton désactivé ; date du recueil sans horodateur", async () => {
   let n = 0;
-  const appels = await ouvrirImport("admin", {
-    "POST /api/sessions/1/satisfactions/import-apercu": (c) => (n++ === 0
+  const appels = await ouvrirImport({
+    "POST /api/sessions/1/satisfactions/import-apercu": () => (n++ === 0
       ? [400, { error: "Le fichier n'a pas d'horodateur : indiquez la date du recueil." }]
       : APERCU({ horodateur: false, colonne_horodateur: null, resume: { importables: 0, invalides: 1, aVerifier: 0, doublons: 0 }, lignes: [] })),
   });
@@ -106,14 +113,17 @@ test("import : erreur d'aperçu affichée ; rien à importer ⇒ bouton désacti
   assert.equal(imports(appels).length, 0);
 });
 
-test("import : double clic ⇒ un seul import ; erreur serveur ⇒ panneau ouvert", async () => {
+test("import : doublons signalés ; double clic ⇒ un seul import ; erreur serveur ⇒ panneau ouvert", async () => {
   const v = vanne();
-  const appels = await ouvrirImport("admin", {
-    "POST /api/sessions/1/satisfactions/import-apercu": () => APERCU(),
+  const appels = await ouvrirImport({
+    "POST /api/sessions/1/satisfactions/import-apercu": () => APERCU({ resume: { importables: 1, invalides: 0, aVerifier: 0, doublons: 1 },
+      lignes: [{ index: 0, statut: "doublon", motif: "réponse déjà importée", stagiaire: null, date: "2026-10-01", note: 4, commentaire: null },
+        { index: 1, statut: "pret", motif: null, stagiaire: null, date: "2026-10-01", note: 5, commentaire: null }] }),
     "POST /api/sessions/1/satisfactions/import": async () => { await v.attendre(); return [409, { error: "Cette session est archivée : elle est en lecture seule." }]; },
   });
   await choisirFichier(dialogue().querySelector('input[type="file"]'), CSV);
   await attendre(() => bouton("Importer 1 réponse(s)"));
+  assert.ok(dialogue().textContent.includes("1 déjà importée(s)") && dialogue().textContent.includes("réponse déjà importée"));
   const b = bouton("Importer 1 réponse(s)");
   await cliquer(b); await cliquer(b);
   v.ouvrir();
@@ -121,53 +131,53 @@ test("import : double clic ⇒ un seul import ; erreur serveur ⇒ panneau ouver
   assert.equal(imports(appels).length, 1);
 });
 
-test("saisie manuelle : publics prescripteur et partenaire, note « sur 5 » sans champ d'échelle, corps sans note_max", async () => {
+test("saisie manuelle (admin) : nouveaux publics, échelle conservée (champ « Note maximale »), anciens publics toujours proposés", async () => {
   const appels = await monter("/sessions/1/satisfaction", "admin", { "POST /api/sessions/1/satisfactions": (c) => [201, { satisfaction: { id: 41, ...c } }] });
   await attendre(() => bouton("Ajouter un recueil"));
+  assert.ok(texte().includes("Le contributeur ne voit que des résultats regroupés."), "explication de la confidentialité");
   await cliquer(bouton("Ajouter un recueil"));
   await attendre(() => champ("Public interrogé"));
   const libelles = [...champ("Public interrogé").options].map((o) => o.textContent);
-  assert.ok(libelles.includes("Prescripteur") && libelles.includes("Partenaire"));
-  assert.ok(champ("Note (sur 5)"), "note sur 5");
-  assert.equal(champ("Note maximale"), null, "plus de champ d'échelle");
+  assert.deepEqual(libelles, ["À chaud", "À froid", "Financeur", "Entreprise", "Formateur", "Prescripteur", "Partenaire"]);
+  assert.equal(champ("Note maximale").value, "5");
   await saisir(champ("Public interrogé"), "partenaire");
   await saisir(champ("Date du recueil"), "2026-10-01");
-  await saisir(champ("Note (sur 5)"), "6");
-  await cliquer(document.querySelector('button[type="submit"][form="form-satisfaction"]'));
-  await attendre(() => dialogue().textContent.includes("Note entre 0 et 5."));
-  await saisir(champ("Note (sur 5)"), "4");
+  await saisir(champ("Note maximale"), "10");
+  await saisir(champ("Note"), "8");
   await cliquer(document.querySelector('button[type="submit"][form="form-satisfaction"]'));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/sessions/1/satisfactions"));
   const corps = appels.find((a) => a.methode === "POST" && a.chemin === "/api/sessions/1/satisfactions").corps;
-  assert.equal(corps.type, "partenaire"); assert.equal(corps.note_globale, 4);
-  assert.ok(!("note_max" in corps), "l'échelle n'est plus envoyée");
+  assert.deepEqual([corps.type, corps.note_globale, corps.note_max], ["partenaire", 8, 10]);
 });
 
-test("réponse historique sur 10 : échelle d'origine affichée et conservée (PATCH sans note_max)", async () => {
-  const appels = await monter("/sessions/1/satisfaction", "admin", {
-    "GET /api/sessions/1/satisfactions": { agregation: { reponses: 1, anonymes: 1, nominatives: 0, moyenne: 8, echelleHomogene: 10 },
-      satisfactions: [{ id: 40, type: "a_chaud", date_recueil: "2026-09-15", note_globale: "8.00", note_max: "10.00", commentaires: "Bien" }] },
-    "PATCH /api/satisfactions/40": (c) => ({ satisfaction: { id: 40, ...c } }),
-  });
-  await attendre(() => bouton("Modifier"));
-  assert.ok(document.querySelector("tbody").textContent.includes("8 / 10"), "notes affichées sans décimales inutiles (« 8 / 10 », pas « 8.00 / 10.00 »)");
-  await cliquer(bouton("Modifier"));
-  await attendre(() => champ("Note (sur 10)"));
-  assert.ok(dialogue().textContent.includes("Réponse historique : son échelle d'origine est conservée."));
-  await saisir(champ("Note (sur 10)"), "9");
-  await cliquer(document.querySelector('button[type="submit"][form="form-satisfaction"]'));
-  await attendre(() => appels.some((a) => a.methode === "PATCH"));
-  const corps = appels.find((a) => a.methode === "PATCH").corps;
-  assert.equal(corps.note_globale, 9);
-  assert.ok(!("note_max" in corps));
+test("contributeur : résultats regroupés seulement, groupe < 5 masqué, aucun nom, commentaire, fichier ni import", async () => {
+  const appels = await monter("/sessions/1/satisfaction", "contributeur", { "GET /api/sessions/1/satisfactions": REGROUPE() });
+  await attendre(() => texte().includes("Résultats regroupés par public."));
+  const t = texte();
+  assert.ok(t.includes("Prescripteur") && t.includes("3.5 / 5") && t.includes("6"));
+  assert.ok(t.includes("Résultats insuffisants pour une restitution regroupée"), "groupe « À chaud » de moins de 5 réponses");
+  assert.ok(t.includes("ne garantit pas à elle seule l'anonymat"));
+  for (const x of ["Anonyme", "Commentaire", "Répondant", "Pièce"]) assert.ok(!t.includes(x), x);
+  assert.ok(!bouton(IMPORTER), "import réservé à l'admin");
+  assert.ok(bouton("Ajouter un recueil"), "saisie manuelle conservée");
+  assert.ok(!appels.some((a) => a.chemin.includes("import")));
 });
 
-test("session archivée : pas d'import ni d'ajout ; contributeur : import disponible", async () => {
-  await monter("/sessions/1/satisfaction", "contributeur");
-  await attendre(() => bouton("Importer des réponses Google Forms"));
+test("contributeur : session de 1 à 4 réponses ⇒ message seul, onglet sans compteur ; vue d'ensemble cohérente", async () => {
+  const peu = REGROUPE({ agregation: { reponses: null, insuffisant: true, moyenne: null, echelleHomogene: null }, groupes: [{ type: "a_chaud", insuffisant: true }] });
+  await monter("/sessions/1/satisfaction", "contributeur", { "GET /api/sessions/1/satisfactions": peu });
+  await attendre(() => texte().includes("Résultats insuffisants pour une restitution regroupée."));
+  assert.ok(!document.querySelector("table"), "aucun tableau");
+  const onglet = [...document.querySelectorAll('nav[aria-label="Sections de la session"] a')].find((a) => a.textContent.startsWith("Satisfaction"));
+  assert.equal(onglet.querySelector(".ui-onglets__compteur"), null, "aucun compteur révélé");
   await demonter();
+  await monter("/sessions/1", "contributeur", { "GET /api/sessions/1/satisfactions": peu });
+  await attendre(() => texte().includes("Résultats insuffisants pour une restitution regroupée."));
+});
+
+test("session archivée : ni import ni ajout", async () => {
   const SESSION_ARCHIVEE = { id: 1, reference: "SESS-TEST", archivee_le: "2026-12-20T00:00:00Z", date_debut: "2026-09-01", date_fin: "2026-12-15", formation: "Formation test" };
   await monter("/sessions/1/satisfaction", "admin", { "GET /api/sessions/1": { session: SESSION_ARCHIVEE, groupes: [], stagiaires: [], documents: [] } });
   await attendre(() => texte().includes("Satisfaction"));
-  assert.ok(!bouton("Importer des réponses Google Forms") && !bouton("Ajouter un recueil"));
+  assert.ok(!bouton(IMPORTER) && !bouton("Ajouter un recueil"));
 });

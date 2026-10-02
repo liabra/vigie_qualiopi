@@ -344,7 +344,7 @@ export const RUBRIQUES_GUIDE = [
   {
     id: "satisfaction", titre: "Satisfaction", admin: false,
     sections: [
-      { titre: "Questionnaires", lignes: ["Recueillez les réponses à chaud, à froid, financeur, entreprise, formateur, prescripteur ou partenaire. Une réponse peut être anonyme ; la note se donne sur 5.", "Google Forms : dans les réponses, « Afficher dans Sheets », puis Fichier › Télécharger › CSV, et « Importer des réponses Google Forms ». Les réponses sont anonymes par défaut ; l'adresse e-mail n'est jamais conservée."] },
+      { titre: "Questionnaires", lignes: ["Recueillez les réponses à chaud, à froid, financeur, entreprise, formateur, prescripteur ou partenaire, toujours rattachées à une session. Une réponse peut être anonyme ; l'échelle de note du questionnaire est conservée.", "Google Forms (administrateur) : dans les réponses, « Afficher dans Sheets », puis Fichier › Télécharger › CSV, et « Importer des réponses (CSV Google Forms) ». Questionnaire anonyme par défaut ; l'adresse e-mail n'est jamais conservée.", "Le contributeur ne voit que des résultats regroupés par public ; un groupe de moins de 5 réponses n'est pas restitué."] },
     ],
   },
   {

@@ -6,7 +6,8 @@
 //    - une enquête est toujours rattachée à une session ;
 //    - réponses ANONYMES par défaut ; rapprochement d'un stagiaire par
 //      e-mail seulement sur demande explicite (option cochée) ;
-//    - note sur 5 imposée (0 à 5) ;
+//    - échelles de notation conservées : la note est lue sur l'échelle du
+//      formulaire (5 par défaut), jamais convertie ni comparée entre échelles ;
 //    - l'e-mail et les colonnes d'identité ne sont JAMAIS conservés dans
 //      les réponses enregistrées.
 //  Google Forms reste l'outil de collecte : aucun moteur de questionnaire.
@@ -14,7 +15,7 @@
 import { detecterSeparateur, contientCaractereInvalide, normaliser, normaliserEmail, validerEmail } from "./csvStagiaires.js";
 import { dateValideStricte } from "./evaluations.js";
 
-export const NOTE_MAX_SATISFACTION = 5;
+export const NOTE_MAX_DEFAUT = 5;
 export const MAX_LIGNES_IMPORT = 2000;
 export const MAX_COLONNES_IMPORT = 80;
 export const MAX_TEXTE_REPONSE = 5000;
@@ -88,14 +89,14 @@ export function dateHorodateur(v) {
   return null;
 }
 
-// Note sur 5 : « 4 », « 4,5 », « 4 - Satisfait ». Vide ⇒ null.
-export function noteSur5(v) {
+// Note sur l'échelle du formulaire : « 4 », « 4,5 », « 4 - Satisfait ». Vide ⇒ null.
+export function noteSurEchelle(v, max = NOTE_MAX_DEFAUT) {
   const t = String(v ?? "").trim();
   if (!t) return { valeur: null };
   const m = t.match(/^(\d+(?:[.,]\d+)?)(?:\s*(?:[-–:/].*|\s.*))?$/);
   if (!m) return { erreur: "note illisible" };
   const n = Number(m[1].replace(",", "."));
-  if (!Number.isFinite(n) || n < 0 || n > NOTE_MAX_SATISFACTION) return { erreur: `note hors de l'échelle 0 à ${NOTE_MAX_SATISFACTION}` };
+  if (!Number.isFinite(n) || n < 0 || n > max) return { erreur: `note hors de l'échelle 0 à ${max}` };
   return { valeur: n };
 }
 
@@ -137,7 +138,7 @@ export function classerReponses({ enTetes, lignes, options = {}, inscriptionsPar
     const ligne = { index, statut: "pret", motif: null };
     const valeur = (i) => (i === null || i < 0 ? "" : cellules[i] ?? "");
     const date = iDate >= 0 ? dateHorodateur(valeur(iDate)) : dateDefaut;
-    const note = iNote === null ? { valeur: null } : noteSur5(valeur(iNote));
+    const note = iNote === null ? { valeur: null } : noteSurEchelle(valeur(iNote), options.note_max ?? NOTE_MAX_DEFAUT);
     const commentaire = iCom === null ? null : (valeur(iCom) || null);
     const reponses = Object.create(null); // fix : un en-tête « __proto__ » reste une simple clé
     for (const { t, i } of conservees) if ((cellules[i] ?? "") !== "") reponses[t] = cellules[i];

@@ -2879,3 +2879,125 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Prochaine étape : brancher le validateur sur la génération (`documents.js`), bloquer en
   cas d'erreur, contrôler aussi les Google Sheets, puis définir le mapping « variables
   obligatoires » par modèle.
+
+## 2026-10-10 — DOC-2 : diagnostic des modèles documentaires (non commité)
+
+- Brancher le catalogue canonique sur la **gestion** des modèles, pour rendre leur état
+  visible, **sans toucher à la génération** : `documents.js` et `marqueurs.js` inchangés,
+  aucun modèle invalide n'est bloqué (ce sera DOC-3, après audit des modèles réels).
+- `server/src/services/diagnosticModele.js` (nouveau) : `analyserModeleDrive(modele,
+  clients, jeton)`, lecture Drive **strictement en lecture seule**.
+  - Détecte le mimeType **réel** du fichier (`drive.files.get`), jamais `modele.drive_mime`
+    (souvent `null` : les modèles créés depuis l'écran ne l'envoient pas — point relevé,
+    non corrigé dans DOC-2, cf. « limites »).
+  - **Google Doc** : réutilise `texteDuDocument()` (`documents.js`, déjà exporté, inchangé).
+  - **Google Sheet** : nouvelle lecture multi-onglets (un `spreadsheets.get` pour la liste,
+    puis un `values.get` **par onglet**, bornée par `MAX_LIGNES`/`MAX_COLONNES`, réutilisées
+    telles quelles depuis `classeur.js`). Plafond **`MAX_ONGLETS = 20`** : au-delà,
+    `onglets_total` > `onglets_analyses`, avertissement « analyse partielle », état
+    `valide_avec_avertissements` — jamais une erreur.
+  - Mime ni Doc ni Sheet ⇒ erreur explicite `format_non_supporte` (400), aucune tentative
+    d'analyse approximative.
+  - Onglet hors bornes lignes/colonnes ⇒ `classeur_trop_volumineux` (400), refusé **avant**
+    tout `values.get`.
+  - Modèle sans balise ⇒ `valide_avec_avertissements` + avertissement « Aucune balise
+    documentaire détectée dans ce modèle. » (jamais `invalide` : un document statique peut
+    être volontaire).
+  - Comptage double, comme demandé : `nombre_occurrences_balises` (chaque `{{…}}`, ouverture
+    et fermeture de bloc comprises) et `nombre_balises_uniques` (noms distincts) ; un bloc
+    répété (ex. `{{#phases}}` généré plusieurs fois) n'apparaît qu'**une fois** dans `blocs`.
+  - `suggestions` : pour chaque alias ou marqueur historique rencontré, la balise canonique
+    conseillée (`{{nom_stagiaire}}` → `{{stagiaire_nom}}`, `{{date_convocation}}` →
+    `{{document_date_convocation}}`), avec les cibles alternatives s'il y en a plusieurs.
+  - **Confidentialité** : la réponse ne contient jamais le texte intégral du document, ni les
+    journaux (`appelGoogle` ne journalise que le corps d'erreur Google, jamais le contenu lu
+    en cas de succès) — vérifié par deux tests dédiés (Doc et Sheet).
+- `GET /api/modeles/:id/diagnostic` (`routes/gestion.js`, `requireAdmin` — l'écran `/modeles`
+  est déjà réservé à l'admin côté client) : 404 modèle introuvable, 503 Drive non connecté,
+  400 fichier introuvable/inaccessible ou format non supporté, 200 + diagnostic sinon.
+  **Rien n'est persisté** : aucune migration, aucune colonne, aucun cache serveur — le
+  diagnostic se recalcule à chaque appel, pour ne jamais afficher un état périmé si le
+  fichier a été modifié sur le Drive en dehors de Vigie. `analyse_le` (horodatage) est
+  renvoyé, jamais stocké.
+- `client/src/parametres/Modeles.jsx` : dans le Drawer « Détail », badge d'état (🟢 Valide /
+  🟠 Avertissements / 🔴 Invalide — toujours couleur **et** texte), compteurs, liste des
+  erreurs/avertissements et des suggestions de migration. Déclenchement automatique à
+  l'**ouverture** du Drawer (effet sur l'identifiant du modèle, une primitive stable : aucun
+  nouvel appel sur un simple re-render), bouton « Réanalyser » pour forcer une nouvelle
+  lecture. La liste des modèles elle-même ne déclenche **aucun** appel Drive.
+- **Inchangés** : `documents.js`, `marqueurs.js`, le comportement de génération (même pour un
+  modèle diagnostiqué invalide), `POST/DELETE /api/modeles`, `GET /api/modeles`. Aucune
+  migration. `drive_mime` n'est **jamais** écrit par le diagnostic (lecture strictement pure).
+- Tests :
+  - `diagnosticModele.test.js` (15, purs, clients Google simulés) : Doc valide, alias,
+    historique, variable inconnue, syntaxe invalide, modèle sans balise, bloc répétable +
+    champ local, Sheet un onglet, Sheet > 20 onglets (compteurs + un seul appel par onglet
+    au-delà de la limite), onglet trop volumineux, mime non supporté, erreur Drive, et deux
+    tests de confidentialité (Doc et Sheet : aucun texte libre dans la réponse).
+  - `modelesDiagnostic.test.js` (8, application réelle + base/Drive simulés, même méthode que
+    `generationRobuste.test.js`) : anonyme 401, contributeur 403, modèle introuvable 404, id
+    invalide 400, Drive non connecté 503, fichier introuvable 400, succès 200, mime non
+    supporté 400.
+  - `client/test/modeles.test.jsx` (5, nouveau fichier — aucun test n'existait avant pour cet
+    écran) : badge par état, suggestion affichée, une seule analyse par ouverture, « Réanalyser »
+    en déclenche une seconde explicitement, la liste n'appelle jamais le diagnostic.
+  - **629/629 serveur** ×2 (607 + 22), **336/336 client** (331 + 5), build OK, `diff --check`
+    OK. Node 22.23.3.
+- Comportement obtenu :
+  - **Docs** : lu avant toute analyse, exactement comme le fait déjà `documents.js` pour la
+    détection des marqueurs inconnus (même fonction réutilisée).
+  - **Sheets** : jamais analysé auparavant (la génération ne lisait aucun Sheet) ; DOC-2 lui
+    donne pour la première fois une détection de balises, multi-onglets, bornée.
+- Limites restantes :
+  - `drive_mime` reste `null` en base pour tout modèle créé depuis l'écran (le formulaire ne
+    l'envoie pas) — signalé dans DOC-1 et confirmé ici ; non corrigé, sujet séparé par choix
+    explicite (point 5 de la validation DOC-2).
+  - L'écho d'une balise syntaxiquement invalide reste tronqué à 80 caractères
+    (`validationModeles.js`, hérité de DOC-1) : dans un cas limite, ces 80 caractères peuvent
+    contenir un fragment de texte réel du document (jamais le document entier). Comportement
+    pré-existant, non spécifique à DOC-2 — **corrigé le jour même, voir l'entrée ci-dessous.**
+  - Le diagnostic n'est accessible qu'à l'admin ; un contributeur ne voit jamais l'état d'un
+    modèle (cohérent avec `/modeles` déjà réservé à l'admin côté client).
+  - Aucun indicateur visuel dans la LISTE (colonne « état ») : le badge n'apparaît que dans le
+    Drawer « Détail », pour ne jamais déclencher d'appel Drive à l'affichage de la liste.
+
+### 2026-10-10 — DOC-2, durcissement : aucun texte libre d'une balise invalide ne ressort
+
+- Correctif de confidentialité, avant tout commit de DOC-2 : une balise syntaxiquement
+  invalide pouvait faire remonter jusqu'à 80 caractères de **texte réel du document** (écho
+  tronqué, mais non masqué) dans `erreurs[].balise`, dans `balises[].brut`, et donc dans la
+  réponse du diagnostic — sans jamais exposer le document entier, mais ce fragment pouvait
+  contenir une donnée sensible.
+- `server/src/services/validationModeles.js` modifié (seul fichier de DOC-1 touché par ce
+  correctif) :
+  - **Balise non fermée** (`{{` sans `}}`) : le texte entre l'ouverture et la fin du document
+    ne peut jamais être borné de façon sûre → toujours masqué en `{{…}}`, plus jamais le
+    texte réel, même tronqué.
+  - **Syntaxe invalide** : si l'intérieur, une fois réduit (espaces de bord retirés, casse
+    normalisée), est un identifiant sûr (a-z, 0-9, _) — seul un espacement ou une casse
+    incidents — la balise reconstruite (jamais recopiée depuis le texte d'origine) reste
+    affichée, avec la suggestion canonique si elle existe. Dans tous les autres cas (espaces
+    internes, ponctuation, accents, texte libre quelconque — donc potentiellement une donnée
+    sensible) : `{{…}}` uniquement, aucun fragment du texte d'origine, dans la réponse comme
+    dans les journaux (`console.error` ne reçoit jamais ce texte).
+  - Les balises **valides** (canonique, alias, historique, bloc, champ de bloc, inconnue mais
+    syntaxiquement propre) sont inchangées : leur contenu, par construction, ne peut être
+    qu'un identifiant conforme (a-z, 0-9, _), jamais du texte libre.
+- Tests ajoutés :
+  - `catalogueVariables.test.js` : balise `{{nom invalide SECRET_CONFIDENTIEL_123}}` — erreur
+    de syntaxe détectée, `SECRET_CONFIDENTIEL_123` absent de la réponse sérialisée (y compris
+    des messages d'erreur), balise renvoyée comme `{{…}}`, reste de l'analyse (ici
+    `stagiaire_prenom`) inchangé ; et un test miroir pour le cas « quasi-valide » encore
+    affichable (`{{ STAGIAIRE_nom  }}` → `{{stagiaire_nom}}`, reconstruit).
+  - `diagnosticModele.test.js` : même scénario de bout en bout, via `analyserModeleDrive`.
+- Tests relancés : `catalogueVariables.test.js` **21/21**, `diagnosticModele.test.js`
+  **15/15**, backend complet **632/632 ×2** (629 + 3 nouveaux), frontend **336/336**
+  (inchangé), build OK, `diff --check` OK. Node 22.23.3.
+- Limite restante : les balises **valides mais très longues** (identifiant conforme a-z/0-9/_
+  de plusieurs milliers de caractères) restent tronquées à 80 caractères plutôt que masquées
+  — ce n'est pas un risque de confidentialité (un tel identifiant ne peut pas contenir
+  d'espace, d'accent ni de ponctuation), seulement une borne de taille de réponse, déjà en
+  place avant ce correctif.
+- Prochaine étape (DOC-3) : après audit des modèles Drive réels avec ce diagnostic, décider
+  du verrouillage de la génération pour les modèles invalides, et du contrôle des Sheets dans
+  `documents.js` lui-même (aujourd'hui aveugle, DOC-2 ne change que l'écran de gestion).

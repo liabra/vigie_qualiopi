@@ -43,9 +43,12 @@ export function analyserModele(texte) {
     resteTexte += texte.slice(i, debut);
     const fin = texte.indexOf("}}", debut + 2);
     if (fin === -1) {
-      const b = { brut: tronquer(texte.slice(debut)), position: debut, statut: "invalide" };
+      // Confidentialité : sans « }} », la fin de la balise est indéterminée
+      // — le reste du texte pourrait être n'importe quel contenu du
+      // document. On ne renvoie et on ne journalise JAMAIS ce texte brut.
+      const b = { brut: "{{…}}", position: debut, statut: "invalide" };
       balises.push(b);
-      erreur("BALISE_NON_FERMEE", "Balise ouverte par « {{ » sans « }} » de fermeture.", b);
+      erreur("BALISE_NON_FERMEE", "Balise ouverte par « {{ » sans « }} » de fermeture. Contenu masqué : cette balise peut contenir du texte libre.", b);
       break;
     }
     const interieur = texte.slice(debut + 2, fin);
@@ -57,9 +60,22 @@ export function analyserModele(texte) {
     const nom = marque ? interieur.slice(1) : interieur;
     if (!NOM_VALIDE.test(nom)) {
       b.statut = "invalide";
+      // Confidentialité : l'intérieur de { { } } peut être du texte libre
+      // arbitraire, potentiellement sensible — jamais renvoyé ni journalisé
+      // tel quel. Seuls un espacement ou une casse incidents autour d'un
+      // identifiant par ailleurs sûr (a-z, 0-9, _) sont montrés, et
+      // RECONSTRUITS (jamais recopiés depuis le texte d'origine).
       const propre = nom.trim().toLowerCase();
-      const suggestion = NOM_VALIDE.test(propre) && (variableCanonique(propre) || resoudreAlias(propre) || blocCanonique(propre)) ? ` Vouliez-vous écrire « {{${marque}${propre}}} » ?` : "";
-      erreur("SYNTAXE_INVALIDE", `Syntaxe invalide : un nom de variable s'écrit en minuscules, sans accent, espace ni tiret (a-z, 0-9, _).${suggestion}`, b);
+      const quasiValide = NOM_VALIDE.test(propre);
+      if (quasiValide) {
+        b.brut = tronquer(`{{${marque}${propre}}}`);
+        const connue = variableCanonique(propre) || resoudreAlias(propre) || blocCanonique(propre);
+        const suggestion = connue ? ` Vouliez-vous écrire « {{${marque}${propre}}} » ?` : "";
+        erreur("SYNTAXE_INVALIDE", `Syntaxe invalide : un nom de variable s'écrit en minuscules, sans accent, espace ni tiret (a-z, 0-9, _).${suggestion}`, b);
+      } else {
+        b.brut = "{{…}}";
+        erreur("SYNTAXE_INVALIDE", "Syntaxe invalide : un nom de variable s'écrit en minuscules, sans accent, espace ni tiret (a-z, 0-9, _). Contenu masqué : cette balise peut contenir du texte libre.", b);
+      }
       continue;
     }
     b.nom = nom;

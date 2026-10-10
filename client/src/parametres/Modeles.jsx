@@ -1,8 +1,55 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { Alert, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
+import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { SelecteurIndicateurs } from "../veille/SelecteurIndicateurs.jsx";
+
+// DOC-2 — État du diagnostic : couleur ET libellé (jamais la couleur seule).
+const ETATS_DIAGNOSTIC = {
+  valide: { ton: "success", libelle: "🟢 Valide" },
+  valide_avec_avertissements: { ton: "warning", libelle: "🟠 Avertissements" },
+  invalide: { ton: "error", libelle: "🔴 Invalide" },
+};
+
+// Détail des balises d'un diagnostic déjà reçu : jamais de contenu du
+// document, seulement ce que l'API a renvoyé (balises, codes, messages).
+function DiagnosticDetail({ d }) {
+  const etat = ETATS_DIAGNOSTIC[d.etat] || { ton: "neutral", libelle: d.etat };
+  return (
+    <div className="param-diagnostic__corps">
+      <Badge ton={etat.ton}>{etat.libelle}</Badge>
+      <p className="sess-secondaire">
+        {d.nombre_occurrences_balises} occurrence(s) de balise, {d.nombre_balises_uniques} distincte(s) ·
+        dictionnaire v{d.version_dictionnaire} · {d.type_fichier === "feuille_calcul" ? "Google Sheets" : "Google Docs"}
+        {d.onglets_total != null && <> · {d.onglets_analyses}/{d.onglets_total} onglet(s) analysé(s)</>}
+      </p>
+      {d.erreurs.length > 0 && (
+        <ul className="param-indicateurs">
+          {d.erreurs.map((e, i) => <li key={i}><strong>Erreur —</strong> {e.message}</li>)}
+        </ul>
+      )}
+      {d.avertissements.length > 0 && (
+        <ul className="param-indicateurs">
+          {d.avertissements.map((a, i) => <li key={i}>{a.message}</li>)}
+        </ul>
+      )}
+      {d.suggestions.length > 0 && (
+        <>
+          <p className="sess-secondaire">Suggestions de migration vers les balises canoniques :</p>
+          <ul className="param-marqueurs">
+            {d.suggestions.map((s) => (
+              <li key={s.balise}>
+                <code>{s.balise}</code> → {s.cible_conseillee
+                  ? <>cible conseillée <code>{s.cible_conseillee}</code></>
+                  : "aucune cible canonique certaine"}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
 
 export const PORTEES = {
   formation: { court: "Par formation", long: "Un document par formation" },
@@ -44,6 +91,26 @@ export function ModelesPage() {
   const [marqueursOuverts, setMarqueursOuverts] = useState(false);
   const [aRetirer, setARetirer] = useState(null);
   const [retrait, setRetrait] = useState(false);
+  // DOC-2 : { id, chargement, erreur, data } — un diagnostic à la fois,
+  // celui du modèle actuellement ouvert dans le Drawer « Détail ».
+  const [diag, setDiag] = useState(null);
+
+  // Une lecture Drive par OUVERTURE du Drawer (jamais au simple re-render :
+  // la dépendance est l'identifiant, une primitive stable tant que le même
+  // modèle reste affiché) ; « Réanalyser » rappelle cette même fonction.
+  const analyser = useCallback(async (id) => {
+    setDiag({ id, chargement: true, erreur: null, data: null });
+    try {
+      const r = await api(`/api/modeles/${id}/diagnostic`);
+      setDiag((d) => (d?.id === id ? { id, chargement: false, erreur: null, data: r } : d));
+    } catch (e) {
+      setDiag((d) => (d?.id === id ? { id, chargement: false, erreur: e.message, data: null } : d));
+    }
+  }, []);
+  useEffect(() => {
+    if (detail) analyser(detail.id);
+    else setDiag(null);
+  }, [detail?.id, analyser]);
 
   const charger = useCallback(async () => {
     try {
@@ -162,6 +229,17 @@ export function ModelesPage() {
                     <li key={i.id}><strong>Indicateur {i.numero}</strong>{libelles.get(i.numero) && <> — {libelles.get(i.numero)}</>}</li>
                   ))}
                 </ul>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                Diagnostic des balises{" "}
+                <Button compact variante="ghost" onClick={() => analyser(detail.id)} disabled={diag?.chargement}>Réanalyser</Button>
+              </dt>
+              <dd>
+                {diag?.chargement && <LoadingState texte="Analyse du fichier Drive…" />}
+                {diag?.erreur && <Alert ton="error" titre="Le modèle n'a pas pu être analysé.">{diag.erreur}</Alert>}
+                {diag?.data && !diag.chargement && <DiagnosticDetail d={diag.data} />}
               </dd>
             </div>
           </dl>

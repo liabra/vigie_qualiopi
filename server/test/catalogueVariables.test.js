@@ -222,6 +222,28 @@ test("validateur : placeholders syntaxiquement invalides détectés", () => {
   assert.equal(analyserModele("Aucun marqueur ici.").valide, true);
 });
 
+test("confidentialité : une balise invalide porteuse de texte libre ne renvoie ni ne journalise ce texte", () => {
+  const SECRET = "SECRET_CONFIDENTIEL_123";
+  const r = analyserModele(`Bonjour {{nom invalide ${SECRET}}} {{stagiaire_prenom}}`);
+  assert.equal(r.valide, false);
+  assert.equal(r.erreurs.length, 1);
+  assert.equal(r.erreurs[0].code, "SYNTAXE_INVALIDE");
+  const serialise = JSON.stringify(r);
+  assert.ok(!serialise.includes(SECRET), "le secret ne doit apparaître nulle part dans le résultat sérialisé");
+  assert.ok(!serialise.includes("nom invalide"), "aucun fragment du texte libre ne doit être renvoyé");
+  assert.equal(r.erreurs[0].balise, "{{…}}", "la balise invalide est masquée");
+  assert.equal(r.balises.find((b) => b.statut === "invalide").brut, "{{…}}");
+  // Le reste de l'analyse continue de fonctionner normalement.
+  assert.deepEqual(r.resume.canoniques, ["stagiaire_prenom"]);
+});
+
+test("confidentialité : un espacement/une casse incidents autour d'un identifiant sûr restent affichables (reconstruits, jamais recopiés)", () => {
+  const r = analyserModele("{{ STAGIAIRE_nom  }}");
+  assert.equal(r.erreurs[0].code, "SYNTAXE_INVALIDE");
+  assert.equal(r.erreurs[0].balise, "{{stagiaire_nom}}", "reconstruit depuis le nom normalisé, pas recopié tel quel");
+  assert.match(r.erreurs[0].message, /\{\{stagiaire_nom\}\}/);
+});
+
 test("validateur : blocs répétables, champs canoniques et locaux, imbrication", () => {
   const r = analyserModele("{{formation_intitule}}{{#phases}}Phase {{phase_numero}} : {{phase_intitule}} ({{phase_duree_heures}})"
     + "{{#objectifs_phase}}- {{objectif_code}} {{objectif_libelle}} / {{critere_reussite}}{{/objectifs_phase}}{{/phases}}");

@@ -8,7 +8,8 @@ import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
-import { getDrive } from "../services/google.js";
+import { etatJeton, getDrive } from "../services/google.js";
+import { analyserModeleDrive } from "../services/diagnosticModele.js";
 import { parseIdPositif } from "../services/ids.js";
 // Évaluations / QCM + satisfaction (lot L7) : validation et parsing purs.
 import {
@@ -1294,6 +1295,28 @@ router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
   const { rowCount } = await query("UPDATE modeles_documents SET actif = false WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
   res.json({ ok: true });
+}));
+
+// DOC-2 — Diagnostic du modèle : lit le fichier Drive RÉEL (jamais une
+// valeur mise en cache) et l'analyse avec le catalogue canonique. Lecture
+// seule, rien n'est écrit ni persisté. N'influence jamais la génération.
+router.get("/modeles/:id/diagnostic", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  const { rows: [modele] } = await query("SELECT id, nom, drive_file_id FROM modeles_documents WHERE id = $1", [id]);
+  if (!modele) return res.status(404).json({ error: "Modèle introuvable." });
+
+  const d = await getDrive();
+  if (!d) return res.status(503).json({ error: "Google Drive est indisponible ou non connecté. Impossible d'analyser ce modèle." });
+
+  try {
+    const diagnostic = await analyserModeleDrive(modele, d, etatJeton(d.row));
+    res.json({ ...diagnostic, analyse_le: new Date().toISOString() });
+  } catch (e) {
+    if (e.statut && e.code) return res.status(e.statut).json({ error: e.message, code: e.code });
+    if (e?.response?.status === 404 || e?.code === 404) return res.status(400).json({ error: "Fichier Drive introuvable ou inaccessible." });
+    return res.status(400).json({ error: "Impossible d'analyser ce modèle : " + (e.message || "erreur inconnue") });
+  }
 }));
 
 // ── Génération ───────────────────────────────────────────────

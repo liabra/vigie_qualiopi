@@ -10,6 +10,7 @@ import qualiteRoutes from "./routes/qualite.js";
 import parcoursRoutes from "./routes/parcours.js";
 import intervenantsRoutes from "./routes/intervenants.js";
 import pilotageRoutes from "./routes/pilotage.js";
+import variablesRoutes from "./routes/variables.js";
 
 const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
@@ -36,6 +37,7 @@ export function createApp() {
   app.use("/api", parcoursRoutes);
   app.use("/api", intervenantsRoutes);
   app.use("/api", pilotageRoutes);
+  app.use("/api", variablesRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

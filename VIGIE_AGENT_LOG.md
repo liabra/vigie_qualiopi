@@ -2811,3 +2811,71 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   (admin) ou mes actions (contributeur), raccourcis.
 - Note du statut des indicateurs pour le contributeur. Aucune migration.
 - Tests : **585/585 serveur**, **331/331 client**, build OK ; smoke Chrome deux rôles.
+
+## 2026-10-09 — DOC-1 : catalogue canonique des variables et validateur (non commité)
+
+- Socle du futur moteur documentaire, d'après le « Dictionnaire officiel des variables Vigie
+  v1.0 ». Nouveau, centralisé backend, versionné dans le dépôt :
+  - `server/src/services/catalogueVariables.js` : dictionnaire **v1.1**, figé (gel profond).
+    161 variables (158 du PDF + `session_reference` SES-12, + `evaluation_moment` EVA-11,
+    + `evaluation_resultat_validation` EVA-12), chacune avec nom, balise, libellé, description,
+    domaine (17), type (texte, date, nombre, booleen, liste, bloc), format, sensibilité
+    (aucune / personnelle / restreinte), source et portée. **Aucune obligation** dans le
+    catalogue : elle sera portée par le mapping de chaque modèle.
+  - 9 blocs répétables, syntaxe officielle `{{#bloc}} … {{/bloc}}`, chacun avec son schéma
+    de champs (variables canoniques réutilisées ou champs **locaux**, valides seulement dans
+    leur bloc : `objectif_code`, `critere_reussite`, `absence_motif`, `adaptation_*`…). Pas de
+    bloc `resultats` (couvert par `evaluations`).
+  - Valeurs métier alignées sur le schéma : `session_statut` = planifiee | en_cours | terminee
+    | annulee ; `stagiaire_statut_parcours` = inscrit | en_cours | termine | abandon ;
+    civilités M. | Mme ; `formation_modalite` = presentiel | distanciel | mixte. Libellés
+    affichés séparés des valeurs.
+  - Les 23 marqueurs actuels restent reconnus : 11 **alias** strictement équivalents
+    (resolver vérifié), 2 déjà canoniques (`session_reference`, `session_statut`), 10
+    **historiques** à migrer (`lieu`, `formateur`, `entreprise`, `duree`, `date_attestation`,
+    `financeur`, `prescripteur`, `groupe`, `heures_suivies`, `taux_assiduite`).
+  - **Évaluations clarifiées** (ajustement validé le 09/10) : EVA-03 **renommée**
+    `evaluation_type` → `evaluation_methode` (QCM, exercice pratique, mise en situation,
+    entretien… — champ `renomme_depuis` sur l'entrée, renommage non silencieux, aucun usage
+    réel connu de l'ancien nom). Deux variables ajoutées, sans resolver (donnée non stockée
+    par Vigie à ce jour) : `evaluation_moment` (EVA-11 : positionnement / intermédiaire /
+    finale / autre) et `evaluation_resultat_validation` (EVA-12 : valide / non_valide,
+    distincte du niveau pédagogique). `evaluation_niveau` et `phase_resultat_niveau`
+    inchangées (acquis / en_cours / non_acquis / non_evalue), descriptions clarifiées pour
+    les distinguer du résultat de validation et l'une de l'autre (phase vs évaluation isolée).
+    **Aucun mapping artificiel** vers `resultats_qcm.type` (qui code le moment dans le
+    parcours, pas la méthode) ni `resultats_qcm.resultat` : ces colonnes ne sont pas
+    référencées dans les descriptions des nouvelles variables.
+  - **`date_convocation` levée** (ajustement validé le 09/10) : ce marqueur, utilisé dans un
+    modèle Drive **réel** de convocation, n'est PAS parmi les 23 marqueurs du moteur actuel
+    (absent de `marqueurs.js` — aujourd'hui laissé tel quel, non remplacé, dans les documents
+    produits). Classé **historique** (pas alias : aucun resolver à vérifier), cible
+    `document_date_convocation` (DOC-06), explicitement distincte de `document_date` (DOC-01,
+    date de génération technique). `date_attestation` réexaminée en parallèle : conservée en
+    historique (son resolver reproduit `date_fin`, pas une date fixée à la clôture).
+  - `server/src/services/validationModeles.js` : `analyserModele(texte)` pur. Classe chaque
+    balise (canonique, alias, historique, champ de bloc, bloc, inconnue, invalide). Erreurs :
+    variable inconnue, syntaxe invalide, balise non fermée, bloc inconnu, non fermé, orphelin,
+    croisé ou imbriqué sur lui-même, champ local hors de son bloc, bloc écrit comme variable.
+    Avertissements : alias, historique, donnée sensible, « }} » orphelin.
+  - `GET /api/documents/variables` (`routes/variables.js`, monté dans `app.js`) : lecture
+    seule, utilisateurs connectés ; aucune route d'écriture.
+- **Inchangés** : `marqueurs.js`, `documents.js`, génération actuelle, frontend. Aucune
+  migration, aucun nouveau resolver.
+- Tests : `catalogueVariables.test.js` (19, purs — dont un test dédié au modèle réel de
+  convocation avec `{{intitule_formation}} {{civilite}} {{prenom_stagiaire}} {{nom_stagiaire}}
+  {{date_convocation}} {{date_debut}} {{date_fin}} {{horaire}}`, et un test dédié à la
+  sémantique des évaluations) et `variablesApi.test.js` (3, port 55460).
+  **607/607 serveur** ×2 (605 + 2), **331/331 client**, `diff --check` OK (non indexé et
+  indexé). Node 22.23.3.
+- À vérifier / décider :
+  - `formation_duree_heures` : 270 h ou 276 h, toujours non arbitré (inchangé, par choix) ;
+  - le PDF du dictionnaire doit être mis à jour en v1.1 (session_reference, valeurs, blocs,
+    evaluation_methode/_moment/_resultat_validation, date_convocation) ;
+  - `evaluation_moment` et `evaluation_resultat_validation` n'ont aucun resolver : tant
+    qu'aucune colonne Vigie ne les porte, un modèle qui les utilise aura ces champs vides ;
+  - vérifier si `evaluation_type` est réellement absent de tous les modèles Drive existants
+    avant de considérer le renommage `evaluation_methode` comme définitivement sûr.
+- Prochaine étape : brancher le validateur sur la génération (`documents.js`), bloquer en
+  cas d'erreur, contrôler aussi les Google Sheets, puis définir le mapping « variables
+  obligatoires » par modèle.

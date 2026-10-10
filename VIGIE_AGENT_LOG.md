@@ -3001,3 +3001,22 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Prochaine étape (DOC-3) : après audit des modèles Drive réels avec ce diagnostic, décider
   du verrouillage de la génération pour les modèles invalides, et du contrôle des Sheets dans
   `documents.js` lui-même (aujourd'hui aveugle, DOC-2 ne change que l'écran de gestion).
+
+## 2026-10-10 — DOC-2.5 : audit en lecture seule des modèles réels (commité)
+
+- Les 2 modèles **actifs** de `modeles_documents` analysés avec `analyserModeleDrive` — le
+  mécanisme EXACT de `GET /api/modeles/:id/diagnostic` — contre le Drive de production :
+  - **Convocation** (id 1) : classe **B — migration simple de balises**. 7 alias (tous
+    strictement équivalents, resolver vérifié) + 1 marqueur historique (`date_convocation`,
+    cible conseillée `document_date_convocation`). Aucune erreur, aucune variable inconnue.
+  - **Attestation** (id 2) : classe **B — migration simple de balises**. 6 alias + 2 marqueurs
+    historiques (`duree`, cible conseillée `session_duree_heures` ; `date_attestation`, cible
+    conseillée `document_date_attestation`). Aucune erreur, aucune variable inconnue.
+  - **Aucun modèle invalide**, **aucun modèle en classe C ou D**.
+- **Strictement en lecture seule** : aucune migration de balise, aucune écriture Drive (aucun
+  `copy`/`batchUpdate`/`update`), aucune écriture en base (exécuteur SQL limité au SELECT
+  pendant l'audit, 0 tentative interceptée).
+- Point ouvert, à traiter avant toute migration de `date_attestation` et `duree` (pas une
+  simple substitution de balise) : `document_date_attestation` est censée porter une date
+  fixée à la clôture, alors que le resolver actuel y place `date_fin` ; `duree` a deux cibles
+  possibles (`session_duree_heures` ou `formation_duree_heures`), à trancher avant migration.

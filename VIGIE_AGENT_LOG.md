@@ -3548,4 +3548,44 @@ Index : `seances (session_id, date_seance, heure_debut, id)` et `(groupe_id, dat
 
 - Backend **759/759** (748 avant → +11), `git diff --check` propre. Frontend non concerné.
 
+---
+
+## 2026-10-11 — DOC-7C : interface Planning / séances + suivi pédagogique
+
+### Emplacement de l'interface
+
+Onglet **« Planning »** dans la fiche session (`/sessions/:id/planning`), entre « Stagiaires » et
+« Accompagnement ». Composant `client/src/sessions/OngletSeances.jsx`, branché dans `SessionDetail.jsx`
+et la route dans `App.jsx`. Aucune refonte de l'interface générale.
+
+### Parcours utilisateur
+
+1. Onglet Planning → liste des séances (ordre date → heure → id), filtre par groupe si > 1 groupe.
+2. « Ajouter une séance » / « Modifier » → panneau latéral (date, horaires, groupe, phase, thème,
+   compétences multi-entrées, activités, lieu).
+3. « Supprimer » → confirmation (ConfirmDialog) avant DELETE.
+4. « Suivi pédagogique » → panneau latéral : stagiaires concernés, accordéon par stagiaire,
+   indicateur « Suivi renseigné », enregistrement individuel (PUT). Aucune donnée handicap affichée.
+5. État vide : « Aucune séance planifiée pour cette session. »
+
+### Fichiers modifiés
+
+- `client/src/sessions/OngletSeances.jsx` (nouveau), `client/src/sessions/seances-format.js` (nouveau,
+  helpers purs testés), `client/src/sessions/SessionDetail.jsx`, `client/src/App.jsx`,
+  `client/src/sessions/sessions.css` (puces de compétences, accordéon de suivi).
+- Tests : `client/test/seances.test.jsx` (nouveau, 9 tests), `client/test/outils.jsx` (routes par défaut),
+  `client/test/sessions.test.jsx` (libellés des onglets).
+
+### Endpoints utilisés
+
+- `GET /sessions/:id/seances` (liste), `POST /sessions/:id/seances`, `PATCH /seances/:id`,
+  `DELETE /seances/:id`, `GET /seances/:id/suivi`, `PUT /seances/:id/suivi/:inscriptionId`.
+
+### Validation
+
+- Frontend **345/345** (336 avant → +9), backend **759/759**, build Vite OK.
+- ESLint : aucune config dans le projet (rien à exécuter). `git diff --check` propre.
+- Aucun bouton « Générer le Livret », aucun modèle Drive modifié, aucune donnée handicap affichée.
+
+
 

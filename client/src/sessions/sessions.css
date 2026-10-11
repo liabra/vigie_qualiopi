@@ -142,3 +142,26 @@ p.sess-secondaire { display: block; }
   padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm);
 }
 .sess-liens { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+/* ── Planning / séances (DOC-7C) ──────────────────────────── */
+.seance-champs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.seance-puce {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  background: var(--color-surface-2); border: 1px solid var(--color-border);
+  border-radius: 999px; padding: 2px var(--space-2); font-size: var(--font-size-small);
+}
+.seance-puce__retirer {
+  border: 0; background: transparent; cursor: pointer; padding: 0 2px;
+  color: var(--color-text-secondary); font-size: 1rem; line-height: 1;
+}
+.seance-puce__retirer:hover { color: var(--color-danger, var(--color-text)); }
+
+/* Suivi pédagogique : liste compacte + accordéon par stagiaire. */
+.suivi-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.suivi-item { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; }
+.suivi-item__tete {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3); background: var(--color-surface);
+}
+.suivi-item__nom { font-weight: var(--font-weight-medium); flex: 1; }
+.suivi-item__corps { padding: var(--space-3); display: grid; gap: var(--space-3); border-top: 1px solid var(--color-border); }

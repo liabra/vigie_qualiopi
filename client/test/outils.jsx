@@ -54,6 +54,21 @@ export function routesParDefaut(role) {
       agregation: { reponses: 1, anonymes: 1, nominatives: 0, moyenne: 4.5, echelleHomogene: 5 },
       satisfactions: [{ id: 40, type: "a_chaud", date_recueil: "2026-09-15", note_globale: 4.5, note_max: 5, commentaires: "Très bien" }],
     },
+    "GET /api/sessions/1/seances": {
+      archivee: false,
+      seances: [
+        { id: 30, session_id: 1, groupe_id: 5, groupe_nom: "Groupe A", phase_numero: 1, date_seance: "2026-09-08", heure_debut: "09:00:00", heure_fin: "12:00:00", theme: "Accueil", competences: ["communication"], activites: "Atelier présentation", lieu: "Lyon 7e" },
+        { id: 31, session_id: 1, groupe_id: null, groupe_nom: null, phase_numero: null, date_seance: "2026-09-10", heure_debut: "13:00:00", heure_fin: null, theme: "Bilan", competences: [], activites: null, lieu: null },
+      ],
+    },
+    "GET /api/seances/30/suivi": {
+      archivee: false,
+      seance: { id: 30, session_id: 1, groupe_id: 5, date_seance: "2026-09-08" },
+      inscrits: [
+        { inscription_id: 11, statut: "inscrit", civilite: "Mme", nom: "Martin", prenom: "Alice", suivi_id: null, accompagnement: null, difficultes: null, impressions: null, observations: null, mis_a_jour_par: null, updated_at: null },
+        { inscription_id: 12, statut: "inscrit", civilite: null, nom: "Bernard", prenom: "Paul", suivi_id: 2, accompagnement: "Reprise individuelle", difficultes: "Compréhension orale", impressions: null, observations: null, mis_a_jour_par: 1, updated_at: "2026-09-08T10:00:00Z" },
+      ],
+    },
     "GET /api/preuves": { preuves: [{ id: 60, titre: "Feuille d'émargement EduSign", indicateur: 11, source: "manuel", fichiers: [] }], total: 1 },
     "GET /api/indicateurs": { indicateurs: [{ id: 11, numero: 11, libelle: "Atteinte des objectifs" }] },
     "GET /api/formations": { formations: [{ id: 7, intitule: "Formation test", version_numero: 1 }] },

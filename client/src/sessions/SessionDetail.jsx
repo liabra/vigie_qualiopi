@@ -18,10 +18,12 @@ import { OngletEvaluations } from "./OngletEvaluations.jsx";
 import { OngletSatisfaction } from "./OngletSatisfaction.jsx";
 import { OngletDocuments } from "./OngletDocuments.jsx";
 import { OngletParcours } from "./OngletParcours.jsx";
+import { OngletSeances } from "./OngletSeances.jsx";
 
 const ONGLETS = {
   apercu: VueEnsemble,
   stagiaires: OngletStagiaires,
+  planning: OngletSeances,
   parcours: OngletParcours,
   assiduite: OngletAssiduite,
   evaluations: OngletEvaluations,
@@ -206,6 +208,7 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
         onglets={[
           { to: base, libelle: "Vue d'ensemble" },
           { to: `${base}/stagiaires`, libelle: "Stagiaires", compteur: synthese.actifs, titreCompteur: `${synthese.actifs} inscrit(s) actif(s), abandons exclus` },
+          { to: `${base}/planning`, libelle: "Planning" },
           { to: `${base}/parcours`, libelle: "Accompagnement" },
           { to: `${base}/assiduite`, libelle: "Assiduité" },
           { to: `${base}/evaluations`, libelle: "Évaluations", compteur: donnees.evaluations?.agregation?.total ?? 0 },

@@ -146,20 +146,26 @@ function construireDiagnostic(r, { typeFichier, onglets = null }) {
 // contenu selon ce type, puis analyse les balises.
 // `clients` : { drive, docs, sheets } — même forme que getDrive().
 export async function analyserModeleDrive(modele, clients, jeton = null) {
+  // DOC-3C : `trashed` est lu ICI, dans la MÊME requête que le mimeType —
+  // c'est la fusion validée avec l'ancien verifierModeleDrive() de
+  // documents.js, qui faisait un second drive.files.get redondant. Un seul
+  // appel « fichier » pour tout le diagnostic, qu'il serve à l'écran des
+  // modèles (DOC-2) ou au précontrôle de génération (DOC-3C).
   const { data: fichier } = await appelGoogle(
     "drive.files.get",
-    () => clients.drive.files.get({ fileId: modele.drive_file_id, fields: "id,mimeType", supportsAllDrives: true }),
+    () => clients.drive.files.get({ fileId: modele.drive_file_id, fields: "id,mimeType,trashed", supportsAllDrives: true }),
     { api: "drive", modele: modele.nom, jeton }
   );
   const mime = fichier.mimeType;
+  const trashed = fichier.trashed === true;
 
   if (mime === MIME_DOC) {
     const texte = await texteModeleDoc(clients, modele.drive_file_id, jeton);
-    return construireDiagnostic(analyserModele(texte), { typeFichier: "document" });
+    return { ...construireDiagnostic(analyserModele(texte), { typeFichier: "document" }), trashed };
   }
   if (mime === MIME_SHEET) {
     const { texte, ongletsTotal, ongletsAnalyses } = await texteModeleSheet(clients, modele.drive_file_id, jeton);
-    return construireDiagnostic(analyserModele(texte), { typeFichier: "feuille_calcul", onglets: { total: ongletsTotal, analysees: ongletsAnalyses } });
+    return { ...construireDiagnostic(analyserModele(texte), { typeFichier: "feuille_calcul", onglets: { total: ongletsTotal, analysees: ongletsAnalyses } }), trashed };
   }
   throw erreurDiagnostic(400, "format_non_supporte", "Format de fichier non pris en charge pour l'analyse : seuls les Google Docs et les Google Sheets sont analysés.");
 }

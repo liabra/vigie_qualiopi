@@ -1336,7 +1336,7 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
   try {
     const r = await genererDocuments({
       modeleId, sessionId, groupeId,
-      remplacer: remplacer === true, utilisateurId: req.user.id,
+      remplacer: remplacer === true, utilisateurId: req.user.id, admin: estAdmin(req.user),
     });
     res.json(r);
   } catch (e) {
@@ -1347,6 +1347,9 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     // 409 : des documents existent déjà, ou une génération est en cours.
     if (e.dejaGeneres) return res.status(409).json({ error: e.message, dejaGeneres: e.dejaGeneres });
     if (e.genEnCours) return res.status(409).json({ error: e.message });
+    // DOC-3C : refus du précontrôle — le détail (erreurs/avertissements,
+    // jamais de donnée stagiaire) accompagne le message.
+    if (e.precontrole) return res.status(e.statut || 400).json({ error: e.message, precontrole: e.precontrole });
     // 503 : Google indisponible. 400 : erreur métier exploitable. Le
     // diagnostic Google complet reste dans les logs serveur uniquement.
     if (e.statut) return res.status(e.statut).json({ error: e.message });

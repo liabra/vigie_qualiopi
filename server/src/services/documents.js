@@ -16,6 +16,7 @@ import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
 import { marqueursInconnus, marqueursRestants, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
 import { calculerAssiduite } from "./assiduite.js";
+import { precontrolerGeneration } from "./precontroleGeneration.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -309,45 +310,15 @@ function erreurGoogle(e) {
   return { statut: 503, message: "Google est indisponible ou la requête a échoué. Réessayez." };
 }
 
-// Vérifie le fichier MODÈLE sur Drive AVANT de copier : absent, en
-// corbeille, inaccessible ou d'un type non remplaçable ⇒ erreur claire
-// AVANT toute création de copie.
-async function verifierModeleDrive(d, modele, jeton) {
-  let infos;
-  try {
-    ({ data: infos } = await appelGoogle(
-      "drive.files.get",
-      () => d.drive.files.get({
-        fileId: modele.drive_file_id,
-        fields: "id,name,mimeType,trashed",
-        supportsAllDrives: true,
-      }),
-      { api: "drive", modele: modele.nom, jeton }
-    ));
-  } catch (e) {
-    const { statut } = erreurGoogle(e);
-    const propre = new Error(
-      e?.response?.status === 404
-        ? `Le fichier du modèle « ${modele.nom} » est introuvable ou a été supprimé du Drive.`
-        : e?.response?.status === 403
-          ? `Le modèle « ${modele.nom} » n'est pas accessible : vérifiez son partage sur Drive.`
-          : "Impossible de vérifier le modèle sur Drive."
-    );
-    propre.statut = statut;
-    throw propre;
-  }
-  if (!infos || infos.trashed) {
-    const e = new Error(`Le fichier du modèle « ${modele.nom} » est introuvable ou a été supprimé du Drive.`);
-    e.statut = 400;
-    throw e;
-  }
-  if (infos.mimeType !== DOC && infos.mimeType !== SHEET) {
-    const e = new Error(`Le modèle « ${modele.nom} » n'est ni un Google Doc ni un Google Sheet : ses marqueurs ne peuvent pas être remplacés.`);
-    e.statut = 400;
-    throw e;
-  }
-  return infos;
-}
+// DOC-3C : l'ancienne vérification séparée (verifierModeleDrive, un
+// drive.files.get dédié) est retirée — fusionnée dans analyserModeleDrive()
+// (diagnosticModele.js), appelée par precontrolerGeneration() ci-dessous.
+// Un format non supporté ou un fichier introuvable/inaccessible continue
+// de bloquer AVANT toute copie : ces erreurs sont désormais levées par
+// analyserModeleDrive() lui-même (propagées telles quelles, traduites par
+// erreurGoogle() dans le catch global ci-dessous) ; un fichier à la
+// corbeille est signalé par le précontrôle (code MODELE_CORBEILLE). Un
+// seul drive.files.get pour tout le flux, au lieu de deux.
 
 // Met à la corbeille, au mieux, les copies déjà créées : on ne masque
 // jamais l'erreur d'origine, et un fichier orphelin vaut mieux qu'une
@@ -387,7 +358,9 @@ async function archiverAnciens(d, ids, jeton) {
 const generationsEnCours = new Map();
 
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
-export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, client: clientGoogle = null } = {}) {
+// DOC-3C : `admin` (booléen, estAdmin(req.user) calculé par la route) sert
+// au précontrôle pour les variables/blocs `sensibilite: "restreinte"`.
+export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, client: clientGoogle = null } = {}) {
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
@@ -437,8 +410,18 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   // corbeille (au mieux) pour ne pas laisser d'orphelin.
   const copiesCreees = [];
   try {
-    // Le modèle doit exister, être accessible et remplaçable AVANT toute copie.
-    await verifierModeleDrive(d, modele, jeton);
+    // DOC-3C — PRÉCONTRÔLE : « ce modèle peut-il être généré, par cet
+    // utilisateur, avec ces données, pour TOUTES les cibles ? » AVANT tout
+    // effet de bord Drive (copie, création de dossier). Une seule lecture
+    // du fichier (fusionnée avec l'ex-verifierModeleDrive) ; tout ou rien
+    // pour le lot — une seule cible bloquante empêche TOUTE copie.
+    const precontrole = await precontrolerGeneration(modele, ctx, aProduire, { admin, clients: d, jeton });
+    if (!precontrole.autorise) {
+      const e = new Error("La génération a été refusée par le précontrôle de sécurité documentaire.");
+      e.statut = 400;
+      e.precontrole = precontrole;
+      throw e;
+    }
 
     const dejaParCle = new Map(existants.map((x) => [x.stagiaire_id ?? 0, x]));
     const dossierId = await dossierCible(d.drive, ctx, jeton);

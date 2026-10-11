@@ -3100,3 +3100,78 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
 - Décisions validées, non remises en cause : Vigie reste générique (aucune logique
   Armstrong/Voie Lactée/Uranus/6 phases), aucune nouvelle table, aucune migration automatique
   de balise, aucune modification des modèles Google Drive.
+
+## 2026-10-11 — DOC-3C : précontrôle sécurisé de génération (non commité)
+
+- « Ce modèle peut-il être généré, par cet utilisateur, avec ces données, pour TOUTES les
+  cibles ? » — vérifié **avant** tout effet de bord Drive (copie, création de dossier),
+  avant toute écriture en base. Tout ou rien pour le lot : une seule cible/variable
+  bloquante empêche la génération entière, jamais un lot partiel.
+- `server/src/services/precontroleGeneration.js` (nouveau) : `precontrolerGeneration(modele,
+  ctx, cibles, { admin, clients, jeton })`, fonction PURE (ne lève jamais pour un refus
+  « normal » — seules les erreurs d'accès au fichier Drive restent des exceptions, comme
+  `analyserModeleDrive()`). Réutilise **intégralement** `analyserModeleDrive()` (DOC-2) : une
+  seule lecture du fichier, jamais une par cible, aucun second parseur de balises.
+  - **Modèle à la corbeille** → `MODELE_CORBEILLE`, bloquant, avant toute autre analyse.
+  - **Syntaxe invalide / variable inconnue / bloc mal formé** → codes déjà produits par
+    `analyserModele()` (DOC-1), repris sans recalcul.
+  - **Bloc répétable valide mais non rendu** → `BLOC_REPETABLE_NON_RENDU` (aucun moteur de
+    rendu de bloc n'existe encore).
+  - **Variable canonique écrite directement** (`{{stagiaire_nom}}`) : si son resolver
+    n'existe pas → `CANONIQUE_NON_RESOLUBLE` (propriété du **modèle**, jamais une boucle par
+    cible) ; si un resolver existe → `CANONIQUE_GENERATION_NON_ACTIVEE` (l'état temporaire
+    demandé : reconnue, calculable, mais `requetesDocs`/`requetesSheets` ne la remplacent
+    pas encore — se lèvera en DOC-3D). **`CANONIQUE_ABSENT`** reste évalué **par cible**, en
+    avertissement, jamais bloquant seul, sans aucune requête SQL ni appel Drive
+    supplémentaire (`resoudreCanoniques()` relit les cibles déjà chargées en mémoire).
+  - **Alias / marqueur historique** : autorisés, avertissement de migration (`ALIAS`/
+    `HISTORIQUE`) — **jamais** soumis à `CANONIQUE_NON_RESOLUBLE`/`GENERATION_NON_ACTIVEE`
+    (ils passent par le mécanisme historique, déjà remplacé aujourd'hui).
+  - **Sensibilité** (`sensibilite: "restreinte"` du catalogue, jamais une liste en dur) :
+    pour une variable canonique **ou** pour la **cible** d'un alias (règle explicite : la
+    sécurité porte sur la variable effective, pas sur le nom écrit — un ancien nom ne peut
+    pas devenir un contournement) — admin autorisé si résoluble, contributeur **toujours**
+    refusé (`VARIABLE_RESTREINTE_REFUSEE`), **avant** toute tentative de résolution de cette
+    variable. Un marqueur historique sans cible canonique certaine n'a **aucune** sensibilité
+    déduite. Bornage règle 7 : `cibles_concernees` ≤ 50 identifiants techniques,
+    `cibles_tronquees` sinon — jamais de nom, d'e-mail ni de commentaire.
+- `server/src/services/diagnosticModele.js` : `trashed` ajouté aux champs du `drive.files.get`
+  déjà fait pour le mimeType — même requête, propagé dans le résultat (`diagnostic.trashed`).
+  N'affecte pas l'écran de diagnostic (DOC-2), qui reçoit ce champ en plus sans rien casser.
+- `server/src/services/documents.js` : `verifierModeleDrive()` (son propre `drive.files.get`
+  redondant) **retiré**, fusionné dans `analyserModeleDrive()` via `precontrolerGeneration()`
+  — **un seul** `drive.files.get` pour tout le flux, au lieu de deux. Le précontrôle s'exécute
+  juste après `cibles()` (toutes les cibles connues) et avant `dossierCible()`/la boucle de
+  copie. `genererDocuments()` accepte désormais `admin` (booléen). Le cas « rien à produire »
+  (`aProduire.length === 0`) continue de s'arrêter **avant** le précontrôle — aucune lecture
+  Drive supplémentaire quand il n'y a aucun document à générer (comportement actuel préservé).
+- `server/src/routes/gestion.js` : `admin: estAdmin(req.user)` transmis à `genererDocuments()`
+  (le rôle n'était auparavant jamais passé au service) ; le refus du précontrôle (400) renvoie
+  `{ error, precontrole }` au client.
+- Limite assumée, non traitée dans DOC-3C : `copierEtRemplir()` relit encore une fois le
+  modèle en interne (`marqueursNonReconnus`, pour le signalement `marqueursInconnus` existant,
+  indépendant du précontrôle) — une deuxième lecture par génération subsiste, mais reste O(1),
+  jamais O(cibles). Fusionner ce second usage est hors périmètre de DOC-3C (il appartient au
+  chemin de remplacement réel, DOC-3D).
+- Tests : `precontroleGeneration.test.js` (15, purs, clients Google simulés) — non-régression
+  Convocation/Attestation, variable canonique directe bloquée, non_resoluble non bouclé par
+  cible, variable restreinte (contributeur refusé / admin tenté), alias → sécurité sur la
+  cible (vérifié : aucun des 11 alias ne cible aujourd'hui une variable restreinte), marqueur
+  historique sans sensibilité déduite, bloc valide non rendu, bloc restreinte, syntaxe
+  invalide/variable inconnue repris tels quels, absent borné à 50 + `cibles_tronquees`,
+  modèle à la corbeille, confidentialité (aucun texte libre), une seule lecture Drive quel
+  que soit le nombre de cibles, Google Sheet traité à l'identique d'un Doc. Côté intégration
+  (`generationRobuste.test.js`, +4 nouveaux + 2 réécrits pour refléter le nouveau
+  comportement) : zéro copie/dossier/écriture DB sur refus, lot de 3 bloqué en entier,
+  contributeur refusé quand admin ne l'est pas (pour une autre raison), non-régression du cas
+  « rien à produire ». **669/669 serveur** ×2 (650 + 19), **336/336 client** (inchangé),
+  build OK, `diff --check` OK. Node 22.23.3.
+- Comportement non régressif confirmé par test : les marqueurs réels de Convocation et
+  Attestation (DOC-2.5 — 7+6 alias, 1+2 marqueurs historiques) ne touchent aucune variable
+  restreinte ni canonique directe ⇒ toujours générables, avertissements de migration
+  inchangés.
+- Prochaine étape (DOC-3D) : brancher réellement `requetesDocs()`/`requetesSheets()` sur les
+  variables canoniques résolubles (ce qui lèvera `CANONIQUE_GENERATION_NON_ACTIVEE` pour les
+  variables déjà résolubles), définir le mapping `required` par modèle (pour transformer
+  `CANONIQUE_ABSENT` en erreur quand pertinent), et le rendu des 4 blocs déjà alimentables
+  (`absences`, `adaptations`, `evaluations`, `intervenants`).

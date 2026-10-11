@@ -100,9 +100,15 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
 
 // ── Faux client Google ───────────────────────────────────────
 // Trace : copies créées, fichiers mis à la corbeille, relectures.
+// DOC-3C : `modeleTexte` est le contenu ORIGINAL du modèle, désormais
+// précontrôlé (analyserModele) avant toute copie. Par défaut, un marqueur
+// historique connu (« nom_stagiaire ») — précontrôle propre — pour que les
+// tests qui ne portent PAS sur le contenu du modèle (verrou, échecs Drive/DB,
+// droits…) ne soient pas bloqués par une variable inconnue sans rapport.
 function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = false, echecGet = null,
-  echecCopy = null, echecBatch = null, echecTrash = null, copieRelue = null, attente = null, journal = null } = {}) {
-  const trace = { copies: 0, copiesCreees: [], corbeille: [], relectures: 0, remplacements: 0 };
+  echecCopy = null, echecBatch = null, echecTrash = null, copieRelue = null, attente = null, journal = null,
+  modeleTexte = "{{nom_stagiaire}}" } = {}) {
+  const trace = { copies: 0, copiesCreees: [], corbeille: [], relectures: 0, remplacements: 0, dossiersCrees: 0 };
   const noter = (evt) => { if (journal) journal.push(evt); };
   let n = 0;
   const client = {
@@ -114,7 +120,7 @@ function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = f
           return { data: { id: "MODELE", name: "Attestation", mimeType: modeleGet || mimeModele, trashed: trashModele } };
         },
         list: async () => ({ data: { files: [] } }),
-        create: async () => ({ data: { id: "dossier-" + ++n } }),
+        create: async () => { trace.dossiersCrees++; return { data: { id: "dossier-" + ++n } }; },
         copy: async ({ requestBody }) => {
           if (attente) await attente;
           if (echecCopy) throw Object.assign(new Error(echecCopy.message), { response: { status: echecCopy.statut } });
@@ -143,8 +149,8 @@ function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = f
             // simuler un marqueur resté non remplacé.
             return { data: copieRelue || { body: { content: [] }, headers: {}, footers: {} } };
           }
-          // Modèle original : avec un marqueur inconnu si demandé.
-          return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: "{{inconnu_x}}" } }] } }] }, headers: {}, footers: {} } };
+          // Modèle original : contenu configurable (DOC-3C : précontrôlé).
+          return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: modeleTexte } }] } }] }, headers: {}, footers: {} } };
         },
         batchUpdate: async () => {
           if (echecBatch) throw Object.assign(new Error(echecBatch.message), { response: { status: echecBatch.statut } });
@@ -204,7 +210,9 @@ test("un modèle en corbeille ou inaccessible est refusé clairement", async () 
   setDriveFactory(() => b.client);
   const r2 = await generer(requete);
   assert.equal(r2.statut, 400);
-  assert.match(r2.corps.error, /pas accessible/);
+  // DOC-3C : message générique erreurGoogle() (verifierModeleDrive fusionné
+  // dans analyserModeleDrive) — même code d'accès refusé, texte uniformisé.
+  assert.match(r2.corps.error, /refuse l'accès/);
   assert.equal(b.trace.copies, 0);
 });
 
@@ -214,7 +222,7 @@ test("un modèle ni Doc ni Sheet est refusé 400", async () => {
   setDriveFactory(() => client);
   const r = await generer(requete);
   assert.equal(r.statut, 400);
-  assert.match(r.corps.error, /ni un Google Doc ni un Google Sheet/);
+  assert.match(r.corps.error, /[Ff]ormat.*non pris en charge/);
   assert.equal(trace.copies, 0);
 });
 
@@ -245,16 +253,82 @@ test("un groupe d'une autre session est refusé avant copie", async () => {
 
 // ── Marqueurs ────────────────────────────────────────────────
 
-test("un marqueur inconnu est remonté, pas silencieux", async () => {
+// DOC-3C : une variable INCONNUE du catalogue bloque désormais TOUTE la
+// génération avant toute copie — ce n'est plus un simple signalement a
+// posteriori (comportement d'avant DOC-3C, remplacé intentionnellement).
+test("DOC-3C : un marqueur inconnu du catalogue bloque la génération, aucune copie", async () => {
   baseSimulee().installer();
-  const { client } = clientDriveSimule();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{inconnu_x}}" });
   setDriveFactory(() => client);
   const r = await generer(requete);
-  assert.equal(r.statut, 200);
-  assert.deepEqual(r.corps.marqueursInconnus, ["inconnu_x"]);
+  assert.equal(r.statut, 400);
+  assert.ok(r.corps.precontrole);
+  assert.equal(r.corps.precontrole.autorise, false);
+  assert.ok(r.corps.precontrole.erreurs.some((e) => e.code === "VARIABLE_INCONNUE" && e.nom === "inconnu_x"));
+  assert.equal(trace.copies, 0, "aucune copie Drive");
 });
 
-test("un marqueur resté non remplacé est remonté", async () => {
+// Règle 6 : sur tout échec du précontrôle, AUCUN effet de bord — ni copie,
+// ni dossier, ni écriture en base.
+test("DOC-3C : refus du précontrôle — zéro copie, zéro dossier créé, zéro écriture DB", async () => {
+  const journal = [];
+  baseSimulee({ journal }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{inconnu_x}}", journal });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 400);
+  assert.equal(trace.copies, 0, "aucune copie");
+  assert.equal(trace.dossiersCrees, 0, "aucun dossier Drive créé");
+  assert.deepEqual(journal, [], "aucune écriture (documents_generes, preuves, generations)");
+});
+
+// Règle 1 : lot de plusieurs stagiaires, erreur bloquante au niveau du
+// modèle ⇒ AUCUN document pour AUCUNE cible, jamais un lot partiel.
+test("DOC-3C : lot de 3 stagiaires, une erreur bloquante au niveau du modèle empêche tout le lot", async () => {
+  baseSimulee({ nbStagiaires: 3 }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete, CONTRIBUTEUR);
+  assert.equal(r.statut, 400);
+  assert.equal(r.corps.precontrole.erreurs[0].code, "VARIABLE_RESTREINTE_REFUSEE");
+  assert.equal(trace.copies, 0, "aucune des 3 cibles n'a produit de copie");
+});
+
+// Règle 6/8 : une variable restreinte refuse un contributeur, même si le
+// modèle serait par ailleurs valide pour un admin.
+test("DOC-3C : contributeur + variable restreinte dans le modèle → refus, admin → autre blocage (non_resoluble)", async () => {
+  baseSimulee().installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  setDriveFactory(() => client);
+  const rContrib = await generer(requete, CONTRIBUTEUR);
+  assert.equal(rContrib.statut, 400);
+  assert.equal(rContrib.corps.precontrole.erreurs[0].code, "VARIABLE_RESTREINTE_REFUSEE");
+  assert.equal(trace.copies, 0);
+
+  const { trace: traceAdmin, client: clientAdmin } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  setDriveFactory(() => clientAdmin);
+  const rAdmin = await generer(requete, ADMIN);
+  assert.equal(rAdmin.statut, 400);
+  assert.equal(rAdmin.corps.precontrole.erreurs[0].code, "CANONIQUE_NON_RESOLUBLE");
+  assert.equal(traceAdmin.copies, 0);
+});
+
+// Règle 3 : rien à produire ⇒ comportement actuel inchangé — en particulier,
+// AUCUNE lecture Drive supplémentaire (le précontrôle n'a aucune raison
+// de s'exécuter si aucun document ne sera produit).
+test("DOC-3C : non-régression — aucun stagiaire à produire, aucune lecture Drive, erreur claire", async () => {
+  baseSimulee({ nbStagiaires: 0 }).installer();
+  const { appels: _ignored, client } = clientDriveSimule();
+  let driveGetAppele = 0;
+  client.drive.files.get = async (...a) => { driveGetAppele++; throw new Error("ne doit jamais être appelé"); };
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 400);
+  assert.match(r.corps.error, /Aucun stagiaire inscrit/);
+  assert.equal(driveGetAppele, 0, "aucune lecture Drive quand il n'y a rien à produire");
+});
+
+test("un marqueur resté non remplacé (après copie) est remonté", async () => {
   baseSimulee().installer();
   const copieRelue = { body: { content: [{ paragraph: { elements: [{ textRun: { content: "Bonjour {{nom_stagiaire}}" } }] } }] }, headers: {}, footers: {} };
   const { client } = clientDriveSimule({ copieRelue });

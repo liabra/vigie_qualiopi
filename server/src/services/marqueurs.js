@@ -39,7 +39,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { nomsFormateurs } from "./intervenants.js";
-import { formaterDate, formaterDuree } from "./formatageDocuments.js";
+import { dureeAttestation, formaterDate, formaterDuree } from "./formatageDocuments.js";
 import { resoudreCanoniques } from "./resolversCanoniques.js";
 import { blocCanonique, blocsDuChampLocal, marqueurHistorique, resoudreAlias, variableCanonique } from "./catalogueVariables.js";
 
@@ -106,7 +106,6 @@ export function valeursMarqueurs(ctx = {}) {
   // le format canonique (dates déjà JJ/MM/AAAA, textes déjà en l'état)
   // correspond déjà au rendu historique attendu pour ces 10 alias.
   const relire = (nomCanonique) => { const r = canoniques[nomCanonique]; return r.statut === "resolu" ? String(r.valeur) : ""; };
-  const duree = session?.duree_heures_reelle ?? version?.duree_heures_defaut ?? null;
   return {
     civilite: relire("stagiaire_civilite"),
     nom_stagiaire: relire("stagiaire_nom"),
@@ -115,7 +114,9 @@ export function valeursMarqueurs(ctx = {}) {
     date_fin: relire("session_date_fin"),
     date_attestation: formaterDate(session?.date_fin),
     horaire: relire("session_horaires"),
-    duree: formaterDuree(duree),
+    // DOC-4C : duree relit la même source unique que la canonique
+    // document_duree_attestation (jamais deux calculs divergents).
+    duree: dureeAttestation(ctx),
     intitule_formation: relire("formation_intitule"),
     lieu: groupe?.lieu || session?.lieu || "",
     formateur: nomsFormateurs(formateursGroupe) || groupe?.formateur || nomsFormateurs(formateursSession) || session?.formateur || "",
@@ -148,7 +149,7 @@ export function valeursMarqueurs(ctx = {}) {
 }
 
 // DOC-3D — RENDUS HISTORIQUES DE COMPATIBILITÉ : marqueurs reconnus
-// HISTORIQUE par le validateur (jamais canoniques, jamais comptés dans les 161,
+// HISTORIQUE par le validateur (jamais canoniques, jamais comptés dans les 162,
 // toujours avec leur avertissement de migration) mais dont la couche de rendu
 // lit la valeur depuis une variable canonique. Distinct des 11 ALIAS (une
 // équivalence STRICTE) : ici c'est un PONT de rendu, pas une équivalence
@@ -162,7 +163,7 @@ export const RENDUS_HISTORIQUES = Object.freeze({
 // Canoniques réellement présents dans le modèle (issus du précontrôle) :
 //   resolu → String(valeur) ; absent → "" (uniquement ici, règle temporaire) ;
 //   non_resoluble → n'apparaît jamais (le précontrôle a déjà bloqué).
-// Ne parcourt PAS les 45 variables : seulement celles présentes dans le modèle.
+// Ne parcourt PAS les 46 variables : seulement celles présentes dans le modèle.
 export function valeursDeRemplacement(v, canoniques = []) {
   const plat = {};
   for (const nom of MARQUEURS) plat[nom] = String(v[nom] ?? "");

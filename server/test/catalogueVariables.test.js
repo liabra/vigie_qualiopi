@@ -22,8 +22,8 @@ const avert = (r) => r.avertissements.map((e) => e.code);
 // ── Catalogue ────────────────────────────────────────────────
 
 test("catalogue : noms canoniques et identifiants uniques, syntaxe {{nom}}", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.2");
-  assert.equal(VARIABLES.length, 161, "158 variables du PDF v1.0 + session_reference + evaluation_moment + evaluation_resultat_validation");
+  assert.equal(DICTIONNAIRE_VERSION, "1.3");
+  assert.equal(VARIABLES.length, 162, "158 variables du PDF v1.0 + session_reference + evaluation_moment + evaluation_resultat_validation + document_duree_attestation");
   const noms = VARIABLES.map((v) => v.nom);
   assert.equal(new Set(noms).size, noms.length, "noms canoniques uniques");
   const ids = VARIABLES.map((v) => v.id);
@@ -83,6 +83,15 @@ test("catalogue : session_statut renommée session_statut_code en 1.2, non silen
   assert.equal(r.valide, true, JSON.stringify(r.erreurs));
   assert.deepEqual(r.resume.historiques, ["session_statut"]);
   assert.deepEqual(r.resume.canoniques, ["session_statut_code"]);
+});
+
+test("catalogue : document_duree_attestation ajoutée en 1.3, non sensible, texte", () => {
+  const v = variableCanonique("document_duree_attestation");
+  assert.equal(v.id, "DOC-10");
+  assert.equal(v.depuis, "1.3");
+  assert.equal(v.type, "texte");
+  assert.equal(v.sensibilite, "aucune");
+  assert.equal(v.calcule, true);
 });
 
 test("catalogue : figé, aucune modification à chaud", () => {
@@ -216,7 +225,7 @@ test("validateur : modèle de convocation canonique valide, sans avertissement",
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.resume.canoniques.length, 9);
-  assert.equal(r.version, "1.2");
+  assert.equal(r.version, "1.3");
 });
 
 test("validateur : variable inconnue rejetée explicitement", () => {
@@ -305,7 +314,7 @@ test("validateur : entrée non textuelle ou démesurée refusée, écho des bali
 
 test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
-  assert.equal(c.version, "1.2");
+  assert.equal(c.version, "1.3");
   assert.equal(c.variables.length, VARIABLES.length);
   assert.equal(c.blocs.length, 9);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });

@@ -100,7 +100,7 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
   // simples avertissements de migration (déjà repris ci-dessus).
 
   // Précalcul UNE fois par cible (pas une fois par variable × cible) :
-  // resoudreCanoniques() renvoie les 161 statuts d'un coup.
+  // resoudreCanoniques() renvoie les 162 statuts d'un coup.
   const resolutionsParCible = cibles.map((c) => ({
     id: c.stagiaire?.id ?? null,
     canoniques: resoudreCanoniques({ ...ctx, stagiaire: c.stagiaire }),

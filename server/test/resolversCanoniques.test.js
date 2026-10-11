@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-//  DOC-3B — resoudreCanoniques(ctx) : 161 clés exactement, pilotées par le
+//  DOC-3B — resoudreCanoniques(ctx) : 162 clés exactement, pilotées par le
 //  catalogue, trois statuts stricts (resolu / absent / non_resoluble).
 //  Module PUR : aucune base, aucun Google.
 // ─────────────────────────────────────────────────────────────
@@ -43,10 +43,10 @@ const CTX = {
 const canoniques = resoudreCanoniques(CTX);
 const vide = resoudreCanoniques({});
 
-test("invariant : exactement 161 clés, pilotées par le catalogue, aucune en trop", () => {
-  assert.equal(VARIABLES.length, 161, "source de vérité du catalogue");
-  assert.equal(Object.keys(canoniques).length, 161);
-  assert.equal(Object.keys(vide).length, 161, "même nombre de clés quel que soit ctx");
+test("invariant : exactement 162 clés, pilotées par le catalogue, aucune en trop", () => {
+  assert.equal(VARIABLES.length, 162, "source de vérité du catalogue");
+  assert.equal(Object.keys(canoniques).length, 162);
+  assert.equal(Object.keys(vide).length, 162, "même nombre de clés quel que soit ctx");
   for (const nom of Object.keys(canoniques)) assert.ok(variableCanonique(nom), `${nom} doit exister dans VARIABLES`);
   assert.deepEqual(Object.keys(canoniques).sort(), VARIABLES.map((v) => v.nom).sort());
 });
@@ -55,9 +55,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("45 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 45);
-  assert.equal(new Set(NOMS_RESOLUS).size, 45, "aucun doublon");
+test("46 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 46);
+  assert.equal(new Set(NOMS_RESOLUS).size, 46, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -68,7 +68,7 @@ test("toute variable du catalogue reçoit exactement un résultat à trois statu
   }
 });
 
-test("les 45 variables supportées sont résolues depuis un contexte complet", () => {
+test("les 46 variables supportées sont résolues depuis un contexte complet", () => {
   const attendu = {
     organisme_nom: "A2C", formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
     formation_duree_heures: 400, formation_public_vise: "Demandeurs d'emploi", formation_prerequis: "Aucun",
@@ -85,6 +85,7 @@ test("les 45 variables supportées sont résolues depuis un contexte complet", (
     absence_heures_total: 3.5, presence_taux: 99, absence_taux: 1, relance_derniere_date: "10/01/2026",
     prescripteur_nom: "Pôle Emploi",
     document_date: "01/02/2026", document_date_convocation: "01/02/2026", document_date_attestation: "05/03/2026",
+    document_duree_attestation: "380 h",
   };
   for (const [nom, valeur] of Object.entries(attendu)) {
     assert.deepEqual(canoniques[nom], { statut: "resolu", valeur }, nom);
@@ -92,8 +93,8 @@ test("les 45 variables supportées sont résolues depuis un contexte complet", (
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les 43 attendus + les 2 abandon_* couverts = 45 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 45);
+  // Les 44 attendus + les 2 abandon_* couverts = 46 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 46);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
@@ -131,7 +132,7 @@ test("champ NULL/vide pour cette instance ⇒ « absent », jamais une chaîne v
   }
 });
 
-test("contexte vide : les 45 supportées sont « absent », les 116 autres « non_resoluble »", () => {
+test("contexte vide : les 46 supportées sont « absent », les 116 autres « non_resoluble »", () => {
   for (const nom of NOMS_RESOLUS) assert.equal(vide[nom].statut, "absent", nom);
   for (const v of VARIABLES) {
     if (!NOMS_RESOLUS.includes(v.nom)) assert.equal(vide[v.nom].statut, "non_resoluble", v.nom);

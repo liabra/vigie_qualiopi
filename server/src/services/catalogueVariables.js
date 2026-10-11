@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.2";
+export const DICTIONNAIRE_VERSION = "1.3";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -31,6 +31,7 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.1", changement: "Ajout de EVA-11 {{evaluation_moment}} (positionnement | intermediaire | finale | autre) et EVA-12 {{evaluation_resultat_validation}} (valide | non_valide), pour distinguer explicitement moment, méthode, résultat de validation binaire et niveau pédagogique atteint (evaluation_niveau / phase_resultat_niveau, inchangées). Aucune de ces deux notions n'est aujourd'hui stockée par Vigie : aucun resolver n'est ajouté." },
   { version: "1.1", changement: "Ajout du marqueur legacy date_convocation : absent des 23 marqueurs actuels du moteur (marqueurs.js), mais utilisé dans un modèle Drive réel de convocation. Classé historique, cible document_date_convocation (DOC-06), distincte de document_date (DOC-01, date de génération technique)." },
   { version: "1.2", changement: "Renommage non silencieux SES-09 : session_statut → session_statut_code (valeur métier brute planifiee | en_cours | terminee | annulee), pour lever la collision avec le marqueur historique session_statut (libellé humain). Le nom session_statut reste reconnu comme marqueur historique compatible, jamais un alias de session_statut_code." },
+  { version: "1.3", changement: "Ajout de DOC-10 {{document_duree_attestation}} : durée totale affichée sur l'attestation (durée de session, à défaut durée de formation, au format historique de duree). Le marqueur historique duree relit désormais cette valeur." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -244,6 +245,7 @@ const LIGNES = [
   ["DOC-07", "document_date_attestation", "Date d'attestation", "document", "date", "Clôture session", "Document", "Date portée sur l'attestation, fixée à la clôture.", { format: "date" }],
   ["DOC-08", "signataire_nom", "Nom du signataire", "document", "texte", "Paramètres / utilisateur", "Document", "Nom du signataire du document."],
   ["DOC-09", "signataire_fonction", "Fonction du signataire", "document", "texte", "Paramètres / utilisateur", "Document", "Fonction du signataire du document."],
+  ["DOC-10", "document_duree_attestation", "Durée totale de l'attestation", "document", "texte", "Session / formation", "Document", "Durée totale affichée sur l'attestation de formation. Utilise la durée de la session lorsqu'elle est renseignée ; à défaut, la durée de la formation. Le rendu conserve exactement le format historique de duree (« N h »).", { calcule: true, depuis: "1.3" }],
 ];
 
 // Gel profond : le catalogue est un contrat, aucune entrée ne se modifie à chaud.
@@ -342,7 +344,7 @@ export const ALIAS = Object.freeze({
 export const HISTORIQUES = figer({
   date_attestation: { raison: "Vaut aujourd'hui la date de fin de session (même resolver que date_fin), et non une date fixée explicitement à la clôture comme le prévoit document_date_attestation (DOC-07).", cibles_possibles: ["document_date_attestation", "session_date_fin"] },
   date_convocation: { raison: "Non résolu par le moteur actuel : absent des 23 marqueurs de marqueurs.js, donc laissé tel quel (non remplacé) dans les documents produits aujourd'hui. Utilisé dans un modèle Drive réel de convocation. Correspond à document_date_convocation (DOC-06), distincte de la date de génération technique (document_date, DOC-01).", cibles_possibles: ["document_date_convocation"] },
-  duree: { raison: "Durée déclarée de la session, à défaut celle de la version de formation, rendue « N h ».", cibles_possibles: ["session_duree_heures", "formation_duree_heures"] },
+  duree: { raison: "Durée déclarée de la session, à défaut celle de la version de formation, rendue « N h ». Équivalent exact de document_duree_attestation (v1.3).", cibles_possibles: ["document_duree_attestation"] },
   lieu: { raison: "Lieu du groupe en priorité, à défaut celui de la session.", cibles_possibles: ["session_lieu"] },
   formateur: { raison: "Formateurs rattachés au groupe ou à la session, à défaut texte historique ; aucune variable canonique équivalente.", cibles_possibles: ["bloc intervenants"] },
   entreprise: { raison: "Entreprise saisie sur le stagiaire ; aucune variable canonique équivalente.", cibles_possibles: [] },

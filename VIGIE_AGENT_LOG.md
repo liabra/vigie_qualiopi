@@ -3257,3 +3257,34 @@ résolubles, en conservant la compatibilité des 23 marqueurs historiques. Deux 
 - Décompte du correctif : **+1 test réellement nouveau** (« remplacement de `{{date_convocation}}`
   ignoré → résiduelle ») ; le test « `{{date_convocation}}` / `{{document_date_convocation}}` même
   valeur » **remplace** l'ancien test « date_convocation n'est pas rendu », devenu faux.
+
+---
+
+## 2026-10-11 — DOC-4C : canonicaliser la durée de l'Attestation (non commité)
+
+### Objectif
+
+Ajouter la canonique `document_duree_attestation` et faire relire au marqueur
+historique `duree` la même source unique, sans changer sa sémantique (durée de
+session, à défaut durée de formation, au format `N h`).
+
+### Modifications
+
+- `catalogueVariables.js` : **162 variables** (ajout `DOC-10 document_duree_attestation`),
+  `DICTIONNAIRE_VERSION` **1.2 → 1.3** + entrée `EVOLUTIONS`. `HISTORIQUES.duree` cible
+  désormais `document_duree_attestation` (toujours classé HISTORIQUE, jamais alias).
+- `formatageDocuments.js` : `dureeAttestation(ctx)` — source unique de la durée d'attestation
+  (session ?? formation, via `formaterDuree`).
+- `resolversCanoniques.js` : resolver `document_duree_attestation` (`texte(dureeAttestation(ctx))`),
+  `NOMS_RESOLUS` **45 → 46**.
+- `marqueurs.js` : `duree` relit `dureeAttestation(ctx)` (plus de calcul local dupliqué).
+- Tests : `catalogueVariables`, `resolversCanoniques` (162 clés / 46 résolues), `diagnosticModele`,
+  `variablesApi` (version 1.3), nouveau `migrationAttestation.test.js`.
+
+### Validation
+
+- Backend **697/697** (690 avant → +7). Frontend et build non concernés (aucun code client).
+
+### Points ouverts
+
+- Aucune migration du modèle Drive Attestation : à faire après validation (comme pour Convocation).

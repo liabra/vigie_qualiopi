@@ -21,3 +21,11 @@ export function formaterDuree(heures) {
   if (Number.isNaN(n)) return String(heures);
   return `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} h`;
 }
+
+// DOC-4C — Durée affichée sur l'attestation : durée de session déclarée,
+// sinon durée de la version de formation, au format historique « N h ».
+// Source unique partagée entre le marqueur historique `duree` et la
+// canonique document_duree_attestation — jamais deux calculs divergents.
+export function dureeAttestation(ctx = {}) {
+  return formaterDuree(ctx.session?.duree_heures_reelle ?? ctx.version?.duree_heures_defaut ?? null);
+}

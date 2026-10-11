@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────
 //  DOC-3B — RÉSOLUTION DES VARIABLES CANONIQUES, pilotée par le catalogue
-//  (catalogueVariables.js, 161 variables, source de vérité unique).
+//  (catalogueVariables.js, 162 variables, source de vérité unique).
 //
-//  resoudreCanoniques(ctx) parcourt VARIABLES et renvoie EXACTEMENT 161
+//  resoudreCanoniques(ctx) parcourt VARIABLES et renvoie EXACTEMENT 162
 //  clés, chacune un résultat typé à trois états :
 //    { statut: "resolu",        valeur }   le resolver existe, donnée disponible
 //    { statut: "absent",        valeur: null }  le resolver existe, rien pour CETTE instance
@@ -15,8 +15,8 @@
 //  SEULEMENT. Ici, STRICT : "absent" et "non_resoluble" restent null.
 //
 //  Architecture demandée : SEULES les variables réellement supportées ont
-//  une entrée dans RESOLVEURS_CANONIQUES (45 aujourd'hui). Pas de liste
-//  manuelle des ~115 autres : leur absence de RESOLVEURS_CANONIQUES suffit,
+//  une entrée dans RESOLVEURS_CANONIQUES (46 aujourd'hui). Pas de liste
+//  manuelle des ~116 autres : leur absence de RESOLVEURS_CANONIQUES suffit,
 //  le parcours de VARIABLES fait le reste. Aucun resolver ne doit cibler
 //  un nom absent du catalogue (invariant testé).
 //
@@ -25,7 +25,7 @@
 //  + maintenant), comme pour valeursMarqueurs() aujourd'hui.
 // ─────────────────────────────────────────────────────────────
 import { VARIABLES } from "./catalogueVariables.js";
-import { formaterDate } from "./formatageDocuments.js";
+import { dureeAttestation, formaterDate } from "./formatageDocuments.js";
 
 const resolu = (valeur) => ({ statut: "resolu", valeur });
 const absent = () => ({ statut: "absent", valeur: null });
@@ -35,7 +35,7 @@ const texte = (v) => (v ? resolu(v) : absent());
 const date = (v) => (v ? resolu(formaterDate(v)) : absent());
 const nombre = (v) => (v === null || v === undefined ? absent() : resolu(Number(v)));
 
-// 45 variables réellement supportées. Classement dans les commentaires
+// 46 variables réellement supportées. Classement dans les commentaires
 // pour traçabilité (voir DOC-3A/DOC-3B pour le détail de chaque décision).
 const RESOLVEURS_CANONIQUES = {
   // ── Organisme (1) ──
@@ -122,7 +122,7 @@ const RESOLVEURS_CANONIQUES = {
   // ── Partenaire (1) ──
   prescripteur_nom: (ctx) => texte(ctx.stagiaire?.prescripteur_nom),
 
-  // ── Document (3) ──
+  // ── Document (4) ──
   // document_date et document_date_convocation partagent EXPLICITEMENT le
   // même instant (ctx.maintenant), calculé UNE SEULE FOIS par document
   // généré dans documents.js — jamais deux `new Date()` distincts.
@@ -139,6 +139,9 @@ const RESOLVEURS_CANONIQUES = {
   // de la session : aucun événement « clôture » n'est enregistré en base.
   // Ne pas lever cette approximation sans décision explicite.
   document_date_attestation: (ctx) => date(ctx.session?.date_fin),
+  // v1.3 : durée affichée sur l'attestation — source unique partagée avec
+  // le marqueur historique duree (jamais deux calculs divergents).
+  document_duree_attestation: (ctx) => texte(dureeAttestation(ctx)),
 };
 
 // Invariant exploité par les tests : aucun nom hors catalogue.

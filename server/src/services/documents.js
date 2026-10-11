@@ -19,6 +19,7 @@ import { calculerAssiduite } from "./assiduite.js";
 import { precontrolerGeneration } from "./precontroleGeneration.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
+import { remplacementsBlocs } from "./renduBlocs.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -54,28 +55,26 @@ export function texteDuDocument(doc) {
   return morceaux.join("");
 }
 
-// Marqueurs écrits dans un modèle mais absents de la convention. Le
-// résultat est mis en cache par modèle : une génération « un par
-// stagiaire » produit N copies du MÊME modèle, inutile de le relire N fois.
-// null = contrôle impossible, à distinguer de [] = aucun marqueur inconnu.
-// Ce contrôle est un garde-fou, pas un préalable : s'il échoue (droits,
-// quota, format inattendu), on produit quand même les documents et on dit
-// que la vérification n'a pas pu être faite.
-async function marqueursNonReconnus(clients, modele, jeton, cache) {
+// Lecture du MODÈLE (original) : texte complet (pour les blocs) + marqueurs
+// inconnus. Mis en cache par modèle : une génération « un par stagiaire »
+// produit N copies du MÊME modèle. null = contrôle impossible, [] = aucun
+// marqueur inconnu. Garde-fou, pas un préalable.
+async function lireModele(clients, modele, jeton, cache) {
   if (cache?.has(modele.drive_file_id)) return cache.get(modele.drive_file_id);
-  let trouves = null;
+  let resultat = { texte: null, inconnus: null };
   try {
     const { data } = await appelGoogle(
       "docs.documents.get",
       () => clients.docs.documents.get({ documentId: modele.drive_file_id }),
       { api: "docs", fichierId: modele.drive_file_id, modele: modele.nom, jeton }
     );
-    trouves = marqueursInconnus(texteDuDocument(data));
+    const texte = texteDuDocument(data);
+    resultat = { texte, inconnus: marqueursInconnus(texte) };
   } catch (e) {
-    console.error("Modèle « " + modele.nom + " » : contrôle des marqueurs impossible — " + (e.message || "erreur inconnue"));
+    console.error("Modèle « " + modele.nom + " » : lecture impossible — " + (e.message || "erreur inconnue"));
   }
-  cache?.set(modele.drive_file_id, trouves);
-  return trouves;
+  cache?.set(modele.drive_file_id, resultat);
+  return resultat;
 }
 
 // Retrouve un sous-dossier par son nom, ou le crée. Le dossier créé est
@@ -117,7 +116,7 @@ export async function dossierCible(drive, { formation, session, groupe }, jeton)
 
 // Copie le modèle puis remplace les marqueurs DANS LA COPIE. Le modèle
 // d'origine n'est jamais modifié.
-export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs, cacheMarqueurs = null, verifierCopieSheet = false }, jeton) {
+export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs, cacheMarqueurs = null, verifierCopieSheet = false, blocs = null }, jeton) {
   const { data: copie } = await appelGoogle(
     "drive.files.copy",
     () => clients.drive.files.copy({
@@ -160,12 +159,20 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
     if (mime === DOC) {
       // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
       // copie déjà nettoyée) : c'est le seul moment où les marqueurs non
-      // reconnus sont encore visibles.
-      const inconnus = await marqueursNonReconnus(clients, modele, jeton, cacheMarqueurs);
+      // reconnus sont encore visibles, et où les blocs sont encore lisibles.
+      const { texte: texteModele, inconnus } = await lireModele(clients, modele, jeton, cacheMarqueurs);
+      // DOC-6A : remplacement des blocs répétables AVANT les scalaires — les
+      // variables globales du corps de bloc sont ensuite remplacées par le
+      // passage scalaire (même batchUpdate, requêtes ordonnées).
+      const requetesBlocs = blocs && texteModele
+        ? remplacementsBlocs(texteModele, blocs).map((b) => ({
+            replaceAllText: { containsText: { text: b.find, matchCase: true }, replaceText: b.replacement },
+          }))
+        : [];
       await appelGoogle(
         "docs.documents.batchUpdate",
         () => clients.docs.documents.batchUpdate({
-          documentId: copie.id, requestBody: { requests: requetesDocs(valeurs) },
+          documentId: copie.id, requestBody: { requests: [...requetesBlocs, ...requetesDocs(valeurs)] },
         }),
         { api: "docs", fichierId: copie.id, jeton }
       );
@@ -239,7 +246,7 @@ async function cibles(modele, { session, groupe }) {
     // `inscriptions`, zéro requête de plus) et la DERNIÈRE relance par
     // LEFT JOIN LATERAL — une seule requête pour TOUS les stagiaires
     // ciblés, jamais une par stagiaire (pas de N+1).
-    `SELECT s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
+    `SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
             i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.statut,
             i.date_inscription, i.date_abandon, i.motif_abandon,
             r.date_evenement AS relance_derniere_date,
@@ -259,6 +266,26 @@ async function cibles(modele, { session, groupe }) {
     [session.id, groupe?.id ?? null]
   );
   return rows.map((stagiaire) => ({ stagiaire }));
+}
+
+// DOC-6A — Lignes des blocs répétables, récupérées en UNE requête par bloc
+// pour TOUTES les cibles (jamais une par stagiaire : pas de N+1).
+async function chargerLignesBlocs(aProduire) {
+  const ids = aProduire.map((c) => c.stagiaire?.inscription_id).filter((x) => x != null);
+  const absences = new Map();
+  if (ids.length) {
+    const { rows } = await query(
+      `SELECT inscription_id, date_absence, duree_heures, justifiee, motif
+       FROM absences WHERE inscription_id = ANY($1::int[])
+       ORDER BY inscription_id, date_absence, id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!absences.has(r.inscription_id)) absences.set(r.inscription_id, []);
+      absences.get(r.inscription_id).push(r);
+    }
+  }
+  return { absences };
 }
 
 export async function contexteGeneration(sessionId, groupeId) {
@@ -447,6 +474,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     const dossierId = await dossierCible(d.drive, ctx, jeton);
     const produits = [];
     let remplaces = 0;
+    // DOC-6A : lignes des blocs pour toutes les cibles, une requête par bloc
+    // (seulement si le modèle contient effectivement des blocs).
+    const lignesBlocs = precontrole.blocs?.length ? await chargerLignesBlocs(aProduire) : null;
     // Anciens fichiers à archiver : mis à la corbeille SEULEMENT APRÈS le
     // succès de l'écriture en base (sinon la DB pointerait vers un fichier
     // déjà trashé). Collectés ici, exécutés après COMMIT.
@@ -477,7 +507,11 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       const nom = nomSain(brut);
 
       const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-      const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs: remplacements, cacheMarqueurs, verifierCopieSheet: premiereCopie }, jeton);
+      // DOC-6A : lignes de blocs de CE stagiaire (absences), pour le rendu.
+      const blocsStagiaire = lignesBlocs
+        ? { absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences.get(stagiaire.inscription_id) : null) || [] }
+        : null;
+      const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs: remplacements, cacheMarqueurs, verifierCopieSheet: premiereCopie, blocs: blocsStagiaire }, jeton);
       premiereCopie = false;
       copiesCreees.push(copie.id);
 

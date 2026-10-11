@@ -23,6 +23,7 @@
 import { analyserModeleDrive } from "./diagnosticModele.js";
 import { blocCanonique, variableCanonique } from "./catalogueVariables.js";
 import { NOMS_RESOLUS, resoudreCanoniques } from "./resolversCanoniques.js";
+import { blocSupportable, champsResolubles } from "./resolversBlocs.js";
 
 // Règle 7 : jamais une liste non bornée d'identifiants de cibles.
 export const MAX_CIBLES_LISTEES = 50;
@@ -74,13 +75,26 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
     .filter((a) => ["ALIAS", "HISTORIQUE", "DONNEE_SENSIBLE"].includes(a.code))
     .map((a) => ({ code: a.code, nom: nomNu(a.balise), message: a.message }));
 
-  // Blocs répétables syntaxiquement valides : le moteur de rendu n'existe
-  // pas encore → bloquant, sauf s'ils sont en plus restreints (le refus
-  // d'accès prime, un seul message plus clair que deux).
+  // DOC-6A — blocs répétables : contrôle précis au niveau du bloc ET de ses
+  // champs. Le refus d'accès prime (un seul message clair), puis le support
+  // de la source, puis la résolvabilité de chaque champ utilisé, puis le
+  // type de fichier (bloc textuel Doc uniquement pour l'instant).
   for (const nom of diagnostic.blocs) {
     const bloc = blocCanonique(nom);
     if (bloc?.sensibilite === "restreinte" && !admin) { erreurs.push(refuseRestreinte(nom, "restreinte")); continue; }
-    erreurs.push({ code: "BLOC_REPETABLE_NON_RENDU", nom, message: `Le bloc {{#${nom}}} est reconnu, mais aucun moteur de rendu de bloc n'est encore branché sur la génération.` });
+    if (!blocSupportable(nom)) {
+      erreurs.push({ code: "BLOC_NON_SUPPORTE", nom, message: `Le bloc {{#${nom}}} n'est pas encore supporté : source de données absente ou rendu non implémenté.` });
+      continue;
+    }
+    const resolubles = champsResolubles(nom);
+    for (const champ of diagnostic.champs_par_bloc?.[nom] || []) {
+      if (!resolubles.has(champ)) {
+        erreurs.push({ code: "BLOC_CHAMP_NON_RESOLUBLE", bloc: nom, champ, message: `Le champ {{${champ}}} du bloc {{#${nom}}} n'est pas résoluble avec les données Vigie actuelles.` });
+      }
+    }
+    if (diagnostic.type_fichier !== "document") {
+      erreurs.push({ code: "BLOC_STRUCTURE_NON_SUPPORTEE", nom, message: `Le bloc {{#${nom}}} ne peut pas être rendu dans une feuille de calcul sans perte de mise en forme.` });
+    }
   }
 
   // Règle 5 : la sécurité porte sur la variable CANONIQUE EFFECTIVE, pas
@@ -148,6 +162,8 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
     // DOC-3D : liste des canoniques présents dans le modèle — c'est elle,
     // et elle seule, que le moteur de rendu doit remplacer (jamais les 45).
     canoniques: diagnostic.canoniques,
+    // DOC-6A : blocs répétables présents dans le modèle.
+    blocs: diagnostic.blocs,
     erreurs, avertissements,
   };
 }

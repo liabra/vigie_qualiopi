@@ -135,6 +135,7 @@ function construireDiagnostic(r, { typeFichier, onglets = null }) {
     historiques: r.resume.historiques,
     blocs: r.resume.blocs,
     champs_bloc: r.resume.champs_bloc,
+    champs_par_bloc: r.resume.champs_par_bloc,
     inconnues: r.resume.inconnues,
     erreurs, avertissements, suggestions,
     ...(onglets ? { onglets_total: onglets.total, onglets_analyses: onglets.analysees } : {}),

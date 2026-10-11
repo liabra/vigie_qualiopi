@@ -148,6 +148,11 @@ export function analyserModele(texte) {
   if (resteTexte.includes("}}")) avertir("ACCOLADES_ORPHELINES", "« }} » présent sans « {{ » d'ouverture : balise probablement mal saisie.");
 
   const uniques = (statut) => [...new Set(balises.filter((b) => b.statut === statut).map((b) => b.nom))];
+  // DOC-6A : champs (locaux) utilisés À L'INTÉRIEUR de chaque bloc — pour le
+  // contrôle précis champ par champ du précontrôle.
+  const champsParBloc = {};
+  for (const b of balises) if (b.bloc) (champsParBloc[b.bloc] ||= []).push(b.nom);
+  for (const k of Object.keys(champsParBloc)) champsParBloc[k] = [...new Set(champsParBloc[k])];
   return {
     version: DICTIONNAIRE_VERSION,
     valide: erreurs.length === 0,
@@ -158,6 +163,7 @@ export function analyserModele(texte) {
       historiques: uniques("historique"),
       blocs: uniques("bloc_ouverture"),
       champs_bloc: uniques("champ_bloc"),
+      champs_par_bloc: champsParBloc,
       inconnues: uniques("inconnue"),
     },
     erreurs,
@@ -174,5 +180,5 @@ export function balisesResiduelles(texte) {
   const r = analyserModele(texte);
   const rendus = new Set([...MARQUEURS, ...Object.keys(RENDUS_HISTORIQUES)]);
   const historiquesRendus = r.resume.historiques.filter((n) => rendus.has(n));
-  return [...new Set([...r.resume.canoniques, ...r.resume.alias.map((a) => a.alias), ...historiquesRendus])];
+  return [...new Set([...r.resume.canoniques, ...r.resume.alias.map((a) => a.alias), ...historiquesRendus, ...r.resume.blocs, ...r.resume.champs_bloc])];
 }

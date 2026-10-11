@@ -104,20 +104,45 @@ test("marqueur historique sans cible certaine : aucune sensibilité déduite", a
   assert.ok(!r.erreurs.length);
 });
 
-test("bloc répétable syntaxiquement valide : reconnu mais non rendu → bloque", async () => {
-  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#absences}}{{absence_date}}{{/absences}}") }) });
-  assert.equal(r.autorise, false);
-  assert.ok(r.erreurs.some((e) => e.code === "BLOC_REPETABLE_NON_RENDU" && e.nom === "absences"));
+test("bloc absences supporté (Doc, champs résolubles) : autorisé", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#absences}}{{absence_date}} — {{absence_duree_heures}}{{/absences}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.erreurs, []);
+  assert.deepEqual(r.blocs, ["absences"]);
 });
 
-test("bloc restreinte (adaptations) : contributeur refusé, admin bloqué pour rendu non implémenté", async () => {
+test("champ de bloc non résoluble → précontrôle bloqué (absence_action)", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#absences}}{{absence_action}}{{/absences}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "absences" && e.champ === "absence_action"));
+});
+
+test("bloc non supporté (seances) → BLOC_NON_SUPPORTE", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#seances}}{{seance_date}}{{/seances}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE" && e.nom === "seances"));
+});
+
+test("bloc absences dans une Sheet → BLOC_STRUCTURE_NON_SUPPORTEE", async () => {
+  const onglets = [{ titre: "Feuille 1", grille: [["{{#absences}}{{absence_date}}{{/absences}}"]] }];
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ mime: SHEET, onglets }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_STRUCTURE_NON_SUPPORTEE" && e.nom === "absences"));
+});
+
+test("bloc inconnu → BLOC_INCONNU", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#inconnu}}{{x}}{{/inconnu}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_INCONNU"));
+});
+
+test("bloc restreinte (adaptations) : contributeur refusé, admin bloqué (non supporté)", async () => {
   const texte = "{{#adaptations}}{{adaptation_mesure}}{{/adaptations}}";
   const rContrib = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: false, clients: fauxClients({ document: docAvec(texte) }) });
   assert.ok(rContrib.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE" && e.nom === "adaptations"));
-  assert.ok(!rContrib.erreurs.some((e) => e.code === "BLOC_REPETABLE_NON_RENDU"));
 
   const rAdmin = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec(texte) }) });
-  assert.ok(rAdmin.erreurs.some((e) => e.code === "BLOC_REPETABLE_NON_RENDU" && e.nom === "adaptations"));
+  assert.ok(rAdmin.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE" && e.nom === "adaptations"));
   assert.ok(!rAdmin.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE"));
 });
 

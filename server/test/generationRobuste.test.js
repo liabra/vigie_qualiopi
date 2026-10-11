@@ -33,7 +33,7 @@ after(async () => {
 });
 
 // ── Fausse base ─────────────────────────────────────────────
-function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null, nbStagiaires = 1 } = {}) {
+function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null, nbStagiaires = 1, absences = [] } = {}) {
   const appels = [];
   const noter = (evt) => { if (journal) journal.push(evt); };
   const session = {
@@ -64,15 +64,19 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     if (sql.startsWith("SELECT * FROM groupes WHERE id = $1 AND session_id = $2")) {
       return { rows: groupe ? [groupe] : [] };
     }
-    if (sql.startsWith("SELECT s.id, s.civilite, s.nom, s.prenom, s.email")) {
+    if (sql.startsWith("SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email")) {
       // UNE seule requête pour TOUS les stagiaires ciblés, quel qu'en soit
       // le nombre : c'est précisément ce que le test anti-N+1 vérifie.
       return { rows: Array.from({ length: nbStagiaires }, (_, i) => ({
-        id: i + 1, civilite: "Mme", nom: "Stark" + i, prenom: "Blandine", email: null, telephone: null,
+        id: i + 1, inscription_id: i + 1, civilite: "Mme", nom: "Stark" + i, prenom: "Blandine", email: null, telephone: null,
         entreprise: null, financeur: null, prescripteur: "pole_emploi", prescripteur_nom: "Pôle Emploi",
         groupe_nom: "Soula", statut: "inscrit", heures_absence: "0",
         date_inscription: "2026-01-02", date_abandon: null, motif_abandon: null, relance_derniere_date: null,
       })) };
+    }
+    // DOC-6A : lignes du bloc absences (une requête bornée pour toutes les cibles).
+    if (sql.startsWith("SELECT inscription_id, date_absence, duree_heures, justifiee, motif")) {
+      return { rows: absences };
     }
     if (sql.startsWith("SELECT * FROM documents_generes")) return { rows: existants };
     if (echec && sql.startsWith(echec)) { const e = new Error("échec simulé " + echec); e.code = "23502"; throw e; }
@@ -458,6 +462,33 @@ test("DOC-3D : canonique absente → génération autorisée, balise remplacée 
   const r = await generer(requete);
   assert.equal(r.statut, 200);
   assert.deepEqual(r.corps.marqueursNonResolus, [], "la balise absente ne reste pas dans le document final");
+});
+
+// DOC-6A : rendu réel d'un bloc répétable (absences) de bout en bout.
+test("DOC-6A : bloc absences rendu de bout en bout (plusieurs lignes, ordre stable)", async () => {
+  baseSimulee({
+    absences: [
+      { inscription_id: 1, date_absence: "2026-01-05", duree_heures: 3.5, justifiee: false, motif: null },
+      { inscription_id: 1, date_absence: "2026-01-06", duree_heures: 7, justifiee: true, motif: "Maladie" },
+    ],
+  }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{#absences}}{{absence_date}} — {{absence_duree_heures}}{{/absences}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.equal(trace.contenuCopies.get("copie-1"), "05/01/2026 — 3.5 h06/01/2026 — 7 h");
+});
+
+// DOC-6A : un bloc vide (aucune absence) disparaît proprement du document.
+test("DOC-6A : bloc absences vide → supprimé, aucun résidu", async () => {
+  baseSimulee({ absences: [] }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "Avant {{#absences}}{{absence_date}}{{/absences}} Après" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.equal(trace.contenuCopies.get("copie-1"), "Avant  Après");
 });
 
 // DOC-3B : les enrichissements SQL (formation/version, comptage de

@@ -3313,3 +3313,41 @@ session, à défaut durée de formation, au format `N h`).
 
 - Backend **697/697**, frontend **336/336**, build Vite OK, migrations `migrationConvocation` +
   `migrationAttestation` **9/9**, `git diff --check` propre.
+
+---
+
+## 2026-10-11 — DOC-6A : moteur générique des blocs répétables (non commité)
+
+### Inventaire des 9 blocs
+
+- **Supportés** : `absences` (source `absences`, 4 champs résolubles : date, durée, justification,
+  motif ; `absence_action` sans colonne → non résoluble).
+- **Non supportés faute de source/storage** : `phases`, `objectifs_formation`, `objectifs_phase`,
+  `seances`, `immersions` (aucune table) ; `adaptations` (restreint, différé) ; `evaluations` et
+  `intervenants` (sources `resultats_qcm` / `intervenants` confirmées mais champs REF à traiter —
+  différés).
+
+### Moteur
+
+- `renduBlocs.js` : moteur PUR (segmenter + remplacementsBlocs + renduBlocs). Bloc vide → supprimé ;
+  1..N lignes → répété ; ordre déterministe ; marqueurs d'ouverture/fermeture toujours supprimés ;
+  pas d'imbrication ; syntaxe malformée bloquée ; champs `resolu`→valeur, `absent`→"", non résoluble
+  → laissé tel quel (les variables globales passent par le passage scalaire). Formateurs réutilisés
+  (`formaterDate`, `formaterDuree`).
+- `resolversBlocs.js` : champs résolubles par bloc, depuis les vraies colonnes ; `blocSupportable`,
+  `champsResolubles`, `champBloc`.
+- Précontrôle précis : `BLOC_NON_SUPPORTE` (source absente), `BLOC_CHAMP_NON_RESOLUBLE` (champ utilisé
+  non résoluble, identifie bloc + champ), `BLOC_STRUCTURE_NON_SUPPORTEE` (bloc dans une Sheet),
+  `VARIABLE_RESTREINTE_REFUSEE` (bloc restreint non-admin). Le résultat expose `blocs`.
+- `documents.js` : `cibles()` renvoie `inscription_id` ; `chargerLignesBlocs` (UNE requête bornée pour
+  toutes les cibles, pas de N+1) ; rendu Docs via `replaceAllText` du bloc complet (blocs avant
+  scalaires, même `batchUpdate`). Sheets : blocs bloqués avant copie.
+
+### Limites Docs/Sheets
+
+- Bloc textuel contigu rendu ; bloc éclaté sur plusieurs éléments texte/tableaux non remplacé et
+  signalé comme résiduel (jamais dégradé silencieusement) ; bloc dans une Sheet bloqué au précontrôle.
+
+### Validation
+
+- Backend **713/713** (697 avant → +16), `git diff --check` propre. Frontend/build non concernés.

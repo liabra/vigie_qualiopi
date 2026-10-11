@@ -3020,3 +3020,83 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   simple substitution de balise) : `document_date_attestation` est censée porter une date
   fixée à la clôture, alors que le resolver actuel y place `date_fin` ; `duree` a deux cibles
   possibles (`session_duree_heures` ou `formation_duree_heures`), à trancher avant migration.
+
+## 2026-10-10 — DOC-3B : résolution des variables canoniques (non commité)
+
+- Le moteur documentaire peut désormais calculer les variables canoniques du catalogue, sans
+  changer le comportement de la génération actuelle : `{{stagiaire_nom}}` et `{{nom_stagiaire}}`
+  produisent exactement la même valeur, mais seul `{{nom_stagiaire}}` est encore réellement
+  remplacé dans un document (voir « points ouverts »).
+- `server/src/services/formatageDocuments.js` (nouveau) : `formaterDate`/`formaterDuree`
+  extraites de `marqueurs.js` (module neutre, pour éviter une dépendance circulaire avec
+  `resolversCanoniques.js`) ; ré-exportées depuis `marqueurs.js`, aucun import existant cassé.
+- `server/src/services/resolversCanoniques.js` (nouveau) : `resoudreCanoniques(ctx)`, **pilotée
+  par `VARIABLES`** (catalogueVariables.js, 161 — source de vérité confirmée, aucune liste
+  manuelle des non résolues). Trois statuts stricts : `resolu` (0 et false valides),
+  `absent` (resolver existant, rien pour cette instance), `non_resoluble` (aucun resolver —
+  jamais aplati en `""`). **45 variables** réellement supportées
+  (`RESOLVEURS_CANONIQUES`) :
+  - 28 lues directement, 15 avec une transformation simple, 2 règles de compatibilité
+    provisoires documentées (`document_date_attestation = session_date_fin`,
+    `document_date_convocation = document_date`, même `ctx.maintenant`, calculé **une seule
+    fois par document** dans `documents.js`).
+  - **13 variables retirées du scalaire après vérification du contexte** (6 `evaluation_*`,
+    7 `intervenant_*`) : une inscription/session peut avoir plusieurs évaluations ou
+    intervenants, aucune sélection implicite du « premier »/« dernier » — réservées à un futur
+    bloc répétable.
+  - **Non résolues par décision explicite**, documentées en commentaire : `groupe_code` (pas de
+    dérivation du nom), `session_libelle` (le catalogue le distingue explicitement de
+    `session_reference` — « Libellé de session » (SES-02) contre « Référence interne unique… »
+    (SES-12) — Vigie n'a qu'une colonne `reference` ; pas d'approximation entre deux concepts
+    canoniques que le catalogue sépare volontairement), `stagiaire_besoins_specifiques`
+    (**raison d'autorisation** — `besoins_adaptation` est réservé admin alors que la génération
+    est ouverte aux contributeurs ; canal indirect écarté, traité par une étape de sécurité
+    documentaire distincte), `stagiaire_amenagements` (pas de concaténation du bloc
+    `adaptations`), `relance_derniere_action` (ni `canal` ni `categorie` ne correspond à une
+    « action »), `indicateur_taux_assiduite`/`indicateur_taux_abandon` (aucune formule
+    officielle et testée au niveau session dans Vigie — recherchée, non trouvée, non inventée).
+  - Invariants testés : 161 clés en sortie quel que soit `ctx`, aucun resolver ne cible un nom
+    hors catalogue, exactement 45 noms supportés.
+- `server/src/services/marqueurs.js` : les **11 alias vérifiés** (DOC-1) relisent
+  `resoudreCanoniques(ctx)` au lieu de recalculer ; les **12 autres marqueurs historiques**
+  (`duree`, `date_attestation`, `lieu`, `formateur`, `entreprise`, `financeur`, `prescripteur`,
+  `groupe`, `heures_suivies`, `taux_assiduite`, `session_reference`, `session_statut`) gardent
+  leur calcul **strictement inchangé** — `date_attestation` n'est pas touché (sa variable
+  canonique `document_date_attestation` relit `session_date_fin` séparément, sans modifier ce
+  marqueur). `session_statut` (historique, libellé affiché) et la variable canonique du même
+  nom (valeur métier brute) restent **volontairement distincts**, jamais mélangés dans le même
+  objet aplati — un même nom, deux sémantiques, piège identifié et évité. La couche canonique
+  complète est exposée séparément (`valeurs.canoniques`), jamais aplatie en silence.
+- `server/src/services/documents.js` — enrichissements, **zéro N+1** (vérifié par un test
+  dédié, lectures identiques pour 1 et 3 stagiaires) :
+  - `contexteGeneration()` : `f.code_interne`, `v.public_vise/prerequis/objectifs/modalite/
+    accessibilite_handicap` (alias explicitement préfixés `version_*` — `v.modalite` nu aurait
+    silencieusement écrasé `session.modalite`, propre à la session) ; un comptage
+    inscrits/terminés par session (une requête, indépendante du nombre de documents produits,
+    « inscrits » excluant l'abandon comme partout ailleurs dans Vigie — pas une formule
+    inventée).
+  - `cibles()` : `date_inscription`/`date_abandon`/`motif_abandon` (déjà sur `inscriptions`,
+    zéro requête de plus) et la dernière relance via `LEFT JOIN LATERAL` sur
+    `suivis_inscription` — toujours **une seule requête** pour tous les stagiaires ciblés.
+  - Boucle de génération : `maintenant = new Date()` calculé une fois par document, partagé
+    entre `document_date` et `document_date_convocation`.
+- Tests : `resolversCanoniques.test.js` (12, purs), ajouts à `marqueurs.test.js` (5 : les 11
+  paires alias/canonique identiques, non-régression des 12 marqueurs sans alias, même instant
+  pour les deux dates document, aucun aplatissement silencieux de la couche canonique), ajout à
+  `generationRobuste.test.js` (1 : aucun N+1). **650/650 serveur** ×2 (632 + 18), **336/336
+  client** (inchangé), build OK, `diff --check` OK. Node 22.23.3.
+- Points ouverts :
+  - **Le branchement réel n'est pas fait** : `requetesDocs()`/`requetesSheets()` itèrent
+    toujours uniquement sur les 23 `MARQUEURS` historiques. Un modèle Drive écrit aujourd'hui
+    avec `{{stagiaire_nom}}` ne serait **pas** remplacé dans un document généré — seul le
+    calcul de sa valeur est prêt. Brancher la génération sur les variables canoniques est un
+    changement de comportement de production distinct, non fait dans DOC-3B (prudence : aucune
+    décision explicite ne l'a demandé ce tour-ci).
+  - `cibles()` exclut déjà les abandons (`WHERE i.statut <> 'abandon'`) : en pratique,
+    `abandon_statut` résout quasi toujours à `resolu(false)` pour les documents de portée
+    stagiaire — comportement hérité, pas un défaut de DOC-3B.
+  - Sécurité documentaire des variables `restreinte` (rôle avant génération, refus explicite
+    plutôt que valeur vide) : étape distincte, pas commencée.
+- Décisions validées, non remises en cause : Vigie reste générique (aucune logique
+  Armstrong/Voie Lactée/Uranus/6 phases), aucune nouvelle table, aucune migration automatique
+  de balise, aucune modification des modèles Google Drive.

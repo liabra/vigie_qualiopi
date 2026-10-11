@@ -39,6 +39,12 @@
 // ─────────────────────────────────────────────────────────────
 
 import { nomsFormateurs } from "./intervenants.js";
+import { formaterDate, formaterDuree } from "./formatageDocuments.js";
+import { resoudreCanoniques } from "./resolversCanoniques.js";
+
+// Ré-exportées telles quelles : marqueurs.test.js et d'éventuels appelants
+// externes continuent de les importer d'ici (compatibilité).
+export { formaterDate, formaterDuree };
 
 export const MARQUEURS = [
   "civilite",
@@ -70,23 +76,6 @@ export const MARQUEURS = [
 
 export const baliser = (nom) => `{{${nom}}}`;
 
-// Les dates arrivent en « AAAA-MM-JJ » (voir db.js, qui garde les
-// colonnes DATE en texte) et repartent en « JJ/MM/AAAA ».
-export function formaterDate(valeur) {
-  if (!valeur) return "";
-  const texte = typeof valeur === "string" ? valeur : valeur.toISOString().slice(0, 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(texte);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : texte;
-}
-
-// « 14 » et « 14.00 » s'écrivent tous les deux « 14 h ».
-export function formaterDuree(heures) {
-  if (heures === null || heures === undefined || heures === "") return "";
-  const n = Number(heures);
-  if (Number.isNaN(n)) return String(heures);
-  return `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} h`;
-}
-
 // Libellé français du statut d'une session pour les documents. Inconnu ⇒
 // chaîne vide : jamais de valeur inventée.
 const LIBELLE_STATUT = { planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée" };
@@ -95,36 +84,68 @@ const LIBELLE_STATUT = { planifiee: "Planifiée", en_cours: "En cours", terminee
 // valeur devient une chaîne vide : mieux vaut un blanc qu'un
 // « {{prenom_stagiaire}} » imprimé sur une convocation.
 // `assiduite` vient de calculerAssiduite (lot L2) : on ne RECALCULE rien ici.
-export function valeursMarqueurs({ formation, version, session, groupe, stagiaire, organisme, assiduite, formateursGroupe = [], formateursSession = [] } = {}) {
+//
+// DOC-3B : les 11 alias VÉRIFIÉS (resolver canonique strictement
+// équivalent) relisent désormais `resoudreCanoniques(ctx)` au lieu de
+// recalculer — UNE seule source de calcul. Les 12 AUTRES marqueurs
+// historiques (duree, date_attestation, lieu, formateur, entreprise,
+// financeur, prescripteur, groupe, heures_suivies, taux_assiduite,
+// session_reference, session_statut) gardent leur calcul PROPRE,
+// strictement inchangé : ce ne sont pas des alias (DOC-1), et
+// date_attestation n'est pas touché ici (sa variable canonique
+// document_date_attestation, elle, relit session_date_fin — cf.
+// resolversCanoniques.js — sans que ce marqueur historique soit modifié).
+// L'aplatissement d'un statut « absent »/« non_resoluble » en "" n'est
+// autorisé QUE pour ces 11 alias : c'est la compatibilité historique,
+// pas la couche canonique (stricte, voir resolversCanoniques.js).
+export function valeursMarqueurs(ctx = {}) {
+  const { formation, version, session, groupe, stagiaire, organisme, assiduite, formateursGroupe = [], formateursSession = [] } = ctx;
+  const canoniques = resoudreCanoniques(ctx);
+  // Relecture d'un alias : la valeur canonique si résolue, "" sinon —
+  // le format canonique (dates déjà JJ/MM/AAAA, textes déjà en l'état)
+  // correspond déjà au rendu historique attendu pour ces 10 alias.
+  const relire = (nomCanonique) => { const r = canoniques[nomCanonique]; return r.statut === "resolu" ? String(r.valeur) : ""; };
   const duree = session?.duree_heures_reelle ?? version?.duree_heures_defaut ?? null;
   return {
-    civilite: stagiaire?.civilite ?? "",
-    nom_stagiaire: stagiaire?.nom ?? "",
-    prenom_stagiaire: stagiaire?.prenom ?? "",
-    date_debut: formaterDate(session?.date_debut),
-    date_fin: formaterDate(session?.date_fin),
+    civilite: relire("stagiaire_civilite"),
+    nom_stagiaire: relire("stagiaire_nom"),
+    prenom_stagiaire: relire("stagiaire_prenom"),
+    date_debut: relire("session_date_debut"),
+    date_fin: relire("session_date_fin"),
     date_attestation: formaterDate(session?.date_fin),
-    horaire: session?.horaire ?? "",
+    horaire: relire("session_horaires"),
     duree: formaterDuree(duree),
-    intitule_formation: formation?.intitule ?? "",
+    intitule_formation: relire("formation_intitule"),
     lieu: groupe?.lieu || session?.lieu || "",
     formateur: nomsFormateurs(formateursGroupe) || groupe?.formateur || nomsFormateurs(formateursSession) || session?.formateur || "",
-    nom_organisme: organisme ?? "",
+    nom_organisme: relire("organisme_nom"),
     session_reference: session?.reference ?? "",
     session_statut: session?.statut ? (LIBELLE_STATUT[session.statut] ?? "") : "",
-    email: stagiaire?.email ?? "",
-    telephone: stagiaire?.telephone ?? "",
+    email: relire("stagiaire_email"),
+    telephone: relire("stagiaire_telephone"),
     entreprise: stagiaire?.entreprise ?? "",
     financeur: stagiaire?.financeur ?? "",
     prescripteur: stagiaire?.prescripteur_nom || stagiaire?.prescripteur || "",
     // Pour un document par stagiaire, le groupe est CELUI du stagiaire ;
     // sinon, celui visé par la génération.
     groupe: stagiaire?.groupe_nom || groupe?.nom || "",
+    // 11e alias : même donnée que absence_heures_total, reformatée « N h »
+    // pour préserver exactement le rendu historique (la valeur canonique
+    // est un nombre brut, pas un texte déjà mis en forme).
+    heures_absence: canoniques.absence_heures_total.statut === "resolu" ? formaterDuree(canoniques.absence_heures_total.valeur) : "",
     // L'assiduité n'est fiable que calculée par le lot L2 : en dehors,
     // les marqueurs restent VIDES plutôt que d'imprimer un faux chiffre.
-    heures_absence: assiduite ? formaterDuree(assiduite.heures_absence) : "",
     heures_suivies: assiduite?.fiable ? formaterDuree(assiduite.heures_suivies) : "",
     taux_assiduite: assiduite?.fiable ? `${assiduite.taux} %` : "",
+    // Couche canonique DOC-3B, exposée séparément — jamais aplatie ni
+    // mélangée aux 23 marqueurs historiques ci-dessus (certains partagent
+    // un même NOM avec une variable canonique — ex. session_statut — mais
+    // une sémantique différente : libellé affiché ici, valeur métier brute
+    // côté canonique). Pas encore branchée sur requetesDocs/requetesSheets
+    // (qui itèrent toujours sur MARQUEURS seulement, inchangé) : disponible
+    // pour les tests et un futur branchement, sans changer le comportement
+    // actuel de la génération.
+    canoniques,
   };
 }
 

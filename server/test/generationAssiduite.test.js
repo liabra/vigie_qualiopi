@@ -34,6 +34,8 @@ function baseSimulee() {
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) {
       return { rows: [{ ...session }] };
     }
+    // DOC-3B : comptage inscrits/terminés de la session, une requête à part.
+    if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 2, termines: 0 }] };
     if (sql.startsWith("SELECT s.id, s.civilite, s.nom, s.prenom, s.email")) {
       return {
         rows: [

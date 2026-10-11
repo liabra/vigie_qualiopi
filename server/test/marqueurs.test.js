@@ -7,6 +7,7 @@ import {
   MARQUEURS, formaterDate, formaterDuree, marqueursInconnus, remplacer,
   requetesDocs, requetesSheets, valeursMarqueurs,
 } from "../src/services/marqueurs.js";
+import { resoudreCanoniques } from "../src/services/resolversCanoniques.js";
 
 test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
@@ -161,4 +162,71 @@ test("les requêtes Google couvrent tous les marqueurs, avec la bonne forme", ()
   const trouve = (nom) => sheets.find((r) => r.findReplace.find === "{{" + nom + "}}");
   assert.equal(trouve("nom_stagiaire").findReplace.allSheets, true);
   assert.ok(trouve("civilite"));
+});
+
+// ── DOC-3B : les 11 alias historiques relisent désormais le resolver
+// canonique — UNE seule source de calcul, jamais deux qui divergent.
+const PAIRES_ALIAS = [
+  ["civilite", "stagiaire_civilite"], ["nom_stagiaire", "stagiaire_nom"], ["prenom_stagiaire", "stagiaire_prenom"],
+  ["date_debut", "session_date_debut"], ["date_fin", "session_date_fin"], ["horaire", "session_horaires"],
+  ["intitule_formation", "formation_intitule"], ["nom_organisme", "organisme_nom"],
+  ["email", "stagiaire_email"], ["telephone", "stagiaire_telephone"],
+];
+
+test("DOC-3B : {{nom_stagiaire}} et {{stagiaire_nom}} — et les 10 autres paires alias/canonique — produisent exactement la même valeur", () => {
+  assert.equal(PAIRES_ALIAS.length, 10, "10 des 11 alias vérifiés ; heures_absence est testé séparément (reformatage)");
+  const v = valeursMarqueurs(contexte);
+  const can = resoudreCanoniques(contexte);
+  for (const [historique, canonique] of PAIRES_ALIAS) {
+    const attendu = can[canonique].statut === "resolu" ? String(can[canonique].valeur) : "";
+    assert.equal(v[historique], attendu, `{{${historique}}} doit égaler {{${canonique}}}`);
+  }
+  // Exemple explicitement demandé : {{stagiaire_nom}} et {{nom_stagiaire}}.
+  assert.equal(v.nom_stagiaire, "Dupont");
+  assert.equal(can.stagiaire_nom.valeur, "Dupont");
+  assert.equal(v.nom_stagiaire, can.stagiaire_nom.valeur);
+
+  // Contexte sans ces données : les deux restent vides, ensemble.
+  const videHist = valeursMarqueurs({});
+  const videCan = resoudreCanoniques({});
+  for (const [historique, canonique] of PAIRES_ALIAS) {
+    assert.equal(videHist[historique], "");
+    assert.equal(videCan[canonique].statut, "absent");
+  }
+});
+
+test("DOC-3B : 11e alias, heures_absence — même donnée que absence_heures_total, reformatée « N h »", () => {
+  const ctx = { ...contexte, assiduite: { fiable: true, heures_absence: 3.5, heures_suivies: 17.5, taux: 83 } };
+  const v = valeursMarqueurs(ctx);
+  const can = resoudreCanoniques(ctx);
+  assert.equal(v.heures_absence, "3.5 h");
+  assert.equal(can.absence_heures_total.valeur, 3.5, "valeur canonique : nombre brut, pas « 3.5 h »");
+  assert.equal(v.heures_absence, formaterDuree(can.absence_heures_total.valeur));
+});
+
+test("DOC-3B : non-régression des 12 marqueurs historiques SANS alias — calcul propre, inchangé", () => {
+  // duree et date_attestation ne sont PAS des alias (DOC-1) : leur resolver
+  // historique n'est pas touché par resolversCanoniques.js.
+  const v = valeursMarqueurs({ ...contexte, session: { ...contexte.session, duree_heures_reelle: 28, reference: "SESS-1", statut: "terminee" } });
+  assert.equal(v.duree, "28 h");
+  assert.equal(v.date_attestation, "05/03/2026");
+  assert.equal(v.session_statut, "Terminée", "libellé affiché, pas la valeur métier brute « terminee »");
+  assert.equal(v.lieu, "Soula");
+  assert.equal(v.formateur, "M. Jones");
+});
+
+test("DOC-3B : document_date et document_date_convocation partagent le même instant passé par documents.js", () => {
+  const maintenant = new Date("2026-02-01T10:00:00Z");
+  const v = valeursMarqueurs({ ...contexte, maintenant });
+  assert.equal(v.canoniques.document_date.valeur, "01/02/2026");
+  assert.equal(v.canoniques.document_date_convocation.valeur, "01/02/2026");
+  assert.equal(v.canoniques.document_date.valeur, v.canoniques.document_date_convocation.valeur);
+});
+
+test("DOC-3B : la couche canonique n'est jamais aplatie en silence dans valeursMarqueurs()", () => {
+  const v = valeursMarqueurs({});
+  // formation_id (ex.) n'a pas d'alias historique : il reste visible sous
+  // son vrai statut dans `canoniques`, jamais transformé en "" sans trace.
+  assert.deepEqual(v.canoniques.formation_id, { statut: "absent", valeur: null });
+  assert.equal(v.canoniques.evaluation_id.statut, "non_resoluble");
 });

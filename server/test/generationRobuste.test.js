@@ -32,7 +32,7 @@ after(async () => {
 });
 
 // ── Fausse base ─────────────────────────────────────────────
-function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null } = {}) {
+function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null, nbStagiaires = 1 } = {}) {
   const appels = [];
   const noter = (evt) => { if (journal) journal.push(evt); };
   const session = {
@@ -58,13 +58,20 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     }
     if (sql.startsWith("SELECT indicateur_id FROM modele_indicateurs")) return { rows: [{ indicateur_id: 11 }] };
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) return { rows: [{ ...session }] };
+    // DOC-3B : comptage inscrits/terminés de la session, une requête à part.
+    if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 1, termines: 0 }] };
     if (sql.startsWith("SELECT * FROM groupes WHERE id = $1 AND session_id = $2")) {
       return { rows: groupe ? [groupe] : [] };
     }
     if (sql.startsWith("SELECT s.id, s.civilite, s.nom, s.prenom, s.email")) {
-      return { rows: [{ id: 1, civilite: "Mme", nom: "Stark", prenom: "Blandine", email: null, telephone: null,
+      // UNE seule requête pour TOUS les stagiaires ciblés, quel qu'en soit
+      // le nombre : c'est précisément ce que le test anti-N+1 vérifie.
+      return { rows: Array.from({ length: nbStagiaires }, (_, i) => ({
+        id: i + 1, civilite: "Mme", nom: "Stark" + i, prenom: "Blandine", email: null, telephone: null,
         entreprise: null, financeur: null, prescripteur: "pole_emploi", prescripteur_nom: "Pôle Emploi",
-        groupe_nom: "Soula", statut: "inscrit", heures_absence: "0" }] };
+        groupe_nom: "Soula", statut: "inscrit", heures_absence: "0",
+        date_inscription: "2026-01-02", date_abandon: null, motif_abandon: null, relance_derniere_date: null,
+      })) };
     }
     if (sql.startsWith("SELECT * FROM documents_generes")) return { rows: existants };
     if (echec && sql.startsWith(echec)) { const e = new Error("échec simulé " + echec); e.code = "23502"; throw e; }
@@ -255,6 +262,32 @@ test("un marqueur resté non remplacé est remonté", async () => {
   const r = await generer(requete);
   assert.equal(r.statut, 200);
   assert.ok(r.corps.marqueursNonResolus.includes("nom_stagiaire"), "le marqueur restant est signalé");
+});
+
+// DOC-3B : les enrichissements SQL (formation/version, comptage de
+// session, dernière relance) doivent rester des requêtes UNIQUES, jamais
+// une par stagiaire. Compare le nombre de lectures (hors BEGIN/COMMIT/
+// ROLLBACK/INSERT, propres à chaque document produit) pour 1 puis 3
+// stagiaires : il doit être STRICTEMENT identique.
+test("DOC-3B : aucun N+1 SQL — le nombre de LECTURES ne dépend pas du nombre de stagiaires", async () => {
+  const lectures = (appels) => appels.filter((a) =>
+    a.sql.startsWith("SELECT") && !a.sql.startsWith("SELECT id, email, nom, role")).length;
+
+  const b1 = baseSimulee({ nbStagiaires: 1 }).installer();
+  setDriveFactory(() => clientDriveSimule().client);
+  const r1 = await generer(requete);
+  assert.equal(r1.statut, 200);
+  assert.equal(r1.corps.documents, 1);
+  const n1 = lectures(b1.appels);
+
+  const b3 = baseSimulee({ nbStagiaires: 3 }).installer();
+  setDriveFactory(() => clientDriveSimule().client);
+  const r3 = await generer(requete);
+  assert.equal(r3.statut, 200);
+  assert.equal(r3.corps.documents, 3);
+  const n3 = lectures(b3.appels);
+
+  assert.equal(n3, n1, `${n3} lectures pour 3 stagiaires contre ${n1} pour 1 : une requête par stagiaire s'est glissée quelque part`);
 });
 
 // ── Échecs Google ────────────────────────────────────────────

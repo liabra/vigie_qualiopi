@@ -214,13 +214,24 @@ async function cibles(modele, { session, groupe }) {
     // documents, sans erreur : c'est exactement ainsi que {{civilite}}
     // est passé inaperçu. Ajouter un marqueur lié au stagiaire impose
     // d'ajouter sa colonne à ce SELECT.
+    // DOC-3B : date_inscription/date_abandon/motif_abandon (déjà sur
+    // `inscriptions`, zéro requête de plus) et la DERNIÈRE relance par
+    // LEFT JOIN LATERAL — une seule requête pour TOUS les stagiaires
+    // ciblés, jamais une par stagiaire (pas de N+1).
     `SELECT s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
             i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.statut,
+            i.date_inscription, i.date_abandon, i.motif_abandon,
+            r.date_evenement AS relance_derniere_date,
             COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
      FROM inscriptions i
      JOIN stagiaires s ON s.id = i.stagiaire_id
      LEFT JOIN prescripteurs pr ON pr.code = i.prescripteur
      LEFT JOIN groupes g ON g.id = i.groupe_id
+     LEFT JOIN LATERAL (
+       SELECT si.date_evenement FROM suivis_inscription si
+       WHERE si.inscription_id = i.id AND si.type = 'relance'
+       ORDER BY si.date_evenement DESC, si.id DESC LIMIT 1
+     ) r ON true
      WHERE i.statut <> 'abandon'
        AND ($2::int IS NULL AND i.session_id = $1 OR i.groupe_id = $2)
      ORDER BY s.nom, s.prenom`,
@@ -230,8 +241,15 @@ async function cibles(modele, { session, groupe }) {
 }
 
 export async function contexteGeneration(sessionId, groupeId) {
+  // DOC-3B : colonnes formation/version supplémentaires, TOUTES alias
+  // explicitement (jamais `v.modalite` nu : la session a sa PROPRE colonne
+  // `modalite`, un alias sans préfixe l'écraserait silencieusement dans
+  // la ligne résultat).
   const { rows: [session] } = await query(
-    `SELECT s.*, f.id AS formation_id, f.intitule, v.duree_heures_defaut
+    `SELECT s.*, f.id AS formation_id, f.intitule, f.code_interne AS formation_code_interne,
+            v.duree_heures_defaut, v.public_vise AS version_public_vise, v.prerequis AS version_prerequis,
+            v.objectifs AS version_objectifs, v.modalite AS version_modalite,
+            v.accessibilite_handicap AS version_accessibilite_handicap
      FROM sessions s
      JOIN formations f ON f.id = s.formation_id
      LEFT JOIN formation_versions v ON v.id = s.formation_version_id
@@ -251,10 +269,30 @@ export async function contexteGeneration(sessionId, groupeId) {
      WHERE l.${cle} = $1 ORDER BY i.nom, i.prenom, i.id`, [id])).rows : []);
   const formateursSession = await formateurs("intervenants_sessions", "session_id", session.id);
   const formateursGroupe = await formateurs("intervenants_groupes", "groupe_id", groupe?.id);
-  return { session, groupe, formateursSession, formateursGroupe, formation: { intitule: session.intitule }, version: { duree_heures_defaut: session.duree_heures_defaut },
-           // Durée prévue réellement déclarée, à défaut celle de la version
-           // figée : la source unique du calcul d'assiduité (lot L2).
-           heuresPrevues: session.duree_heures_reelle ?? session.duree_heures_defaut ?? null };
+  // DOC-3B : comptage de la session — UNE requête, indépendante du nombre
+  // de documents produits. « Inscrits » exclut l'abandon, comme partout
+  // ailleurs dans Vigie (pilotage.js, api.js, gestion.js) : pas une
+  // formule inventée pour l'occasion.
+  const { rows: [compte] } = await query(
+    `SELECT count(*) FILTER (WHERE statut <> 'abandon')::int AS inscrits,
+            count(*) FILTER (WHERE statut = 'termine')::int AS termines
+     FROM inscriptions WHERE session_id = $1`,
+    [sessionId]
+  );
+  session.nombre_inscrits = compte.inscrits;
+  session.nombre_termines = compte.termines;
+  return {
+    session, groupe, formateursSession, formateursGroupe,
+    formation: { intitule: session.intitule, id: session.formation_id, code_interne: session.formation_code_interne },
+    version: {
+      duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,
+      prerequis: session.version_prerequis, objectifs: session.version_objectifs,
+      modalite: session.version_modalite, accessibilite_handicap: session.version_accessibilite_handicap,
+    },
+    // Durée prévue réellement déclarée, à défaut celle de la version
+    // figée : la source unique du calcul d'assiduité (lot L2).
+    heuresPrevues: session.duree_heures_reelle ?? session.duree_heures_defaut ?? null,
+  };
 }
 
 // ── Robustesse du flux de génération (lot L9) ────────────────
@@ -418,7 +456,11 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       const assiduite = stagiaire
         ? calculerAssiduite({ heuresPrevues: ctx.heuresPrevues, heuresAbsence: stagiaire.heures_absence, statut: stagiaire.statut })
         : null;
-      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom });
+      // DOC-3B : UN seul instant par document, réutilisé par document_date
+      // ET document_date_convocation (resolversCanoniques.js) — jamais deux
+      // `new Date()` distincts pour un même document.
+      const maintenant = new Date();
+      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant });
       // Nom de fichier sûr : jamais de séparateur de chemin ni de nom vide.
       const brut = stagiaire
         ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`

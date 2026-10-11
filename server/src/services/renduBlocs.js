@@ -11,13 +11,24 @@ import { champBloc } from "./resolversBlocs.js";
 // Remplace les variables LOCALES du corps d'un bloc pour UNE ligne.
 //   resolu → valeur ; absent → "" ; non résoluble (champ non supporté ou
 // variable globale) → laissé tel quel (le passage scalaire s'en charge).
-function rendreLigne(corps, nomBloc, ligne) {
+export function rendreLigne(corps, nomBloc, ligne) {
   return corps.replace(/\{\{(\w+)\}\}/g, (telQuel, nom) => {
     const r = champBloc(nomBloc, nom, ligne);
     if (r.statut === "resolu") return String(r.valeur);
     if (r.statut === "absent") return "";
     return telQuel;
   });
+}
+
+// DOC-6C : rendu d'une CELLULE de tableau pour UNE ligne. Les marqueurs de
+// bloc ({{#x}} / {{/x}}) sont retirés (ils ne s'affichent jamais), puis les
+// variables du bloc sont substituées ; les variables GLOBALES restent
+// intactes (le passage scalaire s'en charge).
+export function rendreCellule(texteCellule, nomBloc, ligne) {
+  const sansMarqueurs = texteCellule
+    .replaceAll(`{{#${nomBloc}}}`, "")
+    .replaceAll(`{{/${nomBloc}}}`, "");
+  return rendreLigne(sansMarqueurs, nomBloc, ligne);
 }
 
 // Découpe `texte` en segments : texte hors bloc et blocs complets.

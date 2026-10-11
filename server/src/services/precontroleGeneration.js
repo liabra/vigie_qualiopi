@@ -24,6 +24,7 @@ import { analyserModeleDrive } from "./diagnosticModele.js";
 import { blocCanonique, variableCanonique } from "./catalogueVariables.js";
 import { NOMS_RESOLUS, resoudreCanoniques } from "./resolversCanoniques.js";
 import { blocSupportable, champsResolubles } from "./resolversBlocs.js";
+import { RAISONS_TABLEAU } from "./blocsTableaux.js";
 
 // Règle 7 : jamais une liste non bornée d'identifiants de cibles.
 export const MAX_CIBLES_LISTEES = 50;
@@ -94,6 +95,19 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
     }
     if (diagnostic.type_fichier !== "document") {
       erreurs.push({ code: "BLOC_STRUCTURE_NON_SUPPORTEE", nom, message: `Le bloc {{#${nom}}} ne peut pas être rendu dans une feuille de calcul sans perte de mise en forme.` });
+    }
+  }
+
+  // DOC-6C : blocs dans un TABLEAU Google Docs. La duplication d'une ligne
+  // n'est autorisée que si sa mise en forme est reproduite fidèlement ;
+  // toute structure ambiguë ou non supportée est refusée EXPLICITEMENT avant
+  // la moindre copie Drive (jamais de repli silencieux en texte).
+  for (const occ of diagnostic.structure_blocs || []) {
+    if (occ.type === "tableau_non_supporte") {
+      erreurs.push({
+        code: "BLOC_TABLEAU_NON_SUPPORTE", nom: occ.nom, raison: occ.raison,
+        message: `Le bloc {{#${occ.nom}}} dans un tableau ne peut pas être dupliqué fidèlement : ${RAISONS_TABLEAU[occ.raison] || occ.raison}.`,
+      });
     }
   }
 

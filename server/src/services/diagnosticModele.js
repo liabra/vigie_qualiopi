@@ -17,6 +17,7 @@ import { texteDuDocument } from "./documents.js";
 import { appelGoogle } from "./google.js";
 import { MAX_COLONNES, MAX_LIGNES } from "./classeur.js";
 import { analyserModele } from "./validationModeles.js";
+import { classerBlocsDoc } from "./blocsTableaux.js";
 import { marqueurHistorique } from "./catalogueVariables.js";
 
 const MIME_DOC = "application/vnd.google-apps.document";
@@ -34,13 +35,15 @@ function erreurDiagnostic(statut, code, message) {
 
 // Texte d'un modèle Google Doc : réutilise exactement la lecture déjà
 // faite par la génération (texteDuDocument), sans rien y modifier.
+// DOC-6C : renvoie AUSSI le JSON brut, nécessaire à la classification
+// structurelle des blocs (texte vs ligne de tableau).
 async function texteModeleDoc(clients, fileId, jeton) {
   const { data } = await appelGoogle(
     "docs.documents.get",
     () => clients.docs.documents.get({ documentId: fileId }),
     { api: "docs", fichierId: fileId, jeton }
   );
-  return texteDuDocument(data);
+  return { texte: texteDuDocument(data), data };
 }
 
 // Texte d'un modèle Google Sheet : un appel de métadonnées (liste des
@@ -161,8 +164,12 @@ export async function analyserModeleDrive(modele, clients, jeton = null) {
   const trashed = fichier.trashed === true;
 
   if (mime === MIME_DOC) {
-    const texte = await texteModeleDoc(clients, modele.drive_file_id, jeton);
-    return { ...construireDiagnostic(analyserModele(texte), { typeFichier: "document" }), trashed };
+    const { texte, data } = await texteModeleDoc(clients, modele.drive_file_id, jeton);
+    const diagnostic = construireDiagnostic(analyserModele(texte), { typeFichier: "document" });
+    // DOC-6C : classification structurelle de chaque bloc (texte / ligne de
+    // tableau / non supporté), consommée par le précontrôle.
+    diagnostic.structure_blocs = classerBlocsDoc(data);
+    return { ...diagnostic, trashed };
   }
   if (mime === MIME_SHEET) {
     const { texte, ongletsTotal, ongletsAnalyses } = await texteModeleSheet(clients, modele.drive_file_id, jeton);

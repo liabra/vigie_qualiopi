@@ -158,6 +158,40 @@ test("bloc absences dans une Sheet → BLOC_STRUCTURE_NON_SUPPORTEE", async () =
   assert.ok(r.erreurs.some((e) => e.code === "BLOC_STRUCTURE_NON_SUPPORTEE" && e.nom === "absences"));
 });
 
+// DOC-6C : blocs dans un TABLEAU Google Docs. Une ligne simple est autorisée ;
+// une structure non dupliquable fidèlement est refusée avant la copie Drive.
+const celluleDoc = (contenu) => ({ paragraph: { elements: [{ textRun: { content: contenu } }] } });
+const docTableau = (lignes) => ({ body: { content: [{ table: { tableRows: lignes } }] }, headers: {}, footers: {} });
+
+test("bloc de tableau dans une ligne simple → autorisé (rendu ligne-tableau)", async () => {
+  const document = docTableau([
+    { tableCells: [{ content: [celluleDoc("Date")] }, { content: [celluleDoc("Intitulé")] }] },
+    { tableCells: [{ content: [celluleDoc("{{#evaluations}}{{evaluation_date}}")] }, { content: [celluleDoc("{{evaluation_intitule}}{{/evaluations}}")] }] },
+  ]);
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.blocs, ["evaluations"]);
+});
+
+test("bloc de tableau traversant deux lignes → BLOC_TABLEAU_NON_SUPPORTE", async () => {
+  const document = docTableau([
+    { tableCells: [{ content: [celluleDoc("{{#evaluations}}{{evaluation_date}}")] }] },
+    { tableCells: [{ content: [celluleDoc("{{/evaluations}}")] }] },
+  ]);
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_TABLEAU_NON_SUPPORTE" && e.nom === "evaluations" && e.raison === "bloc_traverse_lignes"));
+});
+
+test("bloc de tableau avec cellule fusionnée → BLOC_TABLEAU_NON_SUPPORTE", async () => {
+  const document = docTableau([
+    { tableCells: [{ content: [celluleDoc("{{#evaluations}}{{evaluation_intitule}}{{/evaluations}}")], columnSpan: 2 }, { content: [celluleDoc("x")] }] },
+  ]);
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_TABLEAU_NON_SUPPORTE" && e.raison === "cellules_fusionnees"));
+});
+
 test("bloc inconnu → BLOC_INCONNU", async () => {
   const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#inconnu}}{{x}}{{/inconnu}}") }) });
   assert.equal(r.autorise, false);

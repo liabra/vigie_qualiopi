@@ -20,6 +20,7 @@ import { precontrolerGeneration } from "./precontroleGeneration.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
+import { planBlocsTableau } from "./blocsTableaux.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -61,7 +62,7 @@ export function texteDuDocument(doc) {
 // marqueur inconnu. Garde-fou, pas un préalable.
 async function lireModele(clients, modele, jeton, cache) {
   if (cache?.has(modele.drive_file_id)) return cache.get(modele.drive_file_id);
-  let resultat = { texte: null, inconnus: null };
+  let resultat = { texte: null, data: null, inconnus: null };
   try {
     const { data } = await appelGoogle(
       "docs.documents.get",
@@ -69,7 +70,7 @@ async function lireModele(clients, modele, jeton, cache) {
       { api: "docs", fichierId: modele.drive_file_id, modele: modele.nom, jeton }
     );
     const texte = texteDuDocument(data);
-    resultat = { texte, inconnus: marqueursInconnus(texte) };
+    resultat = { texte, data, inconnus: marqueursInconnus(texte) };
   } catch (e) {
     console.error("Modèle « " + modele.nom + " » : lecture impossible — " + (e.message || "erreur inconnue"));
   }
@@ -160,7 +161,7 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
       // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
       // copie déjà nettoyée) : c'est le seul moment où les marqueurs non
       // reconnus sont encore visibles, et où les blocs sont encore lisibles.
-      const { texte: texteModele, inconnus } = await lireModele(clients, modele, jeton, cacheMarqueurs);
+      const { texte: texteModele, data: donneesModele, inconnus } = await lireModele(clients, modele, jeton, cacheMarqueurs);
       // DOC-6A : remplacement des blocs répétables AVANT les scalaires — les
       // variables globales du corps de bloc sont ensuite remplacées par le
       // passage scalaire (même batchUpdate, requêtes ordonnées).
@@ -169,10 +170,15 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
             replaceAllText: { containsText: { text: b.find, matchCase: true }, replaceText: b.replacement },
           }))
         : [];
+      // DOC-6C : duplication fidèle des lignes de tableau. Émises AVANT les
+      // replaceAllText (qui, eux, ne dépendent pas des index) : les index
+      // absolus calculés sur le MODÈLE restent valides tant qu'aucune autre
+      // requête d'écriture textuelle ne les a décalés.
+      const requetesTableaux = blocs && donneesModele ? planBlocsTableau(donneesModele, blocs).requetes : [];
       await appelGoogle(
         "docs.documents.batchUpdate",
         () => clients.docs.documents.batchUpdate({
-          documentId: copie.id, requestBody: { requests: [...requetesBlocs, ...requetesDocs(valeurs)] },
+          documentId: copie.id, requestBody: { requests: [...requetesTableaux, ...requetesBlocs, ...requetesDocs(valeurs)] },
         }),
         { api: "docs", fichierId: copie.id, jeton }
       );

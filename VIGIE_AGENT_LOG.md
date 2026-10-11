@@ -3414,3 +3414,66 @@ ordre `nom, prenom, id`.
   `renduBlocs` (pourcentage arrondi, ordre, nom complet, champ non résoluble), `generationRobuste`
   (bout en bout evaluations + intervenants).
 - Backend **724/724** (713 avant → +11), frontend **336/336** non concerné, `git diff --check` propre.
+
+---
+
+## 2026-10-11 — DOC-6C : blocs répétables dans les lignes de tableau Google Docs
+
+### Architecture
+
+Nouveau module PUR `blocsTableaux.js` (aucun Drive, aucune base) :
+- `parcourirDoc` : une passe sur le JSON Docs (corps + en-têtes/pieds) qui construit la liste
+  ordonnée des segments de texte avec leur contexte structurel (corps / cellule de tableau / hors-corps)
+  et l'inventaire des cellules (styles, spans, paragraphes, contenu non textuel, tableau imbriqué).
+- `detecterBlocsTableau` / `classerBlocsDoc` : localise les paires `{{#x}} … {{/x}}` et classe chaque
+  occurrence : `texte` (renderer DOC-6A existant), `tableau_ligne` (ligne modèle dupliquable),
+  `tableau_non_supporte` (refus explicite, avec `raison`).
+- `planBlocsTableau` : produit les requêtes `batchUpdate` (`insertTableRow` / `deleteTableRow` /
+  `insertText` / `deleteContentRange` / `updateTextStyle` / `updateParagraphStyle` /
+  `updateTableCellStyle` / `updateTableRowStyle`) avec des index DÉTERMINISTES.
+
+### Limites exactes des lignes supportées (V1, documentées)
+
+Une ligne modèle n'est dupliquée QUE si sa mise en forme est reproductible. Sinon refus explicite
+(erreur `BLOC_TABLEAU_NON_SUPPORTE`, nom + raison), jamais un repli silencieux en texte. Refus :
+- `bloc_traverse_lignes` / `bloc_traverse_tableaux` / `bloc_traverse_tableau_et_texte` : marqueurs
+  d'ouverture et de fermeture pas dans la MÊME ligne de tableau ;
+- `bloc_tableau_hors_corps` : en-tête / pied de page ;
+- `plusieurs_blocs_dans_ligne` : plusieurs blocs dans la même ligne ;
+- `cellules_fusionnees` : cellule fusionnée (rowSpan/columnSpan > 1, ou largeur ≠ nombre de colonnes) ;
+- `tableau_imbrique`, `contenu_non_textuel` (image/dessin), `paragraphes_multiples`,
+  `styles_textes_multiples` (une cellule = UN paragraphe, UN style de texte).
+
+### Stratégie d'index Google Docs
+
+- Requêtes textuelles (insertText / deleteContentRange) émises de bas en haut, cellules de droite à
+  gauche : chaque opération s'applique à un index encore stable. Tables traitées de bas en haut.
+- Insertion des N−1 lignes vides via `insertTableRow` (index relatifs à la table) ; position des
+  cellules nouvelles calculée depuis `ligneFin + (k−1) × nombreColonnes + colonne` (une cellule vide
+  = un « \n »).
+- Les `replaceAllText` (blocs texte + scalaires) sont émis APRÈS les requêtes structurelles : ils
+  n'utilisent pas d'index, donc insensibles aux décalages.
+
+### Mise en forme
+
+- `insertTableRow` crée une ligne VIDE au style par défaut : le moteur REPLAIT explicitement le style
+  complet de la ligne (`updateTableRowStyle`, `fields:"*"`), de chaque cellule (`updateTableCellStyle`),
+  du paragraphe (`updateParagraphStyle`) et du texte (`updateTextStyle`), depuis les objets de style
+  lus sur la ligne modèle (métadonnées `suggested…` nettoyées).
+- La ligne modèle (élément 0) passe par le même chemin : `deleteContentRange` (contenu hors saut de
+  ligne) puis `insertText` + replay des styles — uniforme et testable. Largeurs de colonnes et style
+  de table préservés par la structure (non modifiés).
+
+### Fichiers modifiés
+
+- `server/src/services/blocsTableaux.js` (nouveau), `renduBlocs.js` (`rendreCellule` exporté),
+  `diagnosticModele.js` (`structure_blocs` sur les Docs), `precontroleGeneration.js`
+  (`BLOC_TABLEAU_NON_SUPPORTE`), `documents.js` (requêtes tableau avant les replaceAllText).
+- Tests : `server/test/blocsTableaux.test.js` (nouveau, 21 tests : classification, plan 0/1/N,
+  plusieurs colonnes, styles, simulateur d'index, fidélité), `precontroleGeneration.test.js`
+  (3 tests structurels).
+
+### Validation
+
+- Backend **748/748** (724 avant → +24), `git diff --check` propre. Frontend non concerné.
+

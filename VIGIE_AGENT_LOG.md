@@ -3288,3 +3288,28 @@ session, à défaut durée de formation, au format `N h`).
 ### Points ouverts
 
 - Aucune migration du modèle Drive Attestation : à faire après validation (comme pour Convocation).
+
+---
+
+## 2026-10-11 — Checkpoint Documents : validation globale avant push
+
+### État Git
+
+- Branche `main`, **8 commits locaux non poussés** (dans l'ordre) :
+  `311d58b` catalogue canonique, `d4d1099` diagnostic des modèles, `fe1b797` audit des modèles,
+  `89ebe12` résolution canonique, `29474e7` précontrôle de génération (DOC-3C),
+  `dd3be15` rendu canonique (DOC-3D), `a12ccaf` test migration Convocation,
+  `0cd05d4` canonicalisation durée Attestation (DOC-4C).
+- `AGENTS.md`, `CLAUDE.md`, `SECURITY.md` non suivis, jamais inclus.
+- Aucune migration SQL, aucun `.env`, aucun secret/token/dump dans la série.
+
+### Dictionnaire
+
+- version **1.3**, **162 variables**, **46 résolubles** (`NOMS_RESOLUS`).
+- Les 16 variables des deux modèles officiels (Convocation + Attestation) sont toutes
+  canoniques, résolubles, rendables Docs/Sheets, jamais `non_resoluble`.
+
+### Validation
+
+- Backend **697/697**, frontend **336/336**, build Vite OK, migrations `migrationConvocation` +
+  `migrationAttestation` **9/9**, `git diff --check` propre.

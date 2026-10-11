@@ -75,7 +75,7 @@ test("les 45 variables supportées sont résolues depuis un contexte complet", (
     formation_objectif_general: "Accompagner vers l'emploi", formation_modalite: "presentiel",
     formation_accessibilite: "Locaux accessibles",
     session_id: 1, session_date_debut: "05/01/2026", session_date_fin: "05/03/2026",
-    session_horaires: "8h30–12h00", session_lieu: "Cayenne", session_duree_heures: 380, session_statut: "en_cours",
+    session_horaires: "8h30–12h00", session_lieu: "Cayenne", session_duree_heures: 380, session_statut_code: "en_cours",
     session_reference: "ADVF-2026-01", session_nombre_inscrits: 12, session_nombre_termines: 3,
     groupe_id: 5, groupe_nom: "Groupe A",
     stagiaire_id: 42, stagiaire_civilite: "Mme", stagiaire_nom: "Stark", stagiaire_prenom: "Blandine",
@@ -94,6 +94,17 @@ test("les 45 variables supportées sont résolues depuis un contexte complet", (
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
   // Les 43 attendus + les 2 abandon_* couverts = 45 clés distinctes vérifiées.
   assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 45);
+});
+
+test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
+  assert.deepEqual(canoniques.session_statut_code, { statut: "resolu", valeur: "en_cours" });
+  assert.ok(!Object.hasOwn(canoniques, "session_statut"), "l'ancien nom n'est plus une clé canonique");
+});
+
+test("DOC-3D : aucune variable résolue n'est restreinte — jamais rendable sans autorisation", () => {
+  for (const nom of NOMS_RESOLUS) {
+    assert.notEqual(variableCanonique(nom).sensibilite, "restreinte", `${nom} ne doit pas être restreinte`);
+  }
 });
 
 test("0 et false sont des valeurs RÉSOLUES valides, jamais confondues avec absent", () => {

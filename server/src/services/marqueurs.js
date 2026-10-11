@@ -41,6 +41,7 @@
 import { nomsFormateurs } from "./intervenants.js";
 import { formaterDate, formaterDuree } from "./formatageDocuments.js";
 import { resoudreCanoniques } from "./resolversCanoniques.js";
+import { blocCanonique, blocsDuChampLocal, marqueurHistorique, resoudreAlias, variableCanonique } from "./catalogueVariables.js";
 
 // Ré-exportées telles quelles : marqueurs.test.js et d'éventuels appelants
 // externes continuent de les importer d'ici (compatibilité).
@@ -137,16 +138,49 @@ export function valeursMarqueurs(ctx = {}) {
     // les marqueurs restent VIDES plutôt que d'imprimer un faux chiffre.
     heures_suivies: assiduite?.fiable ? formaterDuree(assiduite.heures_suivies) : "",
     taux_assiduite: assiduite?.fiable ? `${assiduite.taux} %` : "",
-    // Couche canonique DOC-3B, exposée séparément — jamais aplatie ni
-    // mélangée aux 23 marqueurs historiques ci-dessus (certains partagent
-    // un même NOM avec une variable canonique — ex. session_statut — mais
-    // une sémantique différente : libellé affiché ici, valeur métier brute
-    // côté canonique). Pas encore branchée sur requetesDocs/requetesSheets
-    // (qui itèrent toujours sur MARQUEURS seulement, inchangé) : disponible
-    // pour les tests et un futur branchement, sans changer le comportement
-    // actuel de la génération.
+    // Couche canonique DOC-3B/DOC-3D, exposée séparément — jamais aplatie
+    // ni mélangée aux 23 marqueurs historiques ci-dessus. La seule collision
+    // de nom (session_statut) a été levée en v1.2 par le renommage canonique
+    // session_statut_code : le marqueur historique garde le libellé humain,
+    // la variable canonique porte la valeur métier brute.
     canoniques,
   };
+}
+
+// DOC-3D — RENDUS HISTORIQUES DE COMPATIBILITÉ : marqueurs reconnus
+// HISTORIQUE par le validateur (jamais canoniques, jamais comptés dans les 161,
+// toujours avec leur avertissement de migration) mais dont la couche de rendu
+// lit la valeur depuis une variable canonique. Distinct des 11 ALIAS (une
+// équivalence STRICTE) : ici c'est un PONT de rendu, pas une équivalence
+// sémantique. Ex. date_convocation → document_date_convocation.
+export const RENDUS_HISTORIQUES = Object.freeze({
+  date_convocation: "document_date_convocation",
+});
+
+// DOC-3D — Map plat de remplacement, UNIQUE source des requêtes Docs/Sheets.
+// 23 marqueurs historiques → comportement actuel inchangé (String(v[nom])).
+// Canoniques réellement présents dans le modèle (issus du précontrôle) :
+//   resolu → String(valeur) ; absent → "" (uniquement ici, règle temporaire) ;
+//   non_resoluble → n'apparaît jamais (le précontrôle a déjà bloqué).
+// Ne parcourt PAS les 45 variables : seulement celles présentes dans le modèle.
+export function valeursDeRemplacement(v, canoniques = []) {
+  const plat = {};
+  for (const nom of MARQUEURS) plat[nom] = String(v[nom] ?? "");
+  const canon = v.canoniques || {};
+  for (const nom of canoniques) {
+    const r = canon[nom];
+    // non_resoluble ne doit jamais être rendu (le précontrôle a bloqué) :
+    // défensivement, aucune requête de remplacement n'est émise pour lui.
+    if (!r || r.statut === "non_resoluble") continue;
+    plat[nom] = r.statut === "resolu" ? String(r.valeur) : "";
+  }
+  // RENDUS HISTORIQUES : la valeur est lue depuis la variable canonique
+  // cible (même chemin que si le modèle écrivait la canonique directement).
+  for (const [nom, cible] of Object.entries(RENDUS_HISTORIQUES)) {
+    const r = canon[cible];
+    plat[nom] = r?.statut === "resolu" ? String(r.valeur) : "";
+  }
+  return plat;
 }
 
 // Remplacement dans une chaîne — sert aux noms de fichiers et de dossiers.
@@ -157,11 +191,16 @@ export function remplacer(texte, valeurs) {
   );
 }
 
-// Marqueurs présents dans un texte mais absents de la convention : sert à
-// prévenir plutôt qu'à produire un document troué en silence.
+// Marqueurs présents dans un texte mais absents de la convention (23
+// marqueurs historiques + catalogue canonique) : sert à prévenir plutôt
+// qu'à produire un document troué en silence.
 export function marqueursInconnus(texte) {
   const trouves = [...String(texte || "").matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
-  return [...new Set(trouves.filter((n) => !MARQUEURS.includes(n)))];
+  const connu = (n) =>
+    MARQUEURS.includes(n) ||
+    variableCanonique(n) || resoudreAlias(n) || marqueurHistorique(n) ||
+    blocCanonique(n) || blocsDuChampLocal(n).length > 0;
+  return [...new Set(trouves.filter((n) => !connu(n)))];
 }
 
 // TOUS les marqueurs {{...}} encore présents dans un texte, connus ou non.
@@ -172,19 +211,21 @@ export function marqueursRestants(texte) {
   return [...new Set([...String(texte || "").matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
 }
 
-// Requêtes de remplacement pour l'API Google Docs.
-export function requetesDocs(valeurs) {
-  return MARQUEURS.map((nom) => ({
+// Requêtes de remplacement pour l'API Google Docs. `remplacements` est le
+// map plat produit par valeursDeRemplacement() : on n'itère que ses clés
+// (23 historiques + canoniques du modèle), jamais une liste en dur de 45.
+export function requetesDocs(remplacements) {
+  return Object.keys(remplacements).map((nom) => ({
     replaceAllText: {
       containsText: { text: baliser(nom), matchCase: true },
-      replaceText: String(valeurs[nom] ?? ""),
+      replaceText: String(remplacements[nom] ?? ""),
     },
   }));
 }
 
 // Équivalent pour l'API Google Sheets.
-export function requetesSheets(valeurs) {
-  return MARQUEURS.map((nom) => ({
-    findReplace: { find: baliser(nom), replacement: String(valeurs[nom] ?? ""), allSheets: true, matchCase: true },
+export function requetesSheets(remplacements) {
+  return Object.keys(remplacements).map((nom) => ({
+    findReplace: { find: baliser(nom), replacement: String(remplacements[nom] ?? ""), allSheets: true, matchCase: true },
   }));
 }

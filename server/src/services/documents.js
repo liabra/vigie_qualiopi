@@ -14,9 +14,11 @@
 import { config } from "../config.js";
 import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
-import { marqueursInconnus, marqueursRestants, requetesDocs, requetesSheets, valeursMarqueurs } from "./marqueurs.js";
+import { marqueursInconnus, requetesDocs, requetesSheets, valeursDeRemplacement, valeursMarqueurs } from "./marqueurs.js";
 import { calculerAssiduite } from "./assiduite.js";
 import { precontrolerGeneration } from "./precontroleGeneration.js";
+import { balisesResiduelles } from "./validationModeles.js";
+import { texteModeleSheet } from "./diagnosticModele.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -115,7 +117,7 @@ export async function dossierCible(drive, { formation, session, groupe }, jeton)
 
 // Copie le modèle puis remplace les marqueurs DANS LA COPIE. Le modèle
 // d'origine n'est jamais modifié.
-export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs, cacheMarqueurs = null }, jeton) {
+export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs, cacheMarqueurs = null, verifierCopieSheet = false }, jeton) {
   const { data: copie } = await appelGoogle(
     "drive.files.copy",
     () => clients.drive.files.copy({
@@ -136,9 +138,24 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
         }),
         { api: "sheets", fichierId: copie.id, jeton }
       );
-      // Sheet : le remplacement a bien lieu, mais la détection des marqueurs
-      // inconnus n'est pas faite (il faudrait parcourir toutes les cellules).
-      return { ...copie, marqueursRemplaces: true, marqueursInconnusTrouves: [], detectionMarqueurs: false };
+      // DOC-3D : vérification post-rendu Sheet — UNE seule copie par
+      // génération (verifierCopieSheet), indépendante du nombre de
+      // stagiaires. Relit la copie avec le lecteur borné existant et
+      // détecte les balises reconnues restées non rendues.
+      let marqueursNonResolus = [];
+      let verificationMarqueurs = false;
+      if (verifierCopieSheet) {
+        try {
+          const { texte } = await texteModeleSheet(clients, copie.id, jeton);
+          marqueursNonResolus = balisesResiduelles(texte);
+          verificationMarqueurs = true;
+        } catch (e) {
+          console.error("Génération — relecture de la copie Sheet impossible : " + (e.message || "erreur inconnue"));
+        }
+      }
+      // La détection des marqueurs INCONNUS n'est pas faite sur Sheet
+      // (seule la vérification post-rendu des balises reconnues l'est).
+      return { ...copie, marqueursRemplaces: true, marqueursInconnusTrouves: [], detectionMarqueurs: false, marqueursNonResolus, verificationMarqueurs };
     }
     if (mime === DOC) {
       // Le modèle est lu AVANT le remplacement (sur l'original, pas sur la
@@ -164,7 +181,10 @@ export async function copierEtRemplir(clients, { modele, nom, dossierId, valeurs
           () => clients.docs.documents.get({ documentId: copie.id }),
           { api: "docs", fichierId: copie.id, jeton }
         );
-        marqueursNonResolus = marqueursRestants(texteDuDocument(relu));
+        // DOC-3D : seules les balises RECONNUES restées après remplacement
+        // sont remontées (canonique/alias/historique/champ_bloc), jamais de
+        // simples accolades de texte métier.
+        marqueursNonResolus = balisesResiduelles(texteDuDocument(relu));
         verificationMarqueurs = true;
       } catch (e) {
         console.error("Génération — relecture de la copie impossible : " + (e.message || "erreur inconnue"));
@@ -433,6 +453,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     const anciensATrasher = [];
     // Un seul modèle par génération : le cache évite de le relire à chaque copie.
     const cacheMarqueurs = new Map();
+    // DOC-3D : relecture post-rendu Sheet limitée à la première copie —
+    // le nombre de relectures ne dépend jamais du nombre de cibles.
+    let premiereCopie = true;
 
     for (const { stagiaire } of aProduire) {
       // Assiduité par stagiaire : le MÊME calcul que le lot L2, pas une copie.
@@ -444,6 +467,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       // `new Date()` distincts pour un même document.
       const maintenant = new Date();
       const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant });
+      // DOC-3D : map plat de remplacement — 23 historiques + les canoniques
+      // réellement présents dans le modèle (précontrôle), jamais les 45.
+      const remplacements = valeursDeRemplacement(valeurs, precontrole.canoniques);
       // Nom de fichier sûr : jamais de séparateur de chemin ni de nom vide.
       const brut = stagiaire
         ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`
@@ -451,7 +477,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       const nom = nomSain(brut);
 
       const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-      const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs, cacheMarqueurs }, jeton);
+      const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs: remplacements, cacheMarqueurs, verifierCopieSheet: premiereCopie }, jeton);
+      premiereCopie = false;
       copiesCreees.push(copie.id);
 
       if (ancien) {

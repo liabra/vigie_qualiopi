@@ -4,10 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MARQUEURS, formaterDate, formaterDuree, marqueursInconnus, remplacer,
-  requetesDocs, requetesSheets, valeursMarqueurs,
+  MARQUEURS, RENDUS_HISTORIQUES, formaterDate, formaterDuree, marqueursInconnus, remplacer,
+  requetesDocs, requetesSheets, valeursDeRemplacement, valeursMarqueurs,
 } from "../src/services/marqueurs.js";
-import { resoudreCanoniques } from "../src/services/resolversCanoniques.js";
+import { NOMS_RESOLUS, resoudreCanoniques } from "../src/services/resolversCanoniques.js";
 
 test("la liste des marqueurs est exactement celle convenue", () => {
   assert.deepEqual(MARQUEURS, [
@@ -149,16 +149,16 @@ test("session_reference et session_statut ne s'inventent pas", () => {
 
 test("les requêtes Google couvrent tous les marqueurs, avec la bonne forme", () => {
   const v = valeursMarqueurs(contexte);
-  const docs = requetesDocs(v);
-  assert.equal(docs.length, MARQUEURS.length);
+  const docs = requetesDocs(valeursDeRemplacement(v));
+  assert.equal(docs.length, MARQUEURS.length + Object.keys(RENDUS_HISTORIQUES).length);
   // repérage par nom, pas par position : ajouter un marqueur ne doit pas
   // faire échouer ce test pour une mauvaise raison.
   const requete = (nom) => docs.find((d) => d.replaceAllText.containsText.text === "{{" + nom + "}}");
   assert.deepEqual(requete("nom_stagiaire").replaceAllText.containsText, { text: "{{nom_stagiaire}}", matchCase: true });
   assert.equal(requete("nom_stagiaire").replaceAllText.replaceText, "Dupont");
   assert.equal(requete("civilite").replaceAllText.replaceText, "Mme");
-  const sheets = requetesSheets(v);
-  assert.equal(sheets.length, MARQUEURS.length);
+  const sheets = requetesSheets(valeursDeRemplacement(v));
+  assert.equal(sheets.length, MARQUEURS.length + Object.keys(RENDUS_HISTORIQUES).length);
   const trouve = (nom) => sheets.find((r) => r.findReplace.find === "{{" + nom + "}}");
   assert.equal(trouve("nom_stagiaire").findReplace.allSheets, true);
   assert.ok(trouve("civilite"));
@@ -229,4 +229,74 @@ test("DOC-3B : la couche canonique n'est jamais aplatie en silence dans valeursM
   // son vrai statut dans `canoniques`, jamais transformé en "" sans trace.
   assert.deepEqual(v.canoniques.formation_id, { statut: "absent", valeur: null });
   assert.equal(v.canoniques.evaluation_id.statut, "non_resoluble");
+});
+
+// ── DOC-3D : map plat de remplacement (une seule source) ────
+
+test("DOC-3D : valeursDeRemplacement couvre les 23 historiques + rendus de compatibilité, sans la clé canoniques", () => {
+  const plat = valeursDeRemplacement(valeursMarqueurs(contexte));
+  assert.equal(Object.keys(plat).length, MARQUEURS.length + Object.keys(RENDUS_HISTORIQUES).length);
+  assert.ok(!Object.hasOwn(plat, "canoniques"), "la couche canonique brute n'est pas une clé de remplacement");
+  assert.equal(plat.nom_stagiaire, "Dupont");
+  assert.equal(plat.date_convocation, "", "sans maintenant : document_date_convocation absent → vide");
+});
+
+test("DOC-3D : canonique resolu → String(valeur), absent → \"\", non_resoluble jamais émis", () => {
+  const v = valeursMarqueurs(contexte);
+  const plat = valeursDeRemplacement(v, ["stagiaire_nom", "prescripteur_nom", "evaluation_id"]);
+  assert.equal(plat.stagiaire_nom, "Dupont", "resolu → valeur");
+  assert.equal(plat.prescripteur_nom, "", "absent → chaîne vide (uniquement à la couche de rendu)");
+  assert.ok(!Object.hasOwn(plat, "evaluation_id"), "non_resoluble → aucune requête de remplacement");
+});
+
+test("DOC-3D : {{nom_stagiaire}} et {{stagiaire_nom}} injectent exactement la même valeur", () => {
+  const v = valeursMarqueurs(contexte);
+  const plat = valeursDeRemplacement(v, ["stagiaire_nom"]);
+  const docs = requetesDocs(plat);
+  const texteDe = (nom) => docs.find((d) => d.replaceAllText.containsText.text === "{{" + nom + "}}").replaceAllText.replaceText;
+  assert.equal(texteDe("nom_stagiaire"), "Dupont");
+  assert.equal(texteDe("stagiaire_nom"), "Dupont");
+  assert.equal(texteDe("nom_stagiaire"), texteDe("stagiaire_nom"));
+});
+
+test("DOC-3D : les 45 NOMS_RESOLUS ont tous un chemin de rendu Docs ET Sheets", () => {
+  const v = valeursMarqueurs(contexte);
+  const plat = valeursDeRemplacement(v, NOMS_RESOLUS);
+  const nomsDocs = new Set(requetesDocs(plat).map((d) => d.replaceAllText.containsText.text.slice(2, -2)));
+  const nomsSheets = new Set(requetesSheets(plat).map((r) => r.findReplace.find.slice(2, -2)));
+  for (const nom of NOMS_RESOLUS) {
+    assert.ok(nomsDocs.has(nom), `${nom} doit être rendable en Doc`);
+    assert.ok(nomsSheets.has(nom), `${nom} doit être rendable en Sheet`);
+  }
+});
+
+test("DOC-3D : {{session_statut}} et {{session_statut_code}} coexistent sans collision (libellé vs brute)", () => {
+  const ctx = { ...contexte, session: { ...contexte.session, statut: "terminee" } };
+  const v = valeursMarqueurs(ctx);
+  const plat = valeursDeRemplacement(v, ["session_statut_code"]);
+  assert.equal(plat.session_statut, "Terminée", "historique : libellé humain");
+  assert.equal(plat.session_statut_code, "terminee", "canonique : valeur métier brute");
+  const docs = requetesDocs(plat);
+  const texteDe = (nom) => docs.find((d) => d.replaceAllText.containsText.text === "{{" + nom + "}}").replaceAllText.replaceText;
+  assert.equal(texteDe("session_statut"), "Terminée");
+  assert.equal(texteDe("session_statut_code"), "terminee");
+});
+
+test("DOC-3D : session_reference (historique + canonique, même sémantique) — une seule requête, même valeur", () => {
+  const ctx = { ...contexte, session: { ...contexte.session, reference: "ADVF-2026-01" } };
+  const v = valeursMarqueurs(ctx);
+  const plat = valeursDeRemplacement(v, ["session_reference"]);
+  const occurrences = requetesDocs(plat).filter((d) => d.replaceAllText.containsText.text === "{{session_reference}}");
+  assert.equal(occurrences.length, 1, "une seule requête, jamais de doublon nuisible");
+  assert.equal(occurrences[0].replaceAllText.replaceText, "ADVF-2026-01");
+  assert.equal(v.session_reference, v.canoniques.session_reference.valeur, "même valeur historique et canonique");
+});
+
+test("DOC-3D : {{date_convocation}} et {{document_date_convocation}} reçoivent exactement la même valeur", () => {
+  const ctx = { ...contexte, maintenant: new Date("2026-02-01T10:00:00Z") };
+  const v = valeursMarqueurs(ctx);
+  const plat = valeursDeRemplacement(v, ["document_date_convocation"]);
+  assert.equal(plat.date_convocation, "01/02/2026");
+  assert.equal(plat.document_date_convocation, "01/02/2026");
+  assert.equal(plat.date_convocation, plat.document_date_convocation);
 });

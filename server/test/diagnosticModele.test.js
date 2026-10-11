@@ -46,7 +46,7 @@ test("Google Doc canonique valide : état « valide », aucun avertissement", as
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.type_fichier, "document");
-  assert.equal(r.version_dictionnaire, "1.1");
+  assert.equal(r.version_dictionnaire, "1.2");
   assert.equal(r.nombre_occurrences_balises, 2);
   assert.equal(r.nombre_balises_uniques, 2);
   assert.deepEqual(r.canoniques.sort(), ["formation_intitule", "session_date_debut"]);
@@ -103,13 +103,13 @@ test("bloc répétable et champ local valides : comptés une fois dans « blocs 
 });
 
 test("Google Sheet, un onglet : analysé intégralement", async () => {
-  const onglets = [{ titre: "Feuille 1", grille: [["{{session_reference}}", "{{session_statut}}"]] }];
+  const onglets = [{ titre: "Feuille 1", grille: [["{{session_reference}}", "{{session_statut_code}}"]] }];
   const r = await analyserModeleDrive(MODELE, fauxClients({ mime: SHEET, onglets }));
   assert.equal(r.etat, "valide");
   assert.equal(r.type_fichier, "feuille_calcul");
   assert.equal(r.onglets_total, 1);
   assert.equal(r.onglets_analyses, 1);
-  assert.deepEqual(r.canoniques.sort(), ["session_reference", "session_statut"]);
+  assert.deepEqual(r.canoniques.sort(), ["session_reference", "session_statut_code"]);
   assert.ok(!r.avertissements.some((a) => a.code === "ANALYSE_PARTIELLE"));
 });
 

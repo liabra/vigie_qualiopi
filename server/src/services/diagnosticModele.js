@@ -47,7 +47,7 @@ async function texteModeleDoc(clients, fileId, jeton) {
 // onglets, bornes de grille), puis un values.get PAR ONGLET analysé —
 // toutes les cellules peuvent porter des balises, pas seulement la
 // première feuille. Bornée par MAX_ONGLETS, MAX_LIGNES et MAX_COLONNES.
-async function texteModeleSheet(clients, fileId, jeton) {
+export async function texteModeleSheet(clients, fileId, jeton) {
   const { data: meta } = await appelGoogle(
     "sheets.spreadsheets.get",
     () => clients.sheets.spreadsheets.get({

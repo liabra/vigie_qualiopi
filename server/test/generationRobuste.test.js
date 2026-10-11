@@ -14,6 +14,7 @@ import { setDriveFactory, DRIVE_FILE } from "../src/services/google.js";
 import { encode } from "../src/session.js";
 
 const DOC = "application/vnd.google-apps.document";
+const SHEET = "application/vnd.google-apps.spreadsheet";
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
 const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
@@ -105,11 +106,18 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
 // historique connu (« nom_stagiaire ») — précontrôle propre — pour que les
 // tests qui ne portent PAS sur le contenu du modèle (verrou, échecs Drive/DB,
 // droits…) ne soient pas bloqués par une variable inconnue sans rapport.
+// Simulateur FIDÈLE : copie identique au modèle, application RÉELLE des
+// replaceAllText/findReplace, relecture du contenu résultant. Un marqueur
+// volontairement ignoré (remplacementIgnorer) reste donc réellement visible.
 function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = false, echecGet = null,
-  echecCopy = null, echecBatch = null, echecTrash = null, copieRelue = null, attente = null, journal = null,
-  modeleTexte = "{{nom_stagiaire}}" } = {}) {
-  const trace = { copies: 0, copiesCreees: [], corbeille: [], relectures: 0, remplacements: 0, dossiersCrees: 0 };
+  echecCopy = null, echecBatch = null, echecTrash = null, attente = null, journal = null,
+  modeleTexte = "{{nom_stagiaire}}", modeleGrille = null, remplacementIgnorer = [] } = {}) {
+  const trace = { copies: 0, copiesCreees: [], corbeille: [], relectures: 0, relecturesSheet: 0, remplacements: 0, dossiersCrees: 0, ciblesReplacees: [] };
   const noter = (evt) => { if (journal) journal.push(evt); };
+  const contenuCopies = new Map(); // copie-Id → texte (Doc), initialisé à l'identique du modèle
+  const grilleCopies = new Map();  // copie-Id → grille (Sheet), idem
+  trace.contenuCopies = contenuCopies;
+  trace.grilleCopies = grilleCopies;
   let n = 0;
   const client = {
     row: { scopes: DRIVE_FILE, expiry: Date.now() + 60_000, access_token: "x" },
@@ -127,6 +135,8 @@ function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = f
           trace.copies++;
           const id = "copie-" + trace.copies;
           trace.copiesCreees.push(id);
+          contenuCopies.set(id, modeleTexte);
+          grilleCopies.set(id, (modeleGrille || []).map((r) => [...r]));
           noter("Drive:copy:" + id);
           return { data: { id, name: requestBody.name, webViewLink: "https://d/" + id, mimeType: mimeModele } };
         },
@@ -145,21 +155,51 @@ function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = f
         get: async ({ documentId }) => {
           if (documentId !== "MODELE") {
             trace.relectures++;
-            // Copie relue après remplacement : vide, sauf si le test veut
-            // simuler un marqueur resté non remplacé.
-            return { data: copieRelue || { body: { content: [] }, headers: {}, footers: {} } };
+            const texte = contenuCopies.get(documentId) ?? "";
+            return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: texte } }] } }] }, headers: {}, footers: {} } };
           }
-          // Modèle original : contenu configurable (DOC-3C : précontrôlé).
           return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: modeleTexte } }] } }] }, headers: {}, footers: {} } };
         },
-        batchUpdate: async () => {
+        batchUpdate: async ({ documentId, requestBody }) => {
           if (echecBatch) throw Object.assign(new Error(echecBatch.message), { response: { status: echecBatch.statut } });
           trace.remplacements++;
+          let resultat = contenuCopies.get(documentId) ?? modeleTexte;
+          for (const r of requestBody?.requests || []) {
+            const cible = r.replaceAllText?.containsText?.text;
+            if (!cible || remplacementIgnorer.includes(cible)) continue;
+            trace.ciblesReplacees.push({ cible, remplacement: r.replaceAllText?.replaceText ?? "" });
+            resultat = resultat.split(cible).join(r.replaceAllText?.replaceText ?? "");
+          }
+          contenuCopies.set(documentId, resultat);
           return { data: {} };
         },
       },
     },
-    sheets: { spreadsheets: { batchUpdate: async () => ({ data: {} }) } },
+    sheets: { spreadsheets: {
+      get: async ({ spreadsheetId }) => {
+        if (spreadsheetId !== "MODELE") trace.relecturesSheet++;
+        return { data: { sheets: [{ properties: { title: "Feuille 1", index: 0, gridProperties: { rowCount: 5, columnCount: 5 } } }] } };
+      },
+      values: { get: async ({ spreadsheetId }) => {
+        const grille = spreadsheetId === "MODELE" ? (modeleGrille || []) : (grilleCopies.get(spreadsheetId) || []);
+        return { data: { values: grille } };
+      } },
+      batchUpdate: async ({ spreadsheetId, requestBody }) => {
+        if (echecBatch) throw Object.assign(new Error(echecBatch.message), { response: { status: echecBatch.statut } });
+        trace.remplacements++;
+        const grille = (grilleCopies.get(spreadsheetId) || []).map((r) => [...r]);
+        for (const req of requestBody?.requests || []) {
+          const fr = req.findReplace;
+          if (!fr || remplacementIgnorer.includes(fr.find)) continue;
+          trace.ciblesReplacees.push({ cible: fr.find, remplacement: fr.replacement ?? "" });
+          for (const ligne of grille) for (let i = 0; i < ligne.length; i++) {
+            if (typeof ligne[i] === "string") ligne[i] = ligne[i].split(fr.find).join(fr.replacement ?? "");
+          }
+        }
+        grilleCopies.set(spreadsheetId, grille);
+        return { data: {} };
+      },
+    } },
   };
   return { trace, client };
 }
@@ -330,12 +370,94 @@ test("DOC-3C : non-régression — aucun stagiaire à produire, aucune lecture D
 
 test("un marqueur resté non remplacé (après copie) est remonté", async () => {
   baseSimulee().installer();
-  const copieRelue = { body: { content: [{ paragraph: { elements: [{ textRun: { content: "Bonjour {{nom_stagiaire}}" } }] } }] }, headers: {}, footers: {} };
-  const { client } = clientDriveSimule({ copieRelue });
+  const { client } = clientDriveSimule({ remplacementIgnorer: ["{{nom_stagiaire}}"] });
   setDriveFactory(() => client);
   const r = await generer(requete);
   assert.equal(r.statut, 200);
   assert.ok(r.corps.marqueursNonResolus.includes("nom_stagiaire"), "le marqueur restant est signalé");
+});
+
+// DOC-3D : une variable canonique résolue passe le précontrôle, est rendue,
+// et ne laisse aucun marqueur résiduel dans la copie relue.
+test("DOC-3D : une variable canonique résolue est rendue, sans blocage ni résidu", async () => {
+  baseSimulee().installer();
+  const { client } = clientDriveSimule({ modeleTexte: "{{stagiaire_nom}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.deepEqual(r.corps.marqueursInconnus, []);
+});
+
+// DOC-3D : rendu Sheet multi-cibles — un batchUpdate par copie, mais UNE
+// SEULE relecture post-rendu, indépendante du nombre de stagiaires.
+test("DOC-3D : Sheet multi-cibles — un batchUpdate par copie, une seule relecture post-rendu", async () => {
+  baseSimulee({ nbStagiaires: 3 }).installer();
+  const { trace, client } = clientDriveSimule({
+    mimeModele: SHEET,
+    modeleGrille: [["{{stagiaire_nom}}"]],
+  });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.documents, 3);
+  assert.equal(trace.remplacements, 3, "un batchUpdate de rendu par copie");
+  assert.equal(trace.relecturesSheet, 1, "une seule relecture post-rendu Sheet, indépendante du nombre de cibles");
+});
+
+// ── DOC-3D non-régression : modèles Drive actuels (non migrés) ──
+
+test("DOC-3D non-régression : le modèle de Convocation actuel génère sans modification, aucun marqueur actuel ne reste", async () => {
+  baseSimulee().installer();
+  const modeleConvocation = "{{intitule_formation}} {{civilite}} {{prenom_stagiaire}} {{nom_stagiaire}} {{date_convocation}} {{date_debut}} {{date_fin}} {{horaire}}";
+  const { trace, client } = clientDriveSimule({ modeleTexte: modeleConvocation });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  // date_convocation est réellement remplacé (compatibilité historique).
+  const conv = trace.ciblesReplacees.find((c) => c.cible === "{{date_convocation}}");
+  assert.ok(conv, "une requête de remplacement est émise pour {{date_convocation}}");
+  assert.match(conv.remplacement, /^\d{2}\/\d{2}\/\d{4}$/, "la date injectée a le format JJ/MM/AAAA");
+  const copie = trace.contenuCopies.get("copie-1");
+  assert.ok(!copie.includes("{{date_convocation}}"), "la balise date_convocation ne reste pas dans la copie");
+  assert.deepEqual(r.corps.marqueursNonResolus, [], "aucun marqueur actuel ne reste par erreur");
+  assert.deepEqual(r.corps.marqueursInconnus, [], "aucun marqueur inconnu");
+});
+
+// DOC-3D : si le rendu est volontairement ignoré pour date_convocation, la
+// balise reste réellement visible et est détectée comme résiduelle.
+test("DOC-3D : remplacement de {{date_convocation}} ignoré → balise détectée comme résiduelle", async () => {
+  baseSimulee().installer();
+  const { client } = clientDriveSimule({
+    modeleTexte: "{{intitule_formation}} {{date_convocation}}",
+    remplacementIgnorer: ["{{date_convocation}}"],
+  });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.ok(r.corps.marqueursNonResolus.includes("date_convocation"), "la balise ignorée reste et est signalée");
+});
+
+test("DOC-3D non-régression : le modèle d'Attestation actuel génère sans modification, aucun marqueur actuel ne reste", async () => {
+  baseSimulee().installer();
+  const modeleAttestation = "{{intitule_formation}} {{civilite}} {{prenom_stagiaire}} {{nom_stagiaire}} {{date_debut}} {{date_fin}} {{duree}} {{date_attestation}}";
+  const { client } = clientDriveSimule({ modeleTexte: modeleAttestation });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.deepEqual(r.corps.marqueursInconnus, []);
+});
+
+// DOC-3D : une canonique supportée mais absente est autorisée, remplacée par
+// vide, et ne reste pas sous forme {{variable}} dans le document final.
+test("DOC-3D : canonique absente → génération autorisée, balise remplacée par vide, aucun résidu", async () => {
+  baseSimulee().installer();
+  const { client } = clientDriveSimule({ modeleTexte: "{{stagiaire_email}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, [], "la balise absente ne reste pas dans le document final");
 });
 
 // DOC-3B : les enrichissements SQL (formation/version, comptage de

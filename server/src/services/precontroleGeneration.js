@@ -88,10 +88,9 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
   // contournement de la politique de sensibilité. En revanche, un alias
   // reste intégralement couvert par le mécanisme HISTORIQUE existant
   // (les 23 marqueurs, déjà remplacés aujourd'hui) : il ne doit PAS être
-  // soumis à CANONIQUE_NON_RESOLUBLE/CANONIQUE_GENERATION_NON_ACTIVEE —
-  // ces deux-là ne concernent QUE les balises écrites directement sous
-  // leur nom canonique (diagnostic.canoniques), pour lesquelles aucun
-  // mécanisme de remplacement n'existe en dehors de la couche canonique.
+  // soumis à CANONIQUE_NON_RESOLUBLE — celui-ci ne concerne QUE les
+  // balises écrites directement sous leur nom canonique
+  // (diagnostic.canoniques), résolues par la couche canonique DOC-3D.
   for (const { canonique } of diagnostic.alias) {
     const variable = variableCanonique(canonique);
     if (variable?.sensibilite === "restreinte" && !admin) erreurs.push(refuseRestreinte(canonique, "restreinte"));
@@ -123,10 +122,8 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
       continue;
     }
 
-    // Résoluble, mais le remplacement réel n'est pas encore branché
-    // (DOC-3D) — bloquant par construction, pour ne jamais laisser une
-    // balise canonique visible dans un document produit.
-    erreurs.push({ code: "CANONIQUE_GENERATION_NON_ACTIVEE", nom, message: `{{${nom}}} est calculable, mais son remplacement dans les documents n'est pas encore activé.` });
+    // Résoluble : autorisée, le moteur de rendu DOC-3D la remplace
+    // réellement (valeursDeRemplacement). Plus aucune erreur bloquante ici.
 
     // Règle 2 : « absent » reste évalué PAR CIBLE, et reste un
     // avertissement — jamais une cause de blocage à lui seul.
@@ -148,6 +145,9 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
     type_fichier: diagnostic.type_fichier,
     version_dictionnaire: diagnostic.version_dictionnaire,
     nombre_cibles: cibles.length,
+    // DOC-3D : liste des canoniques présents dans le modèle — c'est elle,
+    // et elle seule, que le moteur de rendu doit remplacer (jamais les 45).
+    canoniques: diagnostic.canoniques,
     erreurs, avertissements,
   };
 }

@@ -14,6 +14,7 @@ import {
   DICTIONNAIRE_VERSION, blocCanonique, blocsDuChampLocal, champLocal, marqueurHistorique,
   resoudreAlias, variableCanonique,
 } from "./catalogueVariables.js";
+import { MARQUEURS, RENDUS_HISTORIQUES } from "./marqueurs.js";
 
 export const TAILLE_MAX_MODELE = 2_000_000; // fix : borne l'analyse d'un texte externe
 const NOM_VALIDE = /^[a-z][a-z0-9_]*$/;
@@ -162,4 +163,16 @@ export function analyserModele(texte) {
     erreurs,
     avertissements,
   };
+}
+
+// DOC-3D : balises « censées être rendues » encore présentes APRÈS
+// remplacement : canoniques, alias, marqueurs historiques rendus par le moteur
+// (les 23 MARQUEURS + les rendus historiques de compatibilité). Réutilise
+// analyserModele() : aucun parser supplémentaire. Un historique NON rendu n'est
+// PAS remonté. Les accolades sans rapport (inconnues, syntaxe invalide) non plus.
+export function balisesResiduelles(texte) {
+  const r = analyserModele(texte);
+  const rendus = new Set([...MARQUEURS, ...Object.keys(RENDUS_HISTORIQUES)]);
+  const historiquesRendus = r.resume.historiques.filter((n) => rendus.has(n));
+  return [...new Set([...r.resume.canoniques, ...r.resume.alias.map((a) => a.alias), ...historiquesRendus])];
 }

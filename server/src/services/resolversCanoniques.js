@@ -71,7 +71,8 @@ const RESOLVEURS_CANONIQUES = {
   session_duree_heures: (ctx) => nombre(ctx.session?.duree_heures_reelle),
   // Valeur métier BRUTE (planifiee/en_cours/terminee/annulee) : le libellé
   // affiché reste dans valeursMarqueurs()/LIBELLE_STATUT pour l'historique.
-  session_statut: (ctx) => texte(ctx.session?.statut),
+  // v1.2 : renommée session_statut_code (l'ancien nom est un marqueur historique).
+  session_statut_code: (ctx) => texte(ctx.session?.statut),
   session_reference: (ctx) => texte(ctx.session?.reference),
   session_nombre_inscrits: (ctx) => nombre(ctx.session?.nombre_inscrits),
   session_nombre_termines: (ctx) => nombre(ctx.session?.nombre_termines),

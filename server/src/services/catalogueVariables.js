@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.1";
+export const DICTIONNAIRE_VERSION = "1.2";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -30,6 +30,7 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.1", changement: "EVA-03 renommée evaluation_type → evaluation_methode (méthode : QCM, exercice pratique, mise en situation, entretien…), pour lever l'ambiguïté avec le MOMENT de l'évaluation. Renommage non silencieux : voir variableCanonique(\"evaluation_methode\").renomme_depuis." },
   { version: "1.1", changement: "Ajout de EVA-11 {{evaluation_moment}} (positionnement | intermediaire | finale | autre) et EVA-12 {{evaluation_resultat_validation}} (valide | non_valide), pour distinguer explicitement moment, méthode, résultat de validation binaire et niveau pédagogique atteint (evaluation_niveau / phase_resultat_niveau, inchangées). Aucune de ces deux notions n'est aujourd'hui stockée par Vigie : aucun resolver n'est ajouté." },
   { version: "1.1", changement: "Ajout du marqueur legacy date_convocation : absent des 23 marqueurs actuels du moteur (marqueurs.js), mais utilisé dans un modèle Drive réel de convocation. Classé historique, cible document_date_convocation (DOC-06), distincte de document_date (DOC-01, date de génération technique)." },
+  { version: "1.2", changement: "Renommage non silencieux SES-09 : session_statut → session_statut_code (valeur métier brute planifiee | en_cours | terminee | annulee), pour lever la collision avec le marqueur historique session_statut (libellé humain). Le nom session_statut reste reconnu comme marqueur historique compatible, jamais un alias de session_statut_code." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -104,7 +105,7 @@ const LIGNES = [
   ["SES-06", "session_lieu", "Lieu principal de session", "session", "texte", "Session", "Session", "Lieu principal de la session."],
   ["SES-07", "session_adresse", "Adresse du lieu de session", "session", "texte", "Session", "Session", "Adresse du lieu de session, si différente de celle de l'organisme."],
   ["SES-08", "session_duree_heures", "Durée planifiée de la session", "session", "nombre", "Session", "Session", "Durée planifiée de la session ; habituellement égale à la durée de la formation.", { format: "duree_heures" }],
-  ["SES-09", "session_statut", "Statut de session", "session", "texte", "Session", "Session", "Statut de la session. La valeur métier est distincte de son libellé affiché.", { format: "enum", valeurs: ["planifiee", "en_cours", "terminee", "annulee"], libelles: { planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée" }, source_valeurs: "schéma Vigie (sessions.statut)" }],
+  ["SES-09", "session_statut_code", "Statut de session", "session", "texte", "Session", "Session", "Statut de la session, valeur métier brute. Renommé depuis session_statut (v1.2) : le nom session_statut reste un marqueur historique (libellé humain), jamais un alias de cette variable.", { format: "enum", valeurs: ["planifiee", "en_cours", "terminee", "annulee"], libelles: { planifiee: "Planifiée", en_cours: "En cours", terminee: "Terminée", annulee: "Annulée" }, source_valeurs: "schéma Vigie (sessions.statut)", renomme_depuis: "session_statut", depuis: "1.2" }],
   ["SES-10", "session_nombre_inscrits", "Nombre de bénéficiaires inscrits", "session", "nombre", "Inscriptions", "Session", "Nombre de bénéficiaires inscrits à la session.", { calcule: true }],
   ["SES-11", "session_nombre_termines", "Nombre ayant terminé", "session", "nombre", "Inscriptions", "Session", "Nombre de bénéficiaires ayant terminé la session.", { calcule: true }],
   ["SES-12", "session_reference", "Référence de session", "session", "texte", "Session", "Session", "Référence interne unique de la session (ex. « ADVF-2026-01 »).", { depuis: "1.1" }],
@@ -350,6 +351,7 @@ export const HISTORIQUES = figer({
   groupe: { raison: "Groupe du stagiaire pour un document individuel, sinon groupe visé par la génération.", cibles_possibles: ["stagiaire_groupe_nom", "groupe_nom"] },
   heures_suivies: { raison: "Calculé depuis la durée déclarée moins les absences, et non depuis les émargements.", cibles_possibles: ["presence_heures_realisees"] },
   taux_assiduite: { raison: "Calculé sur la durée déclarée de la session, et non sur les heures planifiées.", cibles_possibles: ["presence_taux"] },
+  session_statut: { raison: "Libellé humain du statut de session (ex. « Terminée »). La variable canonique correspondante est session_statut_code (valeur métier brute), dont le rendu n'est pas équivalent : ce n'est donc PAS un alias.", cibles_possibles: ["session_statut_code"] },
 });
 
 // ── Index et recherches ─────────────────────────────────────

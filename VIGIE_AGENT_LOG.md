@@ -3175,3 +3175,85 @@ Backlog P3 non bloquant : voir `PROJECT_HANDOFF.md` § 14 sexies.
   variables déjà résolubles), définir le mapping `required` par modèle (pour transformer
   `CANONIQUE_ABSENT` en erreur quand pertinent), et le rendu des 4 blocs déjà alimentables
   (`absences`, `adaptations`, `evaluations`, `intervenants`).
+
+---
+
+## 2026-10-11 — DOC-3D : activation du rendu des variables canoniques (non commité)
+
+### Objectif
+
+Brancher réellement `requetesDocs()`/`requetesSheets()` sur les variables canoniques
+résolubles, en conservant la compatibilité des 23 marqueurs historiques. Deux décisions PO :
+
+1. **Collision `session_statut`** : ni le canonique ni l'historique ne « gagne ». La variable
+   canonique SES-09 est **renommée** `session_statut_code` (valeur métier brute
+   `planifiee | en_cours | terminee | annulee`), **`DICTIONNAIRE_VERSION` passe à 1.2**,
+   traçé dans `EVOLUTIONS` + `renomme_depuis: "session_statut"`. Le nom `session_statut`
+   reste un **marqueur historique** (libellé humain, ex. « Terminée »), jamais un alias du
+   code — reconnu par `HISTORIQUES` avec `cibles_possibles: ["session_statut_code"]`.
+   `session_reference` reste inchangé (historique et canonique y ont la même valeur).
+   Le catalogue garde exactement **161 variables**.
+
+2. **Sheets : vérification post-rendu optimisée** — une seule copie relue par génération,
+   indépendamment du nombre de stagiaires.
+
+### Modifications
+
+- `catalogueVariables.js` : renommage SES-09, version 1.2, `HISTORIQUES.session_statut`.
+- `resolversCanoniques.js` : resolver `session_statut` → `session_statut_code` (`NOMS_RESOLUS`
+  inchangé à 45).
+- `marqueurs.js` : `valeursDeRemplacement(v, canoniques)` — map plat (23 historiques
+  inchangés + canoniques présents dans le modèle ; `resolu → String`, `absent → ""` au rendu,
+  `non_resoluble → aucune requête`) ; `requetesDocs`/`requetesSheets` itèrent ce map plat ;
+  `marqueursInconnus` reconnaît désormais le catalogue canonique.
+- `validationModeles.js` : `balisesResiduelles(texte)` réutilise `analyserModele` (aucun
+  nouveau parser) — seules les balises reconnues restées après rendu sont remontées.
+- `precontroleGeneration.js` : suppression de `CANONIQUE_GENERATION_NON_ACTIVEE` ; le résultat
+  expose `canoniques` (liste des canoniques du modèle à rendre). Restent bloquants :
+  `CANONIQUE_NON_RESOLUBLE`, restreinte non autorisée, inconnue, syntaxe invalide, bloc non
+  rendu, format non supporté, corbeille. `CANONIQUE_ABSENT` reste un avertissement.
+- `documents.js` : le rendu consomme `valeursDeRemplacement(valeurs, precontrole.canoniques)` ;
+  post-rendu Docs via `balisesResiduelles` ; post-rendu Sheet sur la **première copie** via
+  `texteModeleSheet` (lecteur borné existant).
+- `diagnosticModele.js` : `texteModeleSheet` exporté (réutilisé pour la relecture Sheet).
+
+### Tests
+
+- Serveur final : **687/687** (670 avant — +17 sur l'ensemble DOC-3D : 9 à l'implémentation,
+  7 aux non-régressions, 1 au correctif `date_convocation`), **336/336 client** (inchangé),
+  build Vite OK.
+- Nouveaux invariants : 161 variables après renommage ; `session_statut` historique → libellé
+  inchangé ; `session_statut_code` canonique → valeur brute ; aucun resolver hors catalogue ;
+  les 45 `NOMS_RESOLUS` ont un chemin de rendu Docs **et** Sheets ; aucune variable résolue
+  n'est `restreinte` ; `{{nom_stagiaire}}` et `{{stagiaire_nom}}` injectent la même valeur ;
+  `absent` → balise supprimée + avertissement conservé ; `non_resoluble` → zéro copie Drive.
+- Sheet multi-cibles (3 stagiaires) : 3 `batchUpdate` de rendu, **1 seule relecture
+  post-rendu**.
+
+### Points ouverts
+
+- Mapping `required` par modèle : absent+required deviendra bloquant avant rendu.
+- Rendu des 4 blocs répétables alimentables (`absences`, `adaptations`, `evaluations`,
+  `intervenants`) — toujours `BLOC_REPETABLE_NON_RENDU`.
+- Aucune migration des modèles Drive (Convocation, Attestation…) : à faire après test du
+  nouveau moteur sur une copie/un modèle de test.
+
+### Correctif — `date_convocation` réellement rendu + simulateur fidèle
+
+- Le test de non-régression Convocation masquait un **faux positif** : le faux client
+  Google (`generationRobuste.test.js`) relisait une copie **artificiellement vide**, au lieu
+  de recopier le contenu du modèle et d'appliquer réellement les `replaceAllText`. Une balise
+  non remplacée (`date_convocation`) « disparaissait » donc sans avoir été remplacée.
+- **Simulateur fidélisé** : copie identique au modèle → application réelle des
+  `replaceAllText`/`findReplace` → relecture du contenu résultant. Un marqueur volontairement
+  ignoré (`remplacementIgnorer`) reste réellement visible et est détecté par
+  `balisesResiduelles()`.
+- **Rendu historique de compatibilité** : `RENDUS_HISTORIQUES` dans `marqueurs.js`
+  (`date_convocation → document_date_convocation`). `date_convocation` reste classé
+  HISTORIQUE (jamais canonique, hors des 161, avertissement de migration conservé) ; sa valeur
+  est lue depuis `canoniques.document_date_convocation` à la couche de rendu. `balisesResiduelles`
+  inclut désormais ces rendus dans les balises « censées être rendues ».
+- `date_attestation` inchangé (resolver historique existant).
+- Décompte du correctif : **+1 test réellement nouveau** (« remplacement de `{{date_convocation}}`
+  ignoré → résiduelle ») ; le test « `{{date_convocation}}` / `{{document_date_convocation}}` même
+  valeur » **remplace** l'ancien test « date_convocation n'est pas rendu », devenu faux.

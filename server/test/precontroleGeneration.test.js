@@ -42,10 +42,19 @@ test("Convocation/Attestation historiques (alias + marqueurs) : autorisé, zéro
   assert.ok(r.avertissements.some((a) => a.code === "ALIAS"));
 });
 
-test("variable canonique écrite directement : reconnue mais non activée → bloque le lot entier", async () => {
+test("variable canonique résolue écrite directement : autorisée (DOC-3D), plus d'erreur temporaire", async () => {
   const r = await precontrolerGeneration(MODELE, CTX, [cible(1), cible(2)], { admin: true, clients: fauxClients({ document: docAvec("{{stagiaire_nom}}") }) });
-  assert.equal(r.autorise, false);
-  assert.deepEqual(r.erreurs, [{ code: "CANONIQUE_GENERATION_NON_ACTIVEE", nom: "stagiaire_nom", message: r.erreurs[0].message }]);
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.erreurs, []);
+  assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_GENERATION_NON_ACTIVEE"));
+  assert.deepEqual(r.canoniques, ["stagiaire_nom"], "le précontrôle expose les canoniques à rendre");
+});
+
+test("session_reference écrit directement : canonique résolu, aucune erreur, jamais de doublon", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{session_reference}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.erreurs, []);
+  assert.deepEqual(r.canoniques, ["session_reference"]);
 });
 
 test("variable canonique non_resoluble : erreur au niveau du MODÈLE, pas une boucle par cible", async () => {
@@ -54,7 +63,7 @@ test("variable canonique non_resoluble : erreur au niveau du MODÈLE, pas une bo
   assert.equal(r.autorise, false);
   const non_resolubles = r.erreurs.filter((e) => e.code === "CANONIQUE_NON_RESOLUBLE" && e.nom === "evaluation_id");
   assert.equal(non_resolubles.length, 1, "une seule erreur, jamais une par cible");
-  assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_GENERATION_NON_ACTIVEE"), "non_resoluble est distinct de generation_non_activee");
+  assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_GENERATION_NON_ACTIVEE"), "non_resoluble reste bloquant, distinct du cas résolu");
 });
 
 test("variable restreinte : contributeur refusé, avant toute résolution de cette variable", async () => {
@@ -82,9 +91,9 @@ test("alias vers une variable restreinte : la sécurité porte sur la cible, pas
   const texte = Object.keys(ALIAS).map((a) => `{{${a}}}`).join(" ");
   const r = await precontrolerGeneration(MODELE, CTX, [{ stagiaire: { id: 1, nom: "N", prenom: "P", statut: "inscrit" } }], { admin: false, clients: fauxClients({ document: docAvec(texte) }) });
   assert.ok(!r.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE"));
-  // Et un alias n'est jamais non plus soumis à CANONIQUE_GENERATION_NON_ACTIVEE :
-  // il passe par le mécanisme historique, déjà remplacé aujourd'hui.
-  assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_GENERATION_NON_ACTIVEE" || e.code === "CANONIQUE_NON_RESOLUBLE"));
+  // Un alias n'est jamais soumis à CANONIQUE_NON_RESOLUBLE : il passe par le
+  // mécanisme historique, déjà remplacé aujourd'hui.
+  assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_NON_RESOLUBLE"));
   assert.equal(r.autorise, true);
 });
 
@@ -132,8 +141,8 @@ test("canonique absent : avertissement PAR CIBLE, jamais bloquant à lui seul, e
   assert.equal(av.nombre_cibles_concernees, 60);
   assert.equal(av.cibles_concernees.length, MAX_CIBLES_LISTEES);
   assert.equal(av.cibles_tronquees, true);
-  // Bloquant pour une tout autre raison ici (CANONIQUE_GENERATION_NON_ACTIVEE),
-  // jamais à cause de « absent » en lui-même.
+  // DOC-3D : « absent » n'est JAMAIS bloquant à lui seul — génération autorisée.
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
   assert.ok(!r.erreurs.some((e) => e.code === "CANONIQUE_ABSENT"));
 });
 
@@ -155,12 +164,12 @@ test("confidentialité : aucun texte libre du modèle ou des cibles dans le rés
   assert.ok(serialise.includes("stagiaire_nom"));
 });
 
-test("Google Sheet : précontrôlé exactement comme un Doc, mêmes codes", async () => {
+test("Google Sheet : précontrôlé exactement comme un Doc, canoniques résolues autorisées", async () => {
   const onglets = [{ titre: "Feuille 1", grille: [["{{formation_intitule}}", "{{stagiaire_nom}}"]] }];
   const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: false, clients: fauxClients({ mime: SHEET, onglets }) });
   assert.equal(r.type_fichier, "feuille_calcul");
-  assert.equal(r.autorise, false);
-  assert.ok(r.erreurs.some((e) => e.code === "CANONIQUE_GENERATION_NON_ACTIVEE" && e.nom === "stagiaire_nom"));
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.canoniques.sort(), ["formation_intitule", "stagiaire_nom"]);
 });
 
 test("une seule lecture Drive, quel que soit le nombre de cibles", async () => {

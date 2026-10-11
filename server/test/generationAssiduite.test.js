@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { setPoolFactory } from "../src/db.js";
 import { genererDocuments } from "../src/services/documents.js";
 import { DRIVE_FILE } from "../src/services/google.js";
-import { MARQUEURS } from "../src/services/marqueurs.js";
+import { MARQUEURS, RENDUS_HISTORIQUES } from "../src/services/marqueurs.js";
 
 const DOC = "application/vnd.google-apps.document";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
@@ -99,11 +99,12 @@ test("les marqueurs d'assiduité arrivent remplis dans le payload de génératio
   assert.equal(r.documents, 2, "un document par stagiaire (hors abandons)");
 
   // Une requête de remplacement par marqueur, groupée par copie : chaque
-  // stagiaire reçoit les MARQUEURS.length marqueurs.
+  // stagiaire reçoit MARQUEURS.length + rendus historiques de compatibilité.
+  const PAR_COPIE = MARQUEURS.length + Object.keys(RENDUS_HISTORIQUES).length;
   const copies = [];
-  for (let i = 0; i < requetes.length; i += MARQUEURS.length) {
+  for (let i = 0; i < requetes.length; i += PAR_COPIE) {
     const valeurs = new Map();
-    for (const req of requetes.slice(i, i + MARQUEURS.length)) {
+    for (const req of requetes.slice(i, i + PAR_COPIE)) {
       valeurs.set(req.replaceAllText.containsText.text, req.replaceAllText.replaceText);
     }
     copies.push(valeurs);

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-//  Catalogue canonique des variables (dictionnaire Vigie v1.1) et
+//  Catalogue canonique des variables (dictionnaire Vigie v1.2) et
 //  validateur de modèles. Tests PURS : ni base, ni Google.
 // ─────────────────────────────────────────────────────────────
 import { test } from "node:test";
@@ -22,7 +22,7 @@ const avert = (r) => r.avertissements.map((e) => e.code);
 // ── Catalogue ────────────────────────────────────────────────
 
 test("catalogue : noms canoniques et identifiants uniques, syntaxe {{nom}}", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.1");
+  assert.equal(DICTIONNAIRE_VERSION, "1.2");
   assert.equal(VARIABLES.length, 161, "158 variables du PDF v1.0 + session_reference + evaluation_moment + evaluation_resultat_validation");
   const noms = VARIABLES.map((v) => v.nom);
   assert.equal(new Set(noms).size, noms.length, "noms canoniques uniques");
@@ -60,17 +60,36 @@ test("catalogue : session_reference ajoutée en 1.1, statuts alignés sur le sch
     const m = new RegExp(avant + "[\\s\\S]*?CHECK \\(statut IN \\(([^)]*)\\)\\)").exec(schema);
     return m[1].split(",").map((s) => s.trim().replace(/'/g, ""));
   };
-  assert.deepEqual([...variableCanonique("session_statut").valeurs], check("CREATE TABLE sessions"));
+  assert.deepEqual([...variableCanonique("session_statut_code").valeurs], check("CREATE TABLE sessions"));
   assert.deepEqual([...variableCanonique("stagiaire_statut_parcours").valeurs], check("CREATE TABLE inscriptions"));
-  assert.equal(variableCanonique("session_statut").libelles.terminee, "Terminée", "libellé de rendu séparé de la valeur métier");
-  assert.ok(!variableCanonique("session_statut").valeurs.includes("prevue"));
+  assert.equal(variableCanonique("session_statut_code").libelles.terminee, "Terminée", "libellé de rendu séparé de la valeur métier");
+  assert.ok(!variableCanonique("session_statut_code").valeurs.includes("prevue"));
+});
+
+test("catalogue : session_statut renommée session_statut_code en 1.2, non silencieux, historique compatible", () => {
+  assert.equal(variableCanonique("session_statut"), null, "l'ancien nom n'est plus une variable canonique");
+  const code = variableCanonique("session_statut_code");
+  assert.equal(code.id, "SES-09");
+  assert.equal(code.renomme_depuis, "session_statut", "renommage non silencieux, traçable");
+  assert.equal(code.depuis, "1.2");
+  assert.deepEqual([...code.valeurs], ["planifiee", "en_cours", "terminee", "annulee"]);
+  // Le marqueur historique session_statut reste reconnu, jamais un alias du code.
+  assert.equal(resoudreAlias("session_statut"), null, "pas un alias : rendu non équivalent");
+  const h = marqueurHistorique("session_statut");
+  assert.ok(h);
+  assert.deepEqual(h.cibles_possibles, ["session_statut_code"]);
+  // Le validateur classe correctement les deux écritures.
+  const r = analyserModele("{{session_statut}} {{session_statut_code}}");
+  assert.equal(r.valide, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.resume.historiques, ["session_statut"]);
+  assert.deepEqual(r.resume.canoniques, ["session_statut_code"]);
 });
 
 test("catalogue : figé, aucune modification à chaud", () => {
   assert.throws(() => { VARIABLES[0].nom = "autre"; }, TypeError);
   assert.throws(() => { VARIABLES.push({}); }, TypeError);
   assert.throws(() => { ALIAS.nom_stagiaire = "stagiaire_prenom"; }, TypeError);
-  assert.throws(() => { variableCanonique("session_statut").valeurs.push("x"); }, TypeError);
+  assert.throws(() => { variableCanonique("session_statut_code").valeurs.push("x"); }, TypeError);
   assert.throws(() => { BLOCS[0].champs.push({ variable: "x" }); }, TypeError);
   assert.throws(() => { HISTORIQUES.lieu.cibles_possibles.push("x"); }, TypeError);
 });
@@ -119,9 +138,9 @@ test("non-régression : les 23 marqueurs actuels sont tous reconnus, un modèle 
   assert.ok(!MARQUEURS.includes("date_convocation"), "date_convocation n'est pas un marqueur résolu par le moteur actuel");
   const r = analyserModele(MARQUEURS.map((m) => `{{${m}}}`).join(" "));
   assert.equal(r.valide, true, JSON.stringify(r.erreurs));
-  assert.deepEqual(r.resume.canoniques.sort(), ["session_reference", "session_statut"]);
+  assert.deepEqual(r.resume.canoniques.sort(), ["session_reference"]);
   assert.equal(r.resume.alias.length, 11);
-  assert.equal(r.resume.historiques.length, 10);
+  assert.equal(r.resume.historiques.length, 11);
 });
 
 test("validateur : modèle Drive réel de convocation (date_convocation), hors des 23 marqueurs du moteur, reconnu et valide", () => {
@@ -197,7 +216,7 @@ test("validateur : modèle de convocation canonique valide, sans avertissement",
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.resume.canoniques.length, 9);
-  assert.equal(r.version, "1.1");
+  assert.equal(r.version, "1.2");
 });
 
 test("validateur : variable inconnue rejetée explicitement", () => {
@@ -286,7 +305,7 @@ test("validateur : entrée non textuelle ou démesurée refusée, écho des bali
 
 test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
-  assert.equal(c.version, "1.1");
+  assert.equal(c.version, "1.2");
   assert.equal(c.variables.length, VARIABLES.length);
   assert.equal(c.blocs.length, 9);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });

@@ -380,3 +380,30 @@ test("fidélité : toutes les lignes générées portent la même signature styl
   }
 });
 
+// DOC-7B : le bloc suivi_pedagogique se rend dans une ligne de tableau via le
+// MÊME moteur générique, sans traitement spécifique au Livret. Une séance sans
+// suivi fournit quand même sa ligne (champs suivi vides).
+test("bloc suivi_pedagogique dans une ligne de tableau : rendu générique, séance sans suivi incluse", () => {
+  const d = doc([tableau([
+    { cellules: [{ texte: "Date" }, { texte: "Compétences" }, { texte: "Difficultés" }] },
+    { cellules: [
+      { texte: "{{#suivi_pedagogique}}{{seance_date}}" },
+      { texte: "{{seance_competences}}" },
+      { texte: "{{suivi_difficultes}}{{/suivi_pedagogique}}" },
+    ] },
+  ])]);
+  const lignes = [
+    { date_seance: "2026-09-10", competences: ["communication"], activites: "Jeu", difficultes: null },
+    { date_seance: "2026-09-11", competences: ["autonomie"], activites: "Bilan", difficultes: "Un peu rapide" },
+  ];
+  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: lignes });
+  // 2 éléments → 1 ligne insérée ; chaque séance devient une ligne (y compris sans suivi).
+  assert.equal(requetes.filter((r) => r.insertTableRow).length, 1);
+  const textes = requetes.filter((r) => r.insertText).map((r) => r.insertText.text);
+  assert.ok(textes.includes("10/09/2026"));
+  assert.ok(textes.includes("communication"));
+  assert.ok(textes.includes("11/09/2026"));
+  assert.ok(textes.includes("autonomie"));
+  assert.ok(textes.includes("Un peu rapide"));
+});
+

@@ -46,7 +46,7 @@ test("Google Doc canonique valide : état « valide », aucun avertissement", as
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.type_fichier, "document");
-  assert.equal(r.version_dictionnaire, "1.3");
+  assert.equal(r.version_dictionnaire, "1.4");
   assert.equal(r.nombre_occurrences_balises, 2);
   assert.equal(r.nombre_balises_uniques, 2);
   assert.deepEqual(r.canoniques.sort(), ["formation_intitule", "session_date_debut"]);

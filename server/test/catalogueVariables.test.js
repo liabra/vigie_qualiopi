@@ -22,8 +22,8 @@ const avert = (r) => r.avertissements.map((e) => e.code);
 // ── Catalogue ────────────────────────────────────────────────
 
 test("catalogue : noms canoniques et identifiants uniques, syntaxe {{nom}}", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.3");
-  assert.equal(VARIABLES.length, 162, "158 variables du PDF v1.0 + session_reference + evaluation_moment + evaluation_resultat_validation + document_duree_attestation");
+  assert.equal(DICTIONNAIRE_VERSION, "1.4");
+  assert.equal(VARIABLES.length, 164, "162 variables de la 1.3 + seance_competences + seance_activites");
   const noms = VARIABLES.map((v) => v.nom);
   assert.equal(new Set(noms).size, noms.length, "noms canoniques uniques");
   const ids = VARIABLES.map((v) => v.id);
@@ -103,8 +103,8 @@ test("catalogue : figé, aucune modification à chaud", () => {
   assert.throws(() => { HISTORIQUES.lieu.cibles_possibles.push("x"); }, TypeError);
 });
 
-test("blocs : 9 blocs, schéma de champs complet, champs locaux distincts des noms globaux", () => {
-  assert.deepEqual(BLOCS.map((b) => b.nom), ["phases", "objectifs_formation", "objectifs_phase", "seances", "evaluations", "absences", "adaptations", "immersions", "intervenants"]);
+test("blocs : 10 blocs, schéma de champs complet, champs locaux distincts des noms globaux", () => {
+  assert.deepEqual(BLOCS.map((b) => b.nom), ["phases", "objectifs_formation", "objectifs_phase", "seances", "evaluations", "absences", "adaptations", "immersions", "intervenants", "suivi_pedagogique"]);
   assert.ok(!blocCanonique("resultats"), "pas de bloc resultats : evaluations le couvre");
   for (const b of BLOCS) {
     assert.ok(!variableCanonique(b.nom) && !resoudreAlias(b.nom) && !Object.hasOwn(HISTORIQUES, b.nom), `nom de bloc libre : ${b.nom}`);
@@ -225,7 +225,7 @@ test("validateur : modèle de convocation canonique valide, sans avertissement",
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.resume.canoniques.length, 9);
-  assert.equal(r.version, "1.3");
+  assert.equal(r.version, "1.4");
 });
 
 test("validateur : variable inconnue rejetée explicitement", () => {
@@ -316,9 +316,9 @@ test("validateur : entrée non textuelle ou démesurée refusée, écho des bali
 
 test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
-  assert.equal(c.version, "1.3");
+  assert.equal(c.version, "1.4");
   assert.equal(c.variables.length, VARIABLES.length);
-  assert.equal(c.blocs.length, 9);
+  assert.equal(c.blocs.length, 10);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });
   assert.ok(!JSON.stringify(c).includes("\"obligatoire\""));
 });

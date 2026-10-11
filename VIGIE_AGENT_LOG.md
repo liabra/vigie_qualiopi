@@ -3477,3 +3477,75 @@ Une ligne modèle n'est dupliquée QUE si sa mise en forme est reproductible. Si
 
 - Backend **748/748** (724 avant → +24), `git diff --check` propre. Frontend non concerné.
 
+---
+
+## 2026-10-11 — DOC-7B : séances + suivi pédagogique individuel + bloc Livret
+
+### Schéma SQL final (migration 025)
+
+```
+seances
+  id, session_id NOT NULL FK sessions ON DELETE CASCADE,
+  groupe_id nullable FK groupes ON DELETE CASCADE,
+  phase_numero nullable CHECK (> 0, SANS borne à 6),
+  date_seance date NOT NULL,
+  heure_debut/heure_fin time nullable,
+  theme (≤500), competences text[] DEFAULT '{}', activites (≤2000), lieu (≤200),
+  created_at/updated_at + trigger set_updated_at,
+  CHECK (heure_debut IS NULL OR heure_fin IS NULL OR heure_fin > heure_debut)
+
+suivi_seance
+  id, seance_id NOT NULL FK seances ON DELETE CASCADE,
+  inscription_id NOT NULL FK inscriptions ON DELETE CASCADE,
+  accompagnement/difficultes/impressions/observations text nullable (≤2000),
+  cree_par/mis_a_jour_par FK utilisateurs ON DELETE SET NULL,
+  created_at/updated_at + trigger, UNIQUE (seance_id, inscription_id)
+```
+
+Index : `seances (session_id, date_seance, heure_debut, id)` et `(groupe_id, date_seance, heure_debut, id)` ;
+`suivi_seance (inscription_id)` (l'unicité couvre la lecture par séance).
+
+### Règles de suppression
+
+- `session → seances` : CASCADE (supprimer une session supprime ses séances).
+- `groupe → seances` : CASCADE (évite une séance orpheline qui deviendrait « commune »).
+- `seance → suivi_seance` et `inscription → suivi_seance` : CASCADE.
+- Cohérence `groupe ↔ session` validée CÔTÉ API (même convention que les intervenants), pas de
+  contrainte composite théorique.
+
+### Routes/API créées (`server/src/routes/seances.js`)
+
+- `GET /sessions/:id/seances` (lecture, filtre `?groupe_id=`, ordre date/heure/id).
+- `POST /sessions/:id/seances` (rédacteur) · `PATCH /seances/:id` · `DELETE /seances/:id`.
+- `GET /seances/:id/suivi` (inscrits + suivi, UNE requête, aucun N+1).
+- `PUT /seances/:id/suivi/:inscriptionId` (upsert individuel, appartenance vérifiée).
+- `GET /inscriptions/:id/suivi-pedagogique` (vue Livret : séances applicables + suivi).
+
+### Catalogue documentaire
+
+- Version **1.4**. Nouvelles variables `SEA-11 seance_competences`, `SEA-12 seance_activites`.
+- Bloc `seances` activé (source `seances`) ; `seance_numero`/`seance_duree_heures` restent non résolubles.
+- Nouveau bloc `BLK-10 suivi_pedagogique` : refs `seance_date`, `seance_competences`, `seance_activites`
+  + locaux `suivi_accompagnement`, `suivi_difficultes`, `suivi_impressions`, `suivi_observations`
+  (sensibilité **personnelle**). Une séance sans suivi fournit quand même sa ligne (champs suivi absents).
+- `BLOC_DU_CHAMP` devient une LISTE de blocs (un REF partagé par plusieurs blocs, ex. `seance_date`).
+
+### Assemblage du Livret (requêtes)
+
+- `suivi_pedagogique` : **1 requête bornée** (`inscriptions ⋈ seances LEFT JOIN suivi_seance`,
+  `i.id = ANY($1)`) pour TOUTES les cibles — aucune par stagiaire.
+- `seances` : **1 requête** par session (mêmes lignes pour toutes les copies).
+
+### Tests
+
+- `seances.test.js` (nouveau, base réelle) : migration + contraintes (heure, phase > 0, unicité, cascade),
+  CRUD/ordre/heure/groupe-session, séance sans/avec suivi, lecture sans N+1, permissions, sensibilité,
+  blocs `seances`/`suivi_pedagogique`.
+- `blocsTableaux.test.js` : rendu générique de `suivi_pedagogique` dans une ligne de tableau.
+- Compteurs catalogue/migrations mis à jour (164 variables, 10 blocs, 25 migrations).
+
+### Validation
+
+- Backend **759/759** (748 avant → +11), `git diff --check` propre. Frontend non concerné.
+
+

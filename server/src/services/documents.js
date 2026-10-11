@@ -274,10 +274,10 @@ async function cibles(modele, { session, groupe }) {
   return rows.map((stagiaire) => ({ stagiaire }));
 }
 
-// DOC-6A/6B — Lignes des blocs répétables, récupérées en UNE requête par bloc
+// DOC-6A/6B/7B — Lignes des blocs répétables, récupérées en UNE requête par bloc
 // pour TOUTES les cibles (jamais une par stagiaire : pas de N+1). Seuls les
 // blocs réellement demandés par le modèle sont chargés.
-async function chargerLignesBlocs(aProduire, blocs = []) {
+async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
   const ids = aProduire.map((c) => c.stagiaire?.inscription_id).filter((x) => x != null);
   const resultat = {};
   if (ids.length && blocs.includes("absences")) {
@@ -307,6 +307,44 @@ async function chargerLignesBlocs(aProduire, blocs = []) {
       evaluations.get(r.inscription_id).push(r);
     }
     resultat.evaluations = evaluations;
+  }
+  // DOC-7B : séances de la SESSION (mêmes lignes pour toutes les cibles),
+  // une seule requête, ordre date_seance, heure_debut, id.
+  if (blocs.includes("seances") && sessionId) {
+    const { rows } = await query(
+      `SELECT s.id AS seance_id, s.phase_numero, s.date_seance, s.heure_debut, s.heure_fin,
+              s.theme, s.competences, s.activites, s.lieu, g.nom AS groupe_nom
+       FROM seances s LEFT JOIN groupes g ON g.id = s.groupe_id
+       WHERE s.session_id = $1
+       ORDER BY s.date_seance, s.heure_debut, s.id`,
+      [sessionId]
+    );
+    resultat.seances = rows;
+  }
+  // DOC-7B : suivi_pedagogique = séances applicables au stagiaire
+  // (groupe NULL ou son groupe) LEFT JOIN suivi_seance. UNE requête pour
+  // TOUTES les cibles, jamais une par stagiaire.
+  if (ids.length && blocs.includes("suivi_pedagogique")) {
+    const lignes = new Map();
+    const { rows } = await query(
+      `SELECT i.id AS inscription_id, s.date_seance, s.heure_debut, s.heure_fin,
+              s.theme, s.competences, s.activites, s.lieu, s.phase_numero,
+              g.nom AS groupe_nom,
+              su.accompagnement, su.difficultes, su.impressions, su.observations
+       FROM inscriptions i
+       JOIN seances s ON s.session_id = i.session_id
+                     AND (s.groupe_id IS NULL OR s.groupe_id = i.groupe_id)
+       LEFT JOIN groupes g ON g.id = s.groupe_id
+       LEFT JOIN suivi_seance su ON su.seance_id = s.id AND su.inscription_id = i.id
+       WHERE i.id = ANY($1::int[])
+       ORDER BY i.id, s.date_seance, s.heure_debut, s.id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!lignes.has(r.inscription_id)) lignes.set(r.inscription_id, []);
+      lignes.get(r.inscription_id).push(r);
+    }
+    resultat.suivi_pedagogique = lignes;
   }
   return resultat;
 }
@@ -497,10 +535,10 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     const dossierId = await dossierCible(d.drive, ctx, jeton);
     const produits = [];
     let remplaces = 0;
-    // DOC-6A/6B : lignes des blocs pour toutes les cibles, une requête par bloc
+    // DOC-6A/6B/7B : lignes des blocs pour toutes les cibles, une requête par bloc
     // (seulement pour les blocs effectivement demandés par le modèle).
     const blocsDemandes = precontrole.blocs || [];
-    const lignesBlocs = blocsDemandes.length ? await chargerLignesBlocs(aProduire, blocsDemandes) : null;
+    const lignesBlocs = blocsDemandes.length ? await chargerLignesBlocs(aProduire, blocsDemandes, ctx.session.id) : null;
     // DOC-6B : intervenants = même sémantique que le marqueur historique
     // `formateur` : groupe prioritaire, à défaut session. Ordre déjà trié.
     const lignesIntervenants = blocsDemandes.includes("intervenants")
@@ -536,13 +574,16 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       const nom = nomSain(brut);
 
       const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-      // DOC-6A/6B : lignes de blocs de CE stagiaire (absences, évaluations) et
-      // intervenants (niveau génération, identiques pour toutes les copies).
+      // DOC-6A/6B/7B : lignes de blocs de CE stagiaire (absences, évaluations,
+      // suivi_pedagogique), et blocs de génération identiques pour toutes les
+      // copies (intervenants, seances).
       const blocsStagiaire = lignesBlocs
         ? {
             absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences?.get(stagiaire.inscription_id) : null) || [],
             evaluations: (stagiaire?.inscription_id != null ? lignesBlocs.evaluations?.get(stagiaire.inscription_id) : null) || [],
             intervenants: lignesIntervenants || [],
+            seances: lignesBlocs.seances || [],
+            suivi_pedagogique: (stagiaire?.inscription_id != null ? lignesBlocs.suivi_pedagogique?.get(stagiaire.inscription_id) : null) || [],
           }
         : null;
       const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs: remplacements, cacheMarqueurs, verifierCopieSheet: premiereCopie, blocs: blocsStagiaire }, jeton);

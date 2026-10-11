@@ -145,10 +145,28 @@ test("champ de bloc non résoluble → précontrôle bloqué (absence_action)", 
   assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "absences" && e.champ === "absence_action"));
 });
 
-test("bloc non supporté (seances) → BLOC_NON_SUPPORTE", async () => {
-  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#seances}}{{seance_date}}{{/seances}}") }) });
+test("bloc non supporté (phases) → BLOC_NON_SUPPORTE", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#phases}}{{phase_numero}}{{/phases}}") }) });
   assert.equal(r.autorise, false);
-  assert.ok(r.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE" && e.nom === "seances"));
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE" && e.nom === "phases"));
+});
+
+test("bloc seances supporté (champs résolubles) : autorisé", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#seances}}{{seance_date}} — {{seance_competences}}{{/seances}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.blocs, ["seances"]);
+});
+
+test("champ de bloc seances non résoluble (seance_numero) → BLOC_CHAMP_NON_RESOLUBLE", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#seances}}{{seance_numero}}{{/seances}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "seances" && e.champ === "seance_numero"));
+});
+
+test("bloc suivi_pedagogique supporté : autorisé, champs individuels personnels", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#suivi_pedagogique}}{{seance_date}} {{suivi_difficultes}}{{/suivi_pedagogique}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.blocs, ["suivi_pedagogique"]);
 });
 
 test("bloc absences dans une Sheet → BLOC_STRUCTURE_NON_SUPPORTEE", async () => {

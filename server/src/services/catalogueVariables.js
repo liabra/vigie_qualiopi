@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.3";
+export const DICTIONNAIRE_VERSION = "1.4";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -32,6 +32,8 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.1", changement: "Ajout du marqueur legacy date_convocation : absent des 23 marqueurs actuels du moteur (marqueurs.js), mais utilisé dans un modèle Drive réel de convocation. Classé historique, cible document_date_convocation (DOC-06), distincte de document_date (DOC-01, date de génération technique)." },
   { version: "1.2", changement: "Renommage non silencieux SES-09 : session_statut → session_statut_code (valeur métier brute planifiee | en_cours | terminee | annulee), pour lever la collision avec le marqueur historique session_statut (libellé humain). Le nom session_statut reste reconnu comme marqueur historique compatible, jamais un alias de session_statut_code." },
   { version: "1.3", changement: "Ajout de DOC-10 {{document_duree_attestation}} : durée totale affichée sur l'attestation (durée de session, à défaut durée de formation, au format historique de duree). Le marqueur historique duree relit désormais cette valeur." },
+  { version: "1.4", changement: "Ajout de SEA-11 {{seance_competences}} et SEA-12 {{seance_activites}} : compétences travaillées et activités/exercices d'une séance, stockées dans la table seances (DOC-7B)." },
+  { version: "1.4", changement: "Ajout du bloc {{#suivi_pedagogique}} : une ligne par séance applicable au stagiaire, combinant les champs séance (seance_date, seance_competences, seance_activites) et le suivi individuel (suivi_accompagnement, suivi_difficultes, suivi_impressions, suivi_observations)." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -172,6 +174,8 @@ const LIGNES = [
   ["SEA-08", "seance_lieu", "Lieu / salle", "seance", "texte", "Planning", "Séance", "Lieu ou salle de la séance."],
   ["SEA-09", "seance_phase_numero", "Phase associée", "seance", "nombre", "Planning", "Séance", "Numéro de la phase à laquelle la séance est rattachée."],
   ["SEA-10", "seance_groupe_nom", "Groupe concerné", "seance", "texte", "Planning", "Séance", "Nom du groupe concerné par la séance."],
+  ["SEA-11", "seance_competences", "Compétences travaillées", "seance", "liste", "Séquence / planning", "Séance", "Compétences travaillées pendant la séance.", { depuis: "1.4" }],
+  ["SEA-12", "seance_activites", "Activités et exercices", "seance", "texte", "Séquence / planning", "Séance", "Exercices, ateliers, mises en situation menés pendant la séance.", { format: "texte_long", depuis: "1.4" }],
   // ── Suivi ─────────────────────────────────────────────────
   ["SUI-01", "presence_heures_prevues", "Heures prévues", "suivi", "nombre", "Planning", "Bénéficiaire/session", "Heures prévues pour le bénéficiaire.", { format: "duree_heures", calcule: true }],
   ["SUI-02", "presence_heures_realisees", "Heures réalisées", "suivi", "nombre", "Émargements - absences", "Bénéficiaire/session", "Heures réellement suivies (émargements moins absences).", { format: "duree_heures", calcule: true }],
@@ -284,7 +288,7 @@ const DEF_BLOCS = [
       local("critere_reussite", "texte", "Critère de réussite de l'objectif.")] },
   { id: "BLK-04", nom: "seances", libelle: "Séances Insertion Pro", source: "groupe/session -> séances", documents: "Planning, feuilles d'émargement",
     champs: [...["seance_numero", "seance_date", "seance_heure_debut", "seance_heure_fin", "seance_duree_heures", "seance_theme", "seance_lieu",
-      "seance_phase_numero", "seance_groupe_nom"].map(ref),
+      "seance_phase_numero", "seance_groupe_nom", "seance_competences", "seance_activites"].map(ref),
       local("seance_intervenants", "texte", "Nom(s) du ou des intervenants de la séance.")] },
   { id: "BLK-05", nom: "evaluations", libelle: "Évaluations et résultats", source: "stagiaire/phase -> évaluations", documents: "Livret, bilan intermédiaire, bilan final",
     champs: ["evaluation_intitule", "evaluation_moment", "evaluation_methode", "evaluation_date", "evaluation_score_obtenu", "evaluation_score_max", "evaluation_pourcentage",
@@ -311,6 +315,12 @@ const DEF_BLOCS = [
       "intervenant_email", "intervenant_telephone"].map(ref),
       local("intervenant_phase_numero", "nombre", "Phase où intervient l'intervenant."),
       local("intervenant_groupe_nom", "texte", "Groupe auprès duquel intervient l'intervenant.")] },
+  { id: "BLK-10", nom: "suivi_pedagogique", libelle: "Suivi pédagogique (Livret)", source: "stagiaire -> séances + suivi_seance", documents: "Livret de suivi pédagogique, bilan",
+    champs: [...["seance_date", "seance_competences", "seance_activites"].map(ref),
+      local("suivi_accompagnement", "texte", "Accompagnement mis en place pendant la séance.", { sensibilite: "personnelle" }),
+      local("suivi_difficultes", "texte", "Difficultés rencontrées par le stagiaire.", { sensibilite: "personnelle" }),
+      local("suivi_impressions", "texte", "Impressions du stagiaire sur la séance.", { sensibilite: "personnelle" }),
+      local("suivi_observations", "texte", "Observations du formateur sur la séance.", { sensibilite: "personnelle" })] },
 ];
 
 export const BLOCS = Object.freeze(DEF_BLOCS.map((b) => figer({
@@ -363,9 +373,14 @@ const aCle = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 export const variableCanonique = (nom) => PAR_NOM.get(nom) ?? null;
 export const blocCanonique = (nom) => BLOC_PAR_NOM.get(nom) ?? null;
-// Bloc auquel appartient un champ (local OU ref) : map inverse des schémas.
+// Bloc(s) auquel appartient un champ (local OU ref) : map inverse des schémas.
+// Un REF peut être partagé par plusieurs blocs (ex. seance_date dans seances ET
+// suivi_pedagogique) : la valeur est donc une LISTE de noms de blocs.
 export const BLOC_DU_CHAMP = Object.freeze(BLOCS.reduce((m, b) => {
-  for (const c of b.champs) m[c.variable || c.nom] = b.nom;
+  for (const c of b.champs) {
+    const cle = c.variable || c.nom;
+    (m[cle] ||= []).push(b.nom);
+  }
   return m;
 }, {}));
 export const resoudreAlias = (nom) => (aCle(ALIAS, nom) ? ALIAS[nom] : null);

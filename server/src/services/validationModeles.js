@@ -109,12 +109,14 @@ export function analyserModele(texte) {
     // ── Variables simples ──
     const canonique = variableCanonique(nom);
     if (canonique) {
-      // DOC-6B : une variable canonique qui est aussi un CHAMP de bloc (ref)
-      // est un champ_bloc lorsqu'elle est écrite À L'INTÉRIEUR de son bloc.
-      const blocDuChamp = BLOC_DU_CHAMP[nom];
-      const englobant = blocDuChamp ? [...pile].reverse().find((p) => p.nom === blocDuChamp) : null;
+      // DOC-6B/7B : une variable canonique qui est aussi un CHAMP de bloc (ref)
+      // est un champ_bloc lorsqu'elle est écrite À L'INTÉRIEUR de l'un de ses
+      // blocs. Un REF peut appartenir à plusieurs blocs (ex. seance_date) :
+      // on retient le bloc englobant RÉEL, pas un nom unique.
+      const blocsDuChamp = BLOC_DU_CHAMP[nom];
+      const englobant = blocsDuChamp ? [...pile].reverse().find((p) => blocsDuChamp.includes(p.nom)) : null;
       b.statut = englobant ? "champ_bloc" : "canonique";
-      if (englobant) b.bloc = blocDuChamp;
+      if (englobant) b.bloc = englobant.nom;
       signalerSensible(nom, canonique.sensibilite, b);
       continue;
     }

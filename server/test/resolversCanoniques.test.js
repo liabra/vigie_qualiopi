@@ -43,10 +43,10 @@ const CTX = {
 const canoniques = resoudreCanoniques(CTX);
 const vide = resoudreCanoniques({});
 
-test("invariant : exactement 162 clés, pilotées par le catalogue, aucune en trop", () => {
-  assert.equal(VARIABLES.length, 162, "source de vérité du catalogue");
-  assert.equal(Object.keys(canoniques).length, 162);
-  assert.equal(Object.keys(vide).length, 162, "même nombre de clés quel que soit ctx");
+test("invariant : exactement 164 clés, pilotées par le catalogue, aucune en trop", () => {
+  assert.equal(VARIABLES.length, 164, "source de vérité du catalogue");
+  assert.equal(Object.keys(canoniques).length, 164);
+  assert.equal(Object.keys(vide).length, 164, "même nombre de clés quel que soit ctx");
   for (const nom of Object.keys(canoniques)) assert.ok(variableCanonique(nom), `${nom} doit exister dans VARIABLES`);
   assert.deepEqual(Object.keys(canoniques).sort(), VARIABLES.map((v) => v.nom).sort());
 });

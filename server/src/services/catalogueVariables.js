@@ -363,6 +363,11 @@ const aCle = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 export const variableCanonique = (nom) => PAR_NOM.get(nom) ?? null;
 export const blocCanonique = (nom) => BLOC_PAR_NOM.get(nom) ?? null;
+// Bloc auquel appartient un champ (local OU ref) : map inverse des schémas.
+export const BLOC_DU_CHAMP = Object.freeze(BLOCS.reduce((m, b) => {
+  for (const c of b.champs) m[c.variable || c.nom] = b.nom;
+  return m;
+}, {}));
 export const resoudreAlias = (nom) => (aCle(ALIAS, nom) ? ALIAS[nom] : null);
 export const marqueurHistorique = (nom) => (aCle(HISTORIQUES, nom) ? HISTORIQUES[nom] : null);
 // Champ local d'un bloc (null si le nom n'est pas un champ local de ce bloc).

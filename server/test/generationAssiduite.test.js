@@ -55,7 +55,7 @@ function baseSimulee() {
     if (sql.startsWith("INSERT INTO preuve_fichiers")) return { rows: [] };
     if (sql.startsWith("INSERT INTO documents_generes")) return { rows: [] };
     // Q4-1 : intervenants rattachés — aucun (cas historique, rendu inchangé).
-    if (sql.startsWith("SELECT i.id, i.nom, i.prenom, i.fonction FROM intervenants_")) return { rows: [] };
+    if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: [] };
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = { query: executer, connect: async () => ({ query: executer, release: () => {} }) };

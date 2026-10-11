@@ -111,6 +111,34 @@ test("bloc absences supporté (Doc, champs résolubles) : autorisé", async () =
   assert.deepEqual(r.blocs, ["absences"]);
 });
 
+// DOC-6B : blocs evaluations et intervenants, mêmes règles génériques que
+// absences (aucune exception spécifique).
+test("bloc evaluations supporté (champs résolubles) : autorisé", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#evaluations}}{{evaluation_intitule}} — {{evaluation_score_obtenu}}/{{evaluation_score_max}} ({{evaluation_pourcentage}} %){{/evaluations}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.erreurs, []);
+  assert.deepEqual(r.blocs, ["evaluations"]);
+});
+
+test("champ de bloc evaluations non résoluble → précontrôle bloqué (evaluation_moment)", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#evaluations}}{{evaluation_moment}}{{/evaluations}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "evaluations" && e.champ === "evaluation_moment"));
+});
+
+test("bloc intervenants supporté (champs résolubles) : autorisé", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#intervenants}}{{intervenant_nom_complet}} ({{intervenant_email}}){{/intervenants}}") }) });
+  assert.equal(r.autorise, true, JSON.stringify(r.erreurs));
+  assert.deepEqual(r.erreurs, []);
+  assert.deepEqual(r.blocs, ["intervenants"]);
+});
+
+test("champ de bloc intervenants non résoluble → précontrôle bloqué (intervenant_telephone)", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#intervenants}}{{intervenant_telephone}}{{/intervenants}}") }) });
+  assert.equal(r.autorise, false);
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "intervenants" && e.champ === "intervenant_telephone"));
+});
+
 test("champ de bloc non résoluble → précontrôle bloqué (absence_action)", async () => {
   const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#absences}}{{absence_action}}{{/absences}}") }) });
   assert.equal(r.autorise, false);

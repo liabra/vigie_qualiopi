@@ -95,7 +95,8 @@ test("bloc répétable et champ local valides : comptés une fois dans « blocs 
   const r = await analyserModeleDrive(MODELE, fauxClients({ document: docAvec(corps) }));
   assert.equal(r.etat, "valide");
   assert.deepEqual(r.blocs, ["phases", "objectifs_phase"], "un bloc répété n'apparaît qu'une fois");
-  assert.deepEqual(r.champs_bloc, ["objectif_code", "critere_reussite"]);
+  // DOC-6B : phase_numero (REF) placé dans son bloc compte aussi comme champ de bloc.
+  assert.deepEqual(r.champs_bloc, ["phase_numero", "objectif_code", "critere_reussite"]);
   // phase_numero × 2, objectif_code × 1, critere_reussite × 1,
   // {{#phases}}×2 {{/phases}}×2 {{#objectifs_phase}}×1 {{/objectifs_phase}}×1 = 10
   assert.equal(r.nombre_occurrences_balises, 10);

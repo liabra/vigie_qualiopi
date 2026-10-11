@@ -277,7 +277,9 @@ test("validateur : blocs répétables, champs canoniques et locaux, imbrication"
     + "{{#objectifs_phase}}- {{objectif_code}} {{objectif_libelle}} / {{critere_reussite}}{{/objectifs_phase}}{{/phases}}");
   assert.equal(r.valide, true, JSON.stringify(r.erreurs));
   assert.deepEqual(r.resume.blocs, ["phases", "objectifs_phase"]);
-  assert.deepEqual(r.resume.champs_bloc, ["objectif_code", "objectif_libelle", "critere_reussite"]);
+  // DOC-6B : les REF (variables canoniques de bloc) placés dans leur bloc
+  // deviennent des champs de bloc, comme les champs locaux.
+  assert.deepEqual(r.resume.champs_bloc, ["phase_numero", "phase_intitule", "phase_duree_heures", "objectif_code", "objectif_libelle", "critere_reussite"]);
   assert.equal(r.balises.find((b) => b.nom === "critere_reussite").bloc, "objectifs_phase");
   // Variable canonique de phase hors bloc : valide (séquence générée par phase).
   assert.equal(analyserModele("Phase {{phase_numero}}").valide, true);

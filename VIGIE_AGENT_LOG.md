@@ -3316,7 +3316,7 @@ session, à défaut durée de formation, au format `N h`).
 
 ---
 
-## 2026-10-11 — DOC-6A : moteur générique des blocs répétables (non commité)
+## 2026-10-11 — DOC-6A : moteur générique des blocs répétables (commit `32813d2`)
 
 ### Inventaire des 9 blocs
 
@@ -3351,3 +3351,66 @@ session, à défaut durée de formation, au format `N h`).
 ### Validation
 
 - Backend **713/713** (697 avant → +16), `git diff --check` propre. Frontend/build non concernés.
+
+---
+
+## 2026-10-11 — DOC-6B : activer les blocs evaluations et intervenants
+
+### Matrice des champs — evaluations (source `resultats_qcm`)
+
+| Champ | Résoluble | Colonne / règle |
+|---|---|---|
+| `evaluation_intitule` | ✅ | `intitule` |
+| `evaluation_date` | ✅ | `date_passage` |
+| `evaluation_score_obtenu` | ✅ | `score` |
+| `evaluation_score_max` | ✅ | `score_max` |
+| `evaluation_pourcentage` | ✅ | `score / score_max × 100` (1 décimale, si `score_max > 0`) |
+| `evaluation_moment` | ❌ | aucune colonne (`resultats_qcm.type` a une sémantique différente) |
+| `evaluation_methode` | ❌ | aucune colonne |
+| `evaluation_resultat_validation` | ❌ | aucune colonne |
+| `evaluation_niveau` | ❌ | aucune colonne |
+| `evaluation_commentaire` | ❌ | aucune colonne (commentaire libre) |
+| `evaluation_objectif_associe` | ❌ | aucune colonne |
+
+Ordre : `inscription_id, date_passage, id`.
+
+### Matrice des champs — intervenants (source `intervenants`)
+
+| Champ | Résoluble | Colonne / règle |
+|---|---|---|
+| `intervenant_civilite` | ✅ | `civilite` |
+| `intervenant_nom` | ✅ | `nom` |
+| `intervenant_prenom` | ✅ | `prenom` |
+| `intervenant_nom_complet` | ✅ | `prenom + nom` (trim) |
+| `intervenant_fonction` | ✅ | `fonction` |
+| `intervenant_email` | ✅ | `email` |
+| `intervenant_telephone` | ❌ | aucune colonne |
+| `intervenant_phase_numero` | ❌ | aucun lien intervenant→phase |
+| `intervenant_groupe_nom` | ❌ | aucun rattachement par intervenant |
+
+Sélection/ordre : réutilise le marqueur historique `formateur` — groupe prioritaire, sinon session ;
+ordre `nom, prenom, id`.
+
+### Implémentation
+
+- `catalogueVariables.js` : `BLOC_DU_CHAMP` (map inverse champ→bloc, locaux ET refs).
+- `validationModeles.js` : une variable canonique qui est aussi un champ de bloc (REF) devient
+  `champ_bloc` quand elle est écrite À L'INTÉRIEUR de son bloc (sinon `canonique`).
+- `resolversBlocs.js` : résolveurs `evaluations` et `intervenants` ; helpers `nombre`, `texte`,
+  `date`, `duree`, `booleen`.
+- `documents.js` : `chargerLignesBlocs(aProduire, blocs)` charge `absences` ET `evaluations`
+  (UNE requête bornée chacune, seulement si demandée) ; `formateurs` sélectionne `civilite, email`
+  en plus ; intervenants réutilise `formateursGroupe` sinon `formateursSession`.
+
+### Requêtes ajoutées
+
+- `evaluations` : **1** requête bornée (`resultats_qcm ... ANY($1::int[])`) pour TOUTES les cibles,
+  seulement si le bloc est demandé. Aucune par stagiaire (pas de N+1).
+- `intervenants` : **0** requête nouvelle (réutilise les 2 requêtes `formateurs` du contexte).
+
+### Validation
+
+- Tests ajoutés : précontrôle (evaluations/intervenants autorisés + champs non résolubles refusés),
+  `renduBlocs` (pourcentage arrondi, ordre, nom complet, champ non résoluble), `generationRobuste`
+  (bout en bout evaluations + intervenants).
+- Backend **724/724** (713 avant → +11), frontend **336/336** non concerné, `git diff --check` propre.

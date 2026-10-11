@@ -268,12 +268,14 @@ async function cibles(modele, { session, groupe }) {
   return rows.map((stagiaire) => ({ stagiaire }));
 }
 
-// DOC-6A — Lignes des blocs répétables, récupérées en UNE requête par bloc
-// pour TOUTES les cibles (jamais une par stagiaire : pas de N+1).
-async function chargerLignesBlocs(aProduire) {
+// DOC-6A/6B — Lignes des blocs répétables, récupérées en UNE requête par bloc
+// pour TOUTES les cibles (jamais une par stagiaire : pas de N+1). Seuls les
+// blocs réellement demandés par le modèle sont chargés.
+async function chargerLignesBlocs(aProduire, blocs = []) {
   const ids = aProduire.map((c) => c.stagiaire?.inscription_id).filter((x) => x != null);
-  const absences = new Map();
-  if (ids.length) {
+  const resultat = {};
+  if (ids.length && blocs.includes("absences")) {
+    const absences = new Map();
     const { rows } = await query(
       `SELECT inscription_id, date_absence, duree_heures, justifiee, motif
        FROM absences WHERE inscription_id = ANY($1::int[])
@@ -284,8 +286,23 @@ async function chargerLignesBlocs(aProduire) {
       if (!absences.has(r.inscription_id)) absences.set(r.inscription_id, []);
       absences.get(r.inscription_id).push(r);
     }
+    resultat.absences = absences;
   }
-  return { absences };
+  if (ids.length && blocs.includes("evaluations")) {
+    const evaluations = new Map();
+    const { rows } = await query(
+      `SELECT inscription_id, intitule, date_passage, score, score_max
+       FROM resultats_qcm WHERE inscription_id = ANY($1::int[])
+       ORDER BY inscription_id, date_passage, id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!evaluations.has(r.inscription_id)) evaluations.set(r.inscription_id, []);
+      evaluations.get(r.inscription_id).push(r);
+    }
+    resultat.evaluations = evaluations;
+  }
+  return resultat;
 }
 
 export async function contexteGeneration(sessionId, groupeId) {
@@ -313,7 +330,7 @@ export async function contexteGeneration(sessionId, groupeId) {
   }
   // Q4-1 : intervenants rattachés (annuaire), une requête chacun, triés.
   const formateurs = async (table, cle, id) => (id ? (await query(
-    `SELECT i.id, i.nom, i.prenom, i.fonction FROM ${table} l JOIN intervenants i ON i.id = l.intervenant_id
+    `SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM ${table} l JOIN intervenants i ON i.id = l.intervenant_id
      WHERE l.${cle} = $1 ORDER BY i.nom, i.prenom, i.id`, [id])).rows : []);
   const formateursSession = await formateurs("intervenants_sessions", "session_id", session.id);
   const formateursGroupe = await formateurs("intervenants_groupes", "groupe_id", groupe?.id);
@@ -474,9 +491,15 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     const dossierId = await dossierCible(d.drive, ctx, jeton);
     const produits = [];
     let remplaces = 0;
-    // DOC-6A : lignes des blocs pour toutes les cibles, une requête par bloc
-    // (seulement si le modèle contient effectivement des blocs).
-    const lignesBlocs = precontrole.blocs?.length ? await chargerLignesBlocs(aProduire) : null;
+    // DOC-6A/6B : lignes des blocs pour toutes les cibles, une requête par bloc
+    // (seulement pour les blocs effectivement demandés par le modèle).
+    const blocsDemandes = precontrole.blocs || [];
+    const lignesBlocs = blocsDemandes.length ? await chargerLignesBlocs(aProduire, blocsDemandes) : null;
+    // DOC-6B : intervenants = même sémantique que le marqueur historique
+    // `formateur` : groupe prioritaire, à défaut session. Ordre déjà trié.
+    const lignesIntervenants = blocsDemandes.includes("intervenants")
+      ? (ctx.formateursGroupe?.length ? ctx.formateursGroupe : (ctx.formateursSession || []))
+      : null;
     // Anciens fichiers à archiver : mis à la corbeille SEULEMENT APRÈS le
     // succès de l'écriture en base (sinon la DB pointerait vers un fichier
     // déjà trashé). Collectés ici, exécutés après COMMIT.
@@ -507,9 +530,14 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       const nom = nomSain(brut);
 
       const ancien = dejaParCle.get(stagiaire?.id ?? 0);
-      // DOC-6A : lignes de blocs de CE stagiaire (absences), pour le rendu.
+      // DOC-6A/6B : lignes de blocs de CE stagiaire (absences, évaluations) et
+      // intervenants (niveau génération, identiques pour toutes les copies).
       const blocsStagiaire = lignesBlocs
-        ? { absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences.get(stagiaire.inscription_id) : null) || [] }
+        ? {
+            absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences?.get(stagiaire.inscription_id) : null) || [],
+            evaluations: (stagiaire?.inscription_id != null ? lignesBlocs.evaluations?.get(stagiaire.inscription_id) : null) || [],
+            intervenants: lignesIntervenants || [],
+          }
         : null;
       const copie = await copierEtRemplir(d, { modele, nom, dossierId, valeurs: remplacements, cacheMarqueurs, verifierCopieSheet: premiereCopie, blocs: blocsStagiaire }, jeton);
       premiereCopie = false;

@@ -11,7 +11,7 @@
 //  N'est PAS encore branché sur la génération (documents.js).
 // ─────────────────────────────────────────────────────────────
 import {
-  DICTIONNAIRE_VERSION, blocCanonique, blocsDuChampLocal, champLocal, marqueurHistorique,
+  BLOC_DU_CHAMP, DICTIONNAIRE_VERSION, blocCanonique, blocsDuChampLocal, champLocal, marqueurHistorique,
   resoudreAlias, variableCanonique,
 } from "./catalogueVariables.js";
 import { MARQUEURS, RENDUS_HISTORIQUES } from "./marqueurs.js";
@@ -108,7 +108,16 @@ export function analyserModele(texte) {
 
     // ── Variables simples ──
     const canonique = variableCanonique(nom);
-    if (canonique) { b.statut = "canonique"; signalerSensible(nom, canonique.sensibilite, b); continue; }
+    if (canonique) {
+      // DOC-6B : une variable canonique qui est aussi un CHAMP de bloc (ref)
+      // est un champ_bloc lorsqu'elle est écrite À L'INTÉRIEUR de son bloc.
+      const blocDuChamp = BLOC_DU_CHAMP[nom];
+      const englobant = blocDuChamp ? [...pile].reverse().find((p) => p.nom === blocDuChamp) : null;
+      b.statut = englobant ? "champ_bloc" : "canonique";
+      if (englobant) b.bloc = blocDuChamp;
+      signalerSensible(nom, canonique.sensibilite, b);
+      continue;
+    }
     const cible = resoudreAlias(nom);
     if (cible) {
       b.statut = "alias"; b.canonique = cible;

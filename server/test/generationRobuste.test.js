@@ -33,7 +33,7 @@ after(async () => {
 });
 
 // ── Fausse base ─────────────────────────────────────────────
-function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null, nbStagiaires = 1, absences = [] } = {}) {
+function baseSimulee({ modele = null, existants = [], echec = null, groupe = null, journal = null, nbStagiaires = 1, absences = [], evaluations = [], intervenants = [] } = {}) {
   const appels = [];
   const noter = (evt) => { if (journal) journal.push(evt); };
   const session = {
@@ -78,6 +78,10 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     if (sql.startsWith("SELECT inscription_id, date_absence, duree_heures, justifiee, motif")) {
       return { rows: absences };
     }
+    // DOC-6B : lignes du bloc evaluations (une requête bornée pour toutes les cibles).
+    if (sql.startsWith("SELECT inscription_id, intitule, date_passage, score, score_max")) {
+      return { rows: evaluations };
+    }
     if (sql.startsWith("SELECT * FROM documents_generes")) return { rows: existants };
     if (echec && sql.startsWith(echec)) { const e = new Error("échec simulé " + echec); e.code = "23502"; throw e; }
     if (sql.startsWith("INSERT INTO generations")) { noter("DB:generations"); return { rows: [{ id: 99 }] }; }
@@ -86,7 +90,7 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     if (sql.startsWith("INSERT INTO preuve_fichiers")) return { rows: [] };
     if (sql.startsWith("INSERT INTO documents_generes")) { noter("DB:documents_generes"); return { rows: [] }; }
     // Q4-1 : intervenants rattachés — aucun (cas historique, rendu inchangé).
-    if (sql.startsWith("SELECT i.id, i.nom, i.prenom, i.fonction FROM intervenants_")) return { rows: [] };
+    if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: intervenants };
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = {
@@ -489,6 +493,38 @@ test("DOC-6A : bloc absences vide → supprimé, aucun résidu", async () => {
   assert.equal(r.statut, 200);
   assert.deepEqual(r.corps.marqueursNonResolus, []);
   assert.equal(trace.contenuCopies.get("copie-1"), "Avant  Après");
+});
+
+// DOC-6B : bloc evaluations rendu de bout en bout (ordre chronologique).
+test("DOC-6B : bloc evaluations rendu de bout en bout (pourcentage, ordre stable)", async () => {
+  baseSimulee({
+    evaluations: [
+      { inscription_id: 1, intitule: "QCM intermédiaire", date_passage: "2026-01-15", score: 8, score_max: 10 },
+      { inscription_id: 1, intitule: "QCM final", date_passage: "2026-02-10", score: 17, score_max: 20 },
+    ],
+  }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{#evaluations}}{{evaluation_intitule}} : {{evaluation_pourcentage}} %{{/evaluations}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.equal(trace.contenuCopies.get("copie-1"), "QCM intermédiaire : 80 %QCM final : 85 %");
+});
+
+// DOC-6B : bloc intervenants rendu de bout en bout (groupe prioritaire).
+test("DOC-6B : bloc intervenants rendu de bout en bout (groupe prioritaire)", async () => {
+  baseSimulee({
+    groupe: { id: 9, nom: "Groupe A", session_id: 1 },
+    intervenants: [
+      { id: 1, civilite: "Mme", nom: "Curie", prenom: "Marie", email: "marie@exemple.fr", fonction: "Formatrice" },
+    ],
+  }).installer();
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{#intervenants}}{{intervenant_nom_complet}}{{/intervenants}}" });
+  setDriveFactory(() => client);
+  const r = await generer(requete);
+  assert.equal(r.statut, 200);
+  assert.deepEqual(r.corps.marqueursNonResolus, []);
+  assert.equal(trace.contenuCopies.get("copie-1"), "Marie Curie");
 });
 
 // DOC-3B : les enrichissements SQL (formation/version, comptage de

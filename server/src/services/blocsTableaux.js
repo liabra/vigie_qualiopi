@@ -280,6 +280,41 @@ export function classerBlocsDoc(docJson) {
   return detecterBlocsTableau(docJson).map((o) => ({ nom: o.nom, occurrence: o.occurrence, type: o.type, raison: o.raison ?? null }));
 }
 
+// ── DOC-7F — Masque explicite pour updateParagraphStyle EN TABLEAU ──
+// Erreur réelle (Railway, Livret FSE-IA) : « Cannot update page-break-before
+// when the range contains paragraphs in a table. » `fields: "*"` demandait
+// implicitement `pageBreakBefore` (et tout autre champ présent dans l'objet
+// style), une propriété de mise en page INTERDITE pour un paragraphe situé
+// DANS un tableau. Remplacé par une LISTE BLANCHE explicite : seules les
+// propriétés ci-dessous, réellement COMPATIBLES avec une cellule de
+// tableau, sont reprises — `pageBreakBefore` et `headingId` (page-layout,
+// sans portée dans une cellule) en sont volontairement exclues, qu'ils
+// soient présents ou non dans le style source.
+// Portée STRICTE : cette liste ne sert qu'à `requetesCelluleTexte()`, donc
+// uniquement à l'écriture de TEXTE DANS UNE CELLULE DE TABLEAU — jamais au
+// texte courant hors tableau, qui ne passe jamais par cette fonction.
+const PROPRIETES_PARAGRAPHE_TABLEAU = [
+  "namedStyleType", "alignment", "lineSpacing", "direction", "spacingMode",
+  "spaceAbove", "spaceBelow", "indentFirstLine", "indentStart", "indentEnd",
+  "keepLinesTogether", "keepWithNext", "avoidWidowAndOrphan", "shading",
+  "borderBetween", "borderTop", "borderBottom", "borderLeft", "borderRight", "tabStops",
+];
+
+// Ne garde que les propriétés de la liste blanche RÉELLEMENT présentes
+// dans `styleParagraphe` ; construit le masque `fields` à partir de cette
+// même liste filtrée (jamais `"*"`). `null` si rien d'autorisé ne reste —
+// le paragraphe garde alors simplement son style par défaut, pas une
+// dégradation d'une propriété visible (seules des propriétés de mise en
+// page sans effet dans une cellule sont écartées).
+function styleParagrapheTableau(styleParagraphe) {
+  if (!styleParagraphe) return null;
+  const champs = PROPRIETES_PARAGRAPHE_TABLEAU.filter((k) => Object.prototype.hasOwnProperty.call(styleParagraphe, k));
+  if (!champs.length) return null;
+  const style = {};
+  for (const k of champs) style[k] = styleParagraphe[k];
+  return { style, fields: champs.join(",") };
+}
+
 // ── Requêtes d'écriture ─────────────────────────────────────
 function requetesCelluleTexte({ debut, fin, texte, styleTexte, styleParagraphe }) {
   const req = [];
@@ -288,11 +323,21 @@ function requetesCelluleTexte({ debut, fin, texte, styleTexte, styleParagraphe }
   if (texte.length > 0) {
     req.push({ insertText: { location: { index: debut }, text: texte } });
     if (styleTexte) req.push({ updateTextStyle: { range: { startIndex: debut, endIndex: debut + texte.length }, textStyle: styleTexte, fields: "*" } });
-    if (styleParagraphe) req.push({ updateParagraphStyle: { range: { startIndex: debut, endIndex: debut + texte.length }, paragraphStyle: styleParagraphe, fields: "*" } });
+    const pp = styleParagrapheTableau(styleParagraphe);
+    if (pp) req.push({ updateParagraphStyle: { range: { startIndex: debut, endIndex: debut + texte.length }, paragraphStyle: pp.style, fields: pp.fields } });
   }
   return req;
 }
 
+// DOC-7F — Audit des autres `fields: "*"` du moteur : `updateTextStyle`
+// (TextStyle : gras, italique, couleur, police…) et `updateTableCellStyle`/
+// `updateTableRowStyle` (TableCellStyle/TableRowStyle : propriétés NATIVES
+// de cellule/ligne — fond, bordures, marges, hauteur, alignement du
+// contenu) n'ont AUCUNE propriété de mise en page de type « saut de page »
+// ni d'autre restriction documentée propre aux tableaux : contrairement à
+// ParagraphStyle (partagé entre le texte courant et les cellules, avec des
+// propriétés interdites dans ce second cas), ces trois API sont déjà
+// scopées aux tableaux par construction. `fields: "*"` y reste inchangé.
 function requeteCelluleStyle(tableDebut, ligne, colonne, styleCellule) {
   // UpdateTableCellStyleRequest : `tableRange` et `tableStartLocation` sont
   // MUTUELLEMENT EXCLUSIFS. Pour cibler une cellule arbitraire, on n'utilise

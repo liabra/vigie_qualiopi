@@ -3770,3 +3770,73 @@ Distinction explicite demandée :
    correction s'applique à tout modèle utilisant un bloc en ligne de tableau — mais seul un
    round-trip réel le confirme définitivement sur un cas non trivial (fusions de cellules
    absentes, styles réellement hétérogènes, etc.).
+
+## 2026-10-13 — DOC-7F : corriger le style des paragraphes dans les tableaux (non commité)
+
+### Cause
+
+Le test réel du Livret FSE-IA (après DOC-7E, déployé) a de nouveau échoué, cette fois à
+`docs.documents.batchUpdate` : *« Invalid requests[2].updateParagraphStyle: Cannot update
+page-break-before when the range contains paragraphs in a table. »* `requetesCelluleTexte()`
+envoyait `styleParagraphe` tel que capturé sur la ligne modèle, avec `fields: "*"` — un masque
+générique qui inclut implicitement TOUTES les propriétés présentes, y compris `pageBreakBefore`
+(une propriété de mise en page, INTERDITE sur un paragraphe situé à l'intérieur d'un tableau).
+
+### Correction
+
+`server/src/services/blocsTableaux.js` — `requetesCelluleTexte()` :
+- Nouvelle fonction `styleParagrapheTableau(styleParagraphe)` : filtre une **liste blanche**
+  explicite de propriétés compatibles avec une cellule (`namedStyleType`, `alignment`,
+  `lineSpacing`, `direction`, `spacingMode`, `spaceAbove`, `spaceBelow`, `indentFirstLine`,
+  `indentStart`, `indentEnd`, `keepLinesTogether`, `keepWithNext`, `avoidWidowAndOrphan`,
+  `shading`, les 4 bordures, `tabStops`) — jamais `pageBreakBefore` ni `headingId`
+  (propriétés de mise en page sans portée dans une cellule), présents ou non dans le style
+  source.
+- Le masque `fields` est désormais **construit à partir des clés réellement envoyées**
+  (`champs.join(",")`), plus jamais `"*"` pour un paragraphe de cellule.
+- Si aucune propriété autorisée n'est présente, **aucune requête `updateParagraphStyle` n'est
+  émise** (le paragraphe garde son style par défaut) — jamais un repli silencieux sur `"*"`.
+- Portée **strictement limitée aux cellules de tableau** : cette fonction n'est appelée que
+  par `requetesCelluleTexte()` (blocsTableaux.js) ; le remplacement scalaire hors tableau
+  (`requetesDocs()`, marqueurs.js) ne produit jamais de `updateParagraphStyle` et n'est pas
+  concerné — vérifié par test.
+- **Audit des 3 autres `fields: "*"`** (`updateTextStyle`, `updateTableCellStyle`,
+  `updateTableRowStyle`) : TextStyle, TableCellStyle et TableRowStyle sont des API déjà
+  scopées aux tableaux par construction (police/couleur/gras ; fond/bordures/marges/hauteur de
+  ligne) — aucune propriété de mise en page de type « saut de page » ni restriction documentée
+  propre aux tableaux. **Inchangés**, conclusion consignée en commentaire dans le code.
+
+### Tests ajoutés (`server/test/blocsTableaux.test.js`, 4 nouveaux + schéma durci)
+
+- `ligneModeleLivretReel()` : fixture avec les propriétés **réellement portées par le vrai
+  Livret** (`namedStyleType`, `lineSpacing`, `direction`, `spaceBelow`) **plus
+  `pageBreakBefore`** (présent par défaut sur un paragraphe Google Docs réel — c'est
+  précisément ce qui a fait échouer l'appel réel).
+- 3 séances : aucun `pageBreakBefore` dans aucun style/masque envoyé, les 4 propriétés
+  légitimes conservées, non-régression explicite des index et du nombre de requêtes DOC-7E.
+- 0 et 1 séance : même garantie, aucune régression du flux à deux phases.
+- Style sans AUCUNE propriété autorisée (`pageBreakBefore`+`headingId` seuls) : aucune requête
+  `updateParagraphStyle` émise, jamais un `"*"` de repli — le texte est quand même inséré.
+- Texte courant hors tableau : confirmé hors de portée de ce filtrage (le moteur de blocs en
+  tableau ne le traite jamais).
+- `validerSchemaRequete()` (DOC-7D/7E) durci : `fields !== "*"`, `fields` = exactement les clés
+  de `paragraphStyle`, aucune trace de `pageBreakBefore`/`headingId`.
+- Non-régression : les tests DOC-7D/DOC-7E existants (index, schéma, 0/1/3 séances) repassent
+  tous, inchangés dans leurs assertions de fond.
+
+### Nettoyage sur erreur Google
+
+Inchangé, déjà garanti par le `try/catch` unique de `copierEtRemplir()` (DOC-7E) — aucune
+modification nécessaire ici, revérifié par les tests d'échec de `batchUpdate` existants.
+
+### Limites
+
+Aucun Drive, SQL, frontend ni permission modifiés. Le round-trip RÉEL (écriture effective sur
+Google Docs) reste à confirmer par l'utilisatrice : seule une lecture réelle (DOC-7E) et des
+tests simulés ont pu être faits dans cet environnement ; ce correctif répond à l'erreur Railway
+réelle rapportée, mais n'a pas pu être rejoué en écriture ici (même limite d'accès qu'en
+DOC-7E).
+
+### Validation
+
+Backend **773/773, deux fois** (769 + 4), `git diff --check` propre. Frontend non concerné.

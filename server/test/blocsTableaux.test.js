@@ -609,7 +609,15 @@ function validerSchemaRequete(requete, { indexParagraphesValides } = {}) {
     case "updateParagraphStyle":
       assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
       assert.ok(c.paragraphStyle, `${op} : paragraphStyle`);
-      assert.equal(c.fields, "*", `${op} : fields`);
+      // DOC-7F : plus jamais "*" pour un paragraphe de CELLULE — un masque
+      // explicite, réduit aux propriétés réellement présentes ET
+      // compatibles avec un tableau (jamais pageBreakBefore/headingId).
+      assert.notEqual(c.fields, "*", `${op} : masque explicite requis, jamais "*" en tableau`);
+      assert.ok(c.fields.length > 0, `${op} : fields non vide`);
+      assert.deepEqual(c.fields.split(","), Object.keys(c.paragraphStyle), `${op} : fields = exactement les clés envoyées`);
+      assert.ok(!("pageBreakBefore" in c.paragraphStyle), `${op} : pageBreakBefore interdit en tableau`);
+      assert.ok(!c.fields.includes("pageBreakBefore"), `${op} : pageBreakBefore absent du masque`);
+      assert.ok(!("headingId" in c.paragraphStyle), `${op} : headingId exclu`);
       break;
     default:
       assert.fail(`opération inconnue : ${op}`);
@@ -676,4 +684,86 @@ test("DOC-7E : 1 séance → aucune insertion, aucun replay de style (ligne mod�
   assert.equal(requetes.filter((r) => r.insertTableRow).length, 0, "1 séance → aucune insertion");
   assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 0, "pas de replay de style pour la ligne modèle");
   assert.equal(requetes.filter((r) => r.insertText).length, 6, "6 cellules remplies");
+});
+
+// ── DOC-7F : style de paragraphe fidèle au VRAI Livret Google Docs ──
+// Fixture réaliste : les propriétés qu'un paragraphe de cellule porte
+// RÉELLEMENT sur le document Google Docs testé (namedStyleType, lineSpacing,
+// direction, spaceBelow), PLUS pageBreakBefore — Google l'inclut souvent par
+// défaut sur un paragraphe, et c'est exactement la propriété dont l'envoi a
+// été refusé par l'API réelle (« Cannot update page-break-before when the
+// range contains paragraphs in a table. »).
+function ligneModeleLivretReel() {
+  const styleParagrapheReel = {
+    namedStyleType: "NORMAL_TEXT", lineSpacing: 115, direction: "LEFT_TO_RIGHT", spaceBelow: { magnitude: 10, unit: "PT" },
+    pageBreakBefore: false, // présent dans un VRAI document — ne doit JAMAIS être envoyé pour une cellule
+  };
+  return {
+    styleLigne: { minRowHeight: { magnitude: 24, unit: "PT" } },
+    cellules: [
+      { texte: "{{#suivi_pedagogique}}{{seance_date}}", styleParagraphe: { ...styleParagrapheReel, alignment: "CENTER" } },
+      { texte: "{{seance_competences}}", styleParagraphe: styleParagrapheReel },
+      { texte: "{{seance_activites}}", styleParagraphe: styleParagrapheReel },
+      { texte: "{{suivi_accompagnement}}", styleParagraphe: styleParagrapheReel },
+      { texte: "{{suivi_difficultes}}", styleParagraphe: styleParagrapheReel },
+      { texte: "{{suivi_impressions}}{{/suivi_pedagogique}}", styleParagraphe: styleParagrapheReel },
+    ],
+  };
+}
+
+function verifierAucunPageBreakBefore(requetes) {
+  const styles = requetes.filter((r) => r.updateParagraphStyle);
+  assert.ok(styles.length > 0, "au moins une requête updateParagraphStyle à vérifier");
+  for (const r of styles) {
+    const { paragraphStyle, fields } = r.updateParagraphStyle;
+    assert.ok(!("pageBreakBefore" in paragraphStyle), "pageBreakBefore absent du style envoyé");
+    assert.ok(!fields.split(",").includes("pageBreakBefore"), "pageBreakBefore absent du masque fields");
+    assert.notEqual(fields, "*", "masque explicite, jamais \"*\"");
+  }
+  return styles;
+}
+
+test("DOC-7F : 3 séances, fixture réaliste (namedStyleType/lineSpacing/direction/spaceBelow + pageBreakBefore) — aucun pageBreakBefore envoyé, le reste conservé", () => {
+  const { requetes, docCopie } = genererDeuxPhases([], entete6(), ligneModeleLivretReel(), [], { suivi_pedagogique: [seance("2026-09-08", 1), seance("2026-09-10", 2), seance("2026-09-12", 3)] });
+  const indexValides = indexParagraphesDe(docCopie);
+  for (const r of requetes) validerSchemaRequete(r, { indexParagraphesValides: indexValides });
+  const styles = verifierAucunPageBreakBefore(requetes);
+  // Les propriétés AUTORISÉES et réellement présentes sont conservées.
+  for (const r of styles) {
+    const { paragraphStyle, fields } = r.updateParagraphStyle;
+    for (const cle of ["namedStyleType", "lineSpacing", "direction", "spaceBelow"]) {
+      assert.ok(cle in paragraphStyle, `${cle} conservé`);
+      assert.ok(fields.split(",").includes(cle), `${cle} dans le masque`);
+    }
+  }
+  assert.equal(requetes.filter((r) => r.insertTableRow).length, 2, "3 séances → 2 insertions (non régression DOC-7E)");
+  assert.equal(requetes.filter((r) => r.insertText).length, 18, "3 lignes × 6 cellules (non régression DOC-7E)");
+});
+
+test("DOC-7F : 1 séance et 0 séance — aucun pageBreakBefore, aucune régression des index DOC-7E", () => {
+  const un = genererDeuxPhases([], entete6(), ligneModeleLivretReel(), [], { suivi_pedagogique: [seance("2026-09-08", 1)] });
+  verifierAucunPageBreakBefore(un.requetes);
+  assert.equal(un.requetes.filter((r) => r.insertTableRow).length, 0);
+
+  const zero = genererDeuxPhases([], entete6(), ligneModeleLivretReel(), [], { suivi_pedagogique: [] });
+  assert.equal(zero.requetes.length, 1);
+  assert.ok(zero.requetes[0].deleteTableRow);
+});
+
+test("DOC-7F : un style sans aucune propriété autorisée n'émet aucune requête updateParagraphStyle (jamais \"*\")", () => {
+  const entete = { cellules: [{ texte: "x" }] };
+  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_intitule}}{{/evaluations}}", styleParagraphe: { pageBreakBefore: true, headingId: "h1" } }] };
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { evaluations: [{ intitule: "Q" }] });
+  assert.ok(!requetes.some((r) => r.updateParagraphStyle), "aucune propriété autorisée présente : pas de requête, jamais un \"*\" de repli");
+  assert.ok(requetes.some((r) => r.insertText), "le texte est quand même inséré");
+});
+
+test("DOC-7F : le texte courant HORS tableau n'est jamais affecté par le filtrage (portée strictement table)", () => {
+  // requetesDocs()/marqueurs.js (remplacement scalaire hors tableau) ne
+  // passe jamais par requetesCelluleTexte()/blocsTableaux.js : aucune
+  // requête updateParagraphStyle n'est produite par ce moteur pour le
+  // texte courant, par construction (il ne connaît que les cellules).
+  const d = doc([paragraphe("Texte hors tableau, jamais concerné par ce moteur.")]);
+  const r = classerBlocsDoc(d);
+  assert.deepEqual(r, []);
 });

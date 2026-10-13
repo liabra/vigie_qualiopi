@@ -1,13 +1,19 @@
 // ─────────────────────────────────────────────────────────────
-//  DOC-6C — Moteur de duplication fidèle d'une ligne de tableau Docs.
+//  DOC-6C/7E — Moteur de duplication fidèle d'une ligne de tableau Docs.
 //  Tests PURS : aucun Drive, aucun réseau. Le JSON Google Docs est
 //  construit localement avec de VRAIS index absolus (startIndex/endIndex),
 //  ce qui permet de vérifier à la fois la classification structurelle, le
 //  plan d'écriture et la stabilité des index (simulateur).
+//
+//  DOC-7E : deux phases. `planStructureTableaux` (structure + specs) est
+//  testée seule ; `planContenuTableaux` (contenu, à partir des VRAIS index
+//  d'une « copie » post-insertion) est testée avec une copie CONSTRUITE
+//  INDÉPENDAMMENT — jamais dérivée par une formule — exactement comme
+//  `documents.js` le fait avec une vraie relecture `documents.get`.
 // ─────────────────────────────────────────────────────────────
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detecterBlocsTableau, classerBlocsDoc, planBlocsTableau } from "../src/services/blocsTableaux.js";
+import { detecterBlocsTableau, classerBlocsDoc, planStructureTableaux, planContenuTableaux } from "../src/services/blocsTableaux.js";
 
 // ── Constructeur de Doc JSON avec index absolus ─────────────
 let compteur = 0;
@@ -49,7 +55,12 @@ function tableau(lignes) {
   });
   const fin = tableRows[tableRows.length - 1]?.endIndex ?? compteur;
   compteur = fin;
-  return { startIndex: debut, endIndex: fin, table: { startIndex: debut, endIndex: fin, tableRows } };
+  // DOC-7E : conforme à la VRAIE API Google Docs — startIndex/endIndex ne
+  // sont JAMAIS portés par `table` lui-même, seulement par l'élément
+  // structurel qui l'enveloppe (vérifié sur un document réel). Volontairement
+  // PAS de startIndex/endIndex ici : un code qui lirait `el.table.startIndex`
+  // par erreur casserait ces tests, au lieu d'être validé à tort.
+  return { startIndex: debut, endIndex: fin, table: { tableRows } };
 }
 
 function doc(body, { headers = {}, footers = {} } = {}) {
@@ -158,20 +169,72 @@ test("bloc dans un en-tête → refus bloc_tableau_hors_corps", () => {
   assert.equal(classerBlocsDoc(d)[0].raison, "bloc_tableau_hors_corps");
 });
 
+// ── DOC-7E : utilitaires de test pour le flux à DEUX PHASES ─
+//
+// `genererDeuxPhases` construit le document ORIGINAL (modèle), calcule le
+// plan structurel, puis construit la « copie » INDÉPENDAMMENT (nouvelles
+// lignes VIDES — exactement ce que Google crée réellement : une cellule
+// neuve ne contient qu'un paragraphe vide « \n », AUCUNE propriété de
+// style propre avant que les requêtes de style ne s'appliquent) et calcule
+// le plan de contenu à partir des VRAIS index de cette copie. Si le modèle
+// d'index de `planContenuTableaux` ne correspondait pas à la structure
+// réelle d'une copie Google Docs, les tests contenu (texte attendu,
+// absence de balise, cellule correcte) échoueraient de façon révélatrice —
+// ce n'est plus une simple vérification du simulateur.
+function ligneVide(nbColonnes) {
+  return { cellules: Array.from({ length: nbColonnes }, () => ({ texte: "" })) };
+}
+
+// `avantTextes`/`apresTextes` : TEXTES (pas des objets déjà construits) —
+// les paragraphes correspondants sont construits ICI, dans l'ORDRE RÉEL
+// (avant la table, puis après), avec le MÊME compteur séquentiel partagé.
+// Construire les paragraphes à l'extérieur, comme arguments pré-évalués,
+// décale `compteur` AVANT que la table ne soit bâtie et désynchronise les
+// index de la copie — c'est ce qui a été corrigé ici.
+function genererDeuxPhases(avantTextes, entete, specLigneModele, apresTextes, blocsLignes) {
+  const construire = () => {
+    resetCompteur();
+    const avant = avantTextes.map((t) => paragraphe(t));
+    const tbl = tableau([entete, specLigneModele]);
+    const apres = apresTextes.map((t) => paragraphe(t));
+    return { body: { content: [...avant, tbl, ...apres] }, headers: {}, footers: {} };
+  };
+  const docOriginal = construire();
+  const plan = planStructureTableaux(docOriginal, blocsLignes);
+  const bloc = plan.blocs[0];
+  const nbColonnes = bloc?.nombreColonnes || entete.cellules.length;
+  let docCopie;
+  if (!bloc || bloc.nbLignes === 0) {
+    // Ligne modèle supprimée : planContenuTableaux n'a rien à faire pour ce
+    // bloc (bloc.nbLignes === 0 → ignoré), la « copie » n'a pas besoin
+    // d'exister pour ce test — on retourne le document original tel quel.
+    docCopie = docOriginal;
+  } else {
+    const lignesVides = Array.from({ length: Math.max(0, bloc.nbLignes - 1) }, () => ligneVide(nbColonnes));
+    resetCompteur();
+    const avant = avantTextes.map((t) => paragraphe(t));
+    const tbl = tableau([entete, specLigneModele, ...lignesVides]);
+    const apres = apresTextes.map((t) => paragraphe(t));
+    docCopie = { body: { content: [...avant, tbl, ...apres] }, headers: {}, footers: {} };
+  }
+  const requetes = [...plan.requetes, ...planContenuTableaux(docCopie, plan)];
+  return { requetes, plan, docOriginal, docCopie };
+}
+
 // ── Plan d'écriture (0 / 1 / N éléments) ────────────────────
 test("0 élément → la ligne modèle est supprimée (deleteTableRow)", () => {
-  const d = doc([paragraphe("Intro"), tableau([{ cellules: [{ texte: "Date" }, { texte: "Intitulé" }] }, ligneModele()])]);
-  const { requetes, occurrences } = planBlocsTableau(d, { evaluations: [] });
-  assert.equal(occurrences[0].elements, 0);
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }] };
+  const { requetes, plan } = genererDeuxPhases(["Intro"], entete, ligneModele(), [], { evaluations: [] });
+  assert.equal(plan.blocs[0].nbLignes, 0);
   assert.equal(requetes.length, 1);
   assert.ok(requetes[0].deleteTableRow);
   assert.equal(requetes[0].deleteTableRow.tableCellLocation.rowIndex, 1);
 });
 
 test("1 élément → aucune insertion, la ligne modèle est remplie, aucun marqueur", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "Date" }, { texte: "Intitulé" }] }, ligneModele()])]);
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }] };
   const lignes = [{ date_passage: "2026-02-10", intitule: "QCM final", score: 17, score_max: 20 }];
-  const { requetes } = planBlocsTableau(d, { evaluations: lignes });
+  const { requetes } = genererDeuxPhases([], entete, ligneModele(), [], { evaluations: lignes });
   const types = requetes.map((r) => Object.keys(r)[0]);
   assert.ok(!types.includes("insertTableRow"));
   assert.ok(types.includes("deleteContentRange"));
@@ -181,55 +244,140 @@ test("1 élément → aucune insertion, la ligne modèle est remplie, aucun marq
 });
 
 test("3 éléments → exactement 3 lignes rendues, ordre conservé", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "Date" }, { texte: "Intitulé" }] }, ligneModele()])]);
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }] };
   const lignes = [
     { date_passage: "2026-01-05", intitule: "A", score: 1, score_max: 2 },
     { date_passage: "2026-01-06", intitule: "B", score: 2, score_max: 2 },
     { date_passage: "2026-01-07", intitule: "C", score: 3, score_max: 3 },
   ];
-  const { requetes, occurrences } = planBlocsTableau(d, { evaluations: lignes });
-  assert.equal(occurrences[0].elements, 3);
+  const { requetes, plan } = genererDeuxPhases([], entete, ligneModele(), [], { evaluations: lignes });
+  assert.equal(plan.blocs[0].nbLignes, 3);
   const insertions = requetes.filter((r) => r.insertTableRow);
   assert.equal(insertions.length, 2);
   const textes = requetes.filter((r) => r.insertText).map((r) => r.insertText.text);
   assert.ok(textes.includes("A"));
   assert.ok(textes.includes("B"));
   assert.ok(textes.includes("C"));
+  // Ordre d'ÉCRITURE déterministe : lignes nouvelles de bas en haut (C, B),
+  // puis la ligne modèle (A) — index décroissants, jamais recalculés après coup.
+  const ordre = textes.filter((t) => ["A", "B", "C"].includes(t));
+  assert.deepEqual(ordre, ["C", "B", "A"]);
 });
 
 test("plusieurs variables dans une même cellule (score / score_max)", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "{{#evaluations}}{{evaluation_score_obtenu}} / {{evaluation_score_max}}{{/evaluations}}" }] }])]);
-  const { requetes } = planBlocsTableau(d, { evaluations: [{ score: 17, score_max: 20 }] });
+  const entete = { cellules: [{ texte: "x" }] };
+  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_score_obtenu}} / {{evaluation_score_max}}{{/evaluations}}" }] };
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { evaluations: [{ score: 17, score_max: 20 }] });
   const ins = requetes.find((r) => r.insertText);
   assert.equal(ins.insertText.text, "17 / 20");
 });
 
 test("bloc absences : rendu réel des champs résolubles", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "{{#absences}}{{absence_date}} — {{absence_duree_heures}}{{/absences}}" }] }])]);
-  const { requetes } = planBlocsTableau(d, { absences: [{ date_absence: "2026-01-05", duree_heures: 3.5 }] });
+  const entete = { cellules: [{ texte: "x" }] };
+  const spec = { cellules: [{ texte: "{{#absences}}{{absence_date}} — {{absence_duree_heures}}{{/absences}}" }] };
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { absences: [{ date_absence: "2026-01-05", duree_heures: 3.5 }] });
   const ins = requetes.find((r) => r.insertText);
   assert.equal(ins.insertText.text, "05/01/2026 — 3.5 h");
 });
 
 test("champ non résoluble : laissé tel quel (jamais inventé)", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "{{#evaluations}}{{evaluation_moment}}{{/evaluations}}" }] }])]);
-  const { requetes } = planBlocsTableau(d, { evaluations: [{ intitule: "QCM" }] });
+  const entete = { cellules: [{ texte: "x" }] };
+  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_moment}}{{/evaluations}}" }] };
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { evaluations: [{ intitule: "QCM" }] });
   const ins = requetes.find((r) => r.insertText);
   assert.equal(ins.insertText.text, "{{evaluation_moment}}");
 });
 
-test("styles différents entre cellules : une requête updateTableCellStyle par cellule", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "Date" }] }, ligneModele()])]);
-  const { requetes } = planBlocsTableau(d, { evaluations: [{ date_passage: "2026-02-10", intitule: "Q", score: 1, score_max: 2 }, { date_passage: "2026-02-11", intitule: "Q2", score: 2, score_max: 2 }] });
+test("champ facultatif (absence_motif) : vide sans motif, rendu sans erreur quand renseigné", () => {
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Motif" }] };
+  const spec = { cellules: [{ texte: "{{#absences}}{{absence_date}}" }, { texte: "{{absence_motif}}{{/absences}}" }] };
+  const lignes = [{ date_absence: "2026-01-05", motif: null }, { date_absence: "2026-01-06", motif: "Rendez-vous médical" }];
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { absences: lignes });
+  const textes = requetes.filter((r) => r.insertText).map((r) => r.insertText.text);
+  assert.ok(textes.includes("Rendez-vous médical"));
+  // Un motif absent produit une cellule vide : AUCUNE requête insertText
+  // n'est émise pour elle (cf. requetesCelluleTexte, `texte.length > 0`),
+  // jamais une valeur inventée ni un texte « undefined ».
+  assert.ok(!textes.includes(undefined));
+  assert.ok(!textes.some((t) => t.includes("undefined") || t.includes("null")));
+});
+
+test("styles différents entre cellules : une requête updateTableCellStyle par cellule, modèle restauré compris", () => {
+  const entete = { cellules: [{ texte: "Date" }] };
+  const { requetes } = genererDeuxPhases([], entete, ligneModele(), [], { evaluations: [{ date_passage: "2026-02-10", intitule: "Q", score: 1, score_max: 2 }, { date_passage: "2026-02-11", intitule: "Q2", score: 2, score_max: 2 }] });
   const styles = requetes.filter((r) => r.updateTableCellStyle);
-  // 1 ligne supplémentaire × 3 cellules = 3 mises à jour de style cellule
-  assert.equal(styles.length, 3);
-  assert.equal(requetes.filter((r) => r.updateTableRowStyle).length, 1);
+  // DOC-7E : dès qu'une ligne est insérée, la ligne MODÈLE est aussi
+  // restylée (Google peut avoir ajusté ses bordures) : 2 lignes (modèle +
+  // 1 nouvelle) × 3 cellules = 6 mises à jour de style cellule, 2 lignes stylées.
+  assert.equal(styles.length, 6);
+  assert.equal(requetes.filter((r) => r.updateTableRowStyle).length, 2);
+});
+
+test("aucun texte inséré dans une mauvaise cellule : chaque valeur atterrit à l'index de SA colonne", () => {
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }, { texte: "Score" }] };
+  const spec = {
+    cellules: [
+      { texte: "{{#evaluations}}{{evaluation_date}}" },
+      { texte: "{{evaluation_intitule}}" },
+      { texte: "{{evaluation_score_obtenu}}{{/evaluations}}" },
+    ],
+  };
+  const lignes = [{ date_passage: "2026-01-05", intitule: "ALPHA", score: 9 }];
+  const { requetes, plan, docCopie } = genererDeuxPhases([], entete, spec, [], { evaluations: lignes });
+  const table = docCopie.body.content.find((e) => e.table).table;
+  const ligneModeleCopie = table.tableRows[plan.blocs[0].ligneIndex];
+  const attendu = ligneModeleCopie.tableCells.map((c) => c.content[0].startIndex);
+  const inserts = requetes.filter((r) => r.insertText).sort((a, b) => a.insertText.location.index - b.insertText.location.index);
+  assert.deepEqual(inserts.map((r) => r.insertText.location.index), attendu);
+  assert.deepEqual(inserts.map((r) => r.insertText.text), ["05/01/2026", "ALPHA", "9"]);
+});
+
+// ── DOC-7E : résolution des index via la frontière du PARAGRAPHE, pas de
+// la cellule — c'est la régression concrète observée en réel (insertion à
+// un index hors paragraphe, refusée par Google).
+test("DOC-7E : l'écriture cible le début du PARAGRAPHE de la cellule, jamais la frontière de la cellule elle-même", () => {
+  const entete = { cellules: [{ texte: "x" }] };
+  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_intitule}}{{/evaluations}}" }] };
+  const { requetes, plan, docCopie } = genererDeuxPhases([], entete, spec, [], { evaluations: [{ intitule: "Q" }] });
+  const table = docCopie.body.content.find((e) => e.table).table;
+  const cell = table.tableRows[plan.blocs[0].ligneIndex].tableCells[0];
+  const frontiereCellule = cell.startIndex;
+  const debutParagraphe = cell.content[0].startIndex;
+  const ins = requetes.find((r) => r.insertText);
+  assert.equal(ins.insertText.location.index, debutParagraphe);
+  // Dans ce générateur de test, cellule et paragraphe partagent le même
+  // index (cas simple) — le test ci-dessus reste donc une garantie de
+  // RÉFÉRENCE (on lit bien `content[0]`, pas `cell.startIndex` en soi),
+  // vérifiée explicitement par lecture du CODE SOURCE ci-dessous.
+  assert.equal(frontiereCellule, debutParagraphe, "dans ce générateur, les deux coïncident : la vraie preuve est la lecture du code");
+});
+
+test("DOC-7E : la ligne modèle ET les lignes nouvelles utilisent les VRAIS index relus, pas une formule", () => {
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }] };
+  const lignes = [
+    { date_passage: "2026-01-05", intitule: "A", score: 1, score_max: 2 },
+    { date_passage: "2026-01-06", intitule: "B", score: 2, score_max: 2 },
+  ];
+  const { requetes, plan, docCopie } = genererDeuxPhases(["Avant le tableau pour décaler les index"], entete, ligneModele(), ["Après"], { evaluations: lignes });
+  const table = docCopie.body.content.find((e) => e.table).table;
+  const indexAttendus = new Set();
+  for (const row of table.tableRows.slice(plan.blocs[0].ligneIndex)) {
+    for (const cell of row.tableCells) indexAttendus.add(cell.content[0].startIndex);
+  }
+  for (const r of requetes) {
+    if (r.insertText) assert.ok(indexAttendus.has(r.insertText.location.index), `index ${r.insertText.location.index} absent de la copie relue`);
+  }
 });
 
 // ── Simulateur d'index Google Docs (anti décalage) ──────────
 // Représente le document par une chaîne plate + la structure des tables,
-// applique les requêtes dans l'ordre, et vérifie le résultat final.
+// applique les requêtes dans l'ordre, et vérifie le résultat final. Les
+// requêtes de PHASE 1 (structure) sont rejouées sur un simulateur construit
+// depuis le document ORIGINAL ; les requêtes de PHASE 2 (contenu, index de
+// la copie construite indépendamment) sont rejouées à LA SUITE sur le MÊME
+// simulateur — si le modèle d'index de la copie ne correspondait pas à ce
+// que la phase 1 produit réellement, le texte final serait incorrect ou
+// mal placé : ce test l'aurait révélé.
 function construireSimulateur(docJson) {
   let texte = "";
   const tables = [];
@@ -327,16 +475,17 @@ function construireSimulateur(docJson) {
   };
 }
 
-test("simulateur : index stables après insertion, texte final exact", () => {
-  const d = doc([paragraphe("Intro"), tableau([{ cellules: [{ texte: "Date" }, { texte: "Intitulé" }] }, ligneModele()]), paragraphe("Conclusion")]);
+test("simulateur : index stables après les DEUX phases, texte final exact", () => {
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }] };
   const lignes = [
     { date_passage: "2026-01-05", intitule: "A", score: 1, score_max: 2 },
     { date_passage: "2026-01-06", intitule: "B", score: 2, score_max: 2 },
     { date_passage: "2026-01-07", intitule: "C", score: 3, score_max: 3 },
   ];
-  const { requetes } = planBlocsTableau(d, { evaluations: lignes });
-  const sim = construireSimulateur(d);
-  for (const req of requetes) sim.appliquer(req);
+  const { plan, docOriginal, docCopie } = genererDeuxPhases(["Intro"], entete, ligneModele(), ["Conclusion"], { evaluations: lignes });
+  const sim = construireSimulateur(docOriginal);
+  for (const req of plan.requetes) sim.appliquer(req);
+  for (const req of planContenuTableaux(docCopie, plan)) sim.appliquer(req);
   assert.ok(!sim.texte.includes("{{#"), "aucun marqueur d'ouverture restant");
   assert.ok(!sim.texte.includes("{{/"), "aucun marqueur de fermeture restant");
   assert.ok(!sim.texte.includes("{{evaluation"), "aucune variable de bloc restante");
@@ -348,10 +497,10 @@ test("simulateur : index stables après insertion, texte final exact", () => {
 });
 
 test("simulateur : 0 élément → la ligne modèle est retirée, le reste intact", () => {
-  const d = doc([paragraphe("Intro"), tableau([{ cellules: [{ texte: "Date" }] }, ligneModele()]), paragraphe("Conclusion")]);
-  const { requetes } = planBlocsTableau(d, { evaluations: [] });
-  const sim = construireSimulateur(d);
-  for (const req of requetes) sim.appliquer(req);
+  const entete = { cellules: [{ texte: "Date" }] };
+  const { plan, docOriginal } = genererDeuxPhases(["Intro"], entete, ligneModele(), ["Conclusion"], { evaluations: [] });
+  const sim = construireSimulateur(docOriginal);
+  for (const req of plan.requetes) sim.appliquer(req);
   assert.equal(sim.tables[0].lignes.length, 1);
   assert.ok(sim.texte.includes("Intro"));
   assert.ok(sim.texte.includes("Conclusion"));
@@ -360,14 +509,15 @@ test("simulateur : 0 élément → la ligne modèle est retirée, le reste intac
 
 // ── Fidélité : signature structurelle/style identique ───────
 test("fidélité : toutes les lignes générées portent la même signature style que la ligne modèle", () => {
-  const d = doc([tableau([{ cellules: [{ texte: "Date" }, { texte: "Intitulé" }, { texte: "Score" }] }, ligneModele()])]);
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Intitulé" }, { texte: "Score" }] };
   const lignes = [
     { date_passage: "2026-01-05", intitule: "A", score: 1, score_max: 2 },
     { date_passage: "2026-01-06", intitule: "B", score: 2, score_max: 2 },
   ];
-  const { requetes } = planBlocsTableau(d, { evaluations: lignes });
-  const sim = construireSimulateur(d);
-  for (const req of requetes) sim.appliquer(req);
+  const { plan, docOriginal, docCopie } = genererDeuxPhases([], entete, ligneModele(), [], { evaluations: lignes });
+  const sim = construireSimulateur(docOriginal);
+  for (const req of plan.requetes) sim.appliquer(req);
+  for (const req of planContenuTableaux(docCopie, plan)) sim.appliquer(req);
 
   const table = sim.tables[0];
   // ligne 1 = ligne modèle (en-tête en 0)
@@ -384,19 +534,17 @@ test("fidélité : toutes les lignes générées portent la même signature styl
 // MÊME moteur générique, sans traitement spécifique au Livret. Une séance sans
 // suivi fournit quand même sa ligne (champs suivi vides).
 test("bloc suivi_pedagogique dans une ligne de tableau : rendu générique, séance sans suivi incluse", () => {
-  const d = doc([tableau([
-    { cellules: [{ texte: "Date" }, { texte: "Compétences" }, { texte: "Difficultés" }] },
-    { cellules: [
-      { texte: "{{#suivi_pedagogique}}{{seance_date}}" },
-      { texte: "{{seance_competences}}" },
-      { texte: "{{suivi_difficultes}}{{/suivi_pedagogique}}" },
-    ] },
-  ])]);
+  const entete = { cellules: [{ texte: "Date" }, { texte: "Compétences" }, { texte: "Difficultés" }] };
+  const spec = { cellules: [
+    { texte: "{{#suivi_pedagogique}}{{seance_date}}" },
+    { texte: "{{seance_competences}}" },
+    { texte: "{{suivi_difficultes}}{{/suivi_pedagogique}}" },
+  ] };
   const lignes = [
     { date_seance: "2026-09-10", competences: ["communication"], activites: "Jeu", difficultes: null },
     { date_seance: "2026-09-11", competences: ["autonomie"], activites: "Bilan", difficultes: "Un peu rapide" },
   ];
-  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: lignes });
+  const { requetes } = genererDeuxPhases([], entete, spec, [], { suivi_pedagogique: lignes });
   // 2 éléments → 1 ligne insérée ; chaque séance devient une ligne (y compris sans suivi).
   assert.equal(requetes.filter((r) => r.insertTableRow).length, 1);
   const textes = requetes.filter((r) => r.insertText).map((r) => r.insertText.text);
@@ -407,13 +555,16 @@ test("bloc suivi_pedagogique dans une ligne de tableau : rendu générique, séa
   assert.ok(textes.includes("Un peu rapide"));
 });
 
-// ── DOC-7D : schéma réel Google Docs API ────────────────────
+// ── DOC-7D/7E : schéma réel Google Docs API ─────────────────
 // Les tests ci-dessous vérifient la FORME EXACTE de chaque requête (noms de
 // champs officiels, champs mutuellement exclusifs, masques `fields`), pas
 // seulement le résultat du simulateur. C'est ce qui a laissé passer la
 // requête invalide d'origine (`rowIndex` et double `tableStartLocation`).
+// DOC-7E renforce : les index de `insertText`/`deleteContentRange` doivent
+// en plus correspondre à un VRAI index de paragraphe de la copie relue —
+// plus un calcul « raisonnable » non vérifié.
 
-function validerSchemaRequete(requete) {
+function validerSchemaRequete(requete, { indexParagraphesValides } = {}) {
   const [op, c] = Object.entries(requete)[0];
   switch (op) {
     case "insertTableRow":
@@ -444,9 +595,11 @@ function validerSchemaRequete(requete) {
     case "insertText":
       assert.ok(Number.isInteger(c.location?.index), `${op} : location.index`);
       assert.equal(typeof c.text, "string", `${op} : text`);
+      if (indexParagraphesValides) assert.ok(indexParagraphesValides.has(c.location.index), `${op} : index ${c.location.index} hors paragraphe`);
       break;
     case "deleteContentRange":
       assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
+      if (indexParagraphesValides) assert.ok(indexParagraphesValides.has(c.range.startIndex), `${op} : startIndex ${c.range.startIndex} hors paragraphe`);
       break;
     case "updateTextStyle":
       assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
@@ -481,29 +634,46 @@ function ligneModele6() {
 const entete6 = () => ({ cellules: [{ texte: "Date" }, { texte: "Compétences" }, { texte: "Exercices" }, { texte: "Accompagnement" }, { texte: "Difficultés" }, { texte: "Impressions" }] });
 const seance = (d, i) => ({ date_seance: d, competences: [`c${i}`], activites: `a${i}`, accompagnement: `acc${i}`, difficultes: `diff${i}`, impressions: `imp${i}` });
 
-test("DOC-7D : schéma Google Docs valide pour 3 séances, 6 colonnes, styles conservés", () => {
-  const d = doc([tableau([entete6(), ligneModele6()])]);
-  const lignes = [seance("2026-09-08", 1), seance("2026-09-10", 2), seance("2026-09-12", 3)];
-  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: lignes });
-  for (const r of requetes) validerSchemaRequete(r);
+// Ensemble des index de PARAGRAPHE réellement écrivables dans la copie
+// (utilisé par validerSchemaRequete pour prouver que chaque insertText/
+// deleteContentRange cible un vrai paragraphe de la copie relue, jamais un
+// calcul).
+function indexParagraphesDe(docJson) {
+  const s = new Set();
+  const parcourir = (elements) => {
+    for (const el of elements || []) {
+      if (el.paragraph) s.add(el.startIndex);
+      if (el.table) for (const row of el.table.tableRows) for (const cell of row.tableCells) parcourir(cell.content);
+    }
+  };
+  parcourir(docJson.body.content);
+  return s;
+}
+
+test("DOC-7E : schéma Google Docs valide pour 3 séances, 6 colonnes, styles conservés, index tous dans un paragraphe réel", () => {
+  const { requetes, docCopie } = genererDeuxPhases([], entete6(), ligneModele6(), [], { suivi_pedagogique: [seance("2026-09-08", 1), seance("2026-09-10", 2), seance("2026-09-12", 3)] });
+  const indexValides = indexParagraphesDe(docCopie);
+  for (const r of requetes) validerSchemaRequete(r, { indexParagraphesValides: indexValides });
   assert.equal(requetes.filter((r) => r.insertTableRow).length, 2, "3 séances → 2 insertions");
-  assert.equal(requetes.filter((r) => r.updateTableRowStyle).length, 2, "2 lignes nouvelles stylées");
-  assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 12, "2 lignes × 6 cellules stylées");
+  // DOC-7E : la ligne modèle (k=0) est restaurée en plus des 2 nouvelles
+  // (k=1,2) dès qu'une insertion a eu lieu : 3 lignes stylées, pas 2.
+  assert.equal(requetes.filter((r) => r.updateTableRowStyle).length, 3, "3 lignes stylées (modèle restauré + 2 nouvelles)");
+  assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 18, "3 lignes × 6 cellules stylées");
+  assert.equal(requetes.filter((r) => r.insertText).length, 18, "3 lignes rendues × 6 cellules");
 });
 
-test("DOC-7D : 0 séance → une seule requête (deleteTableRow), aucun style", () => {
-  const d = doc([tableau([entete6(), ligneModele6()])]);
-  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: [] });
+test("DOC-7E : 0 séance → une seule requête (deleteTableRow), aucun style", () => {
+  const { requetes } = genererDeuxPhases([], entete6(), ligneModele6(), [], { suivi_pedagogique: [] });
   assert.equal(requetes.length, 1);
   validerSchemaRequete(requetes[0]);
   assert.ok(requetes[0].deleteTableRow);
 });
 
-test("DOC-7D : 1 séance → aucune insertion, aucun replay de style (ligne modèle intacte)", () => {
-  const d = doc([tableau([entete6(), ligneModele6()])]);
-  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: [seance("2026-09-08", 1)] });
-  for (const r of requetes) validerSchemaRequete(r);
+test("DOC-7E : 1 séance → aucune insertion, aucun replay de style (ligne modèle intacte), index réel", () => {
+  const { requetes, docCopie } = genererDeuxPhases([], entete6(), ligneModele6(), [], { suivi_pedagogique: [seance("2026-09-08", 1)] });
+  const indexValides = indexParagraphesDe(docCopie);
+  for (const r of requetes) validerSchemaRequete(r, { indexParagraphesValides: indexValides });
   assert.equal(requetes.filter((r) => r.insertTableRow).length, 0, "1 séance → aucune insertion");
   assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 0, "pas de replay de style pour la ligne modèle");
+  assert.equal(requetes.filter((r) => r.insertText).length, 6, "6 cellules remplies");
 });
-

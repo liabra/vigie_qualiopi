@@ -97,7 +97,11 @@ function parcourirDoc(docJson) {
           const cell = cellules.get(cle);
           cell.paragraphes++;
           if (cell.texte === null) cell.texte = texteSeg; else cell.texte += texteSeg;
-          if (cell.debut == null) { cell.debut = debut; cell.fin = fin; cell.styleParagraphe = p.paragraphStyle ?? null; }
+          // DOC-7E : seul styleParagraphe est retenu ici — les index de
+          // paragraphe (debut/fin) ne sont plus mémorisés à la détection :
+          // le plan d'écriture les relit toujours sur la copie Google Docs
+          // (planContenuTableaux), jamais depuis une capture figée.
+          if (cell.styleParagraphe === null && p.paragraphStyle) cell.styleParagraphe = p.paragraphStyle;
           for (const r of runs) {
             if (r.nonTextuel) cell.nonTextuel = true;
             if (r.style) cell.styles.add(JSON.stringify(nettoyerStyle(r.style)));
@@ -106,8 +110,18 @@ function parcourirDoc(docJson) {
         }
       } else if (el.table) {
         const t = el.table;
-        const tableDebut = t.startIndex ?? idx;
-        if (t.startIndex != null) idx = t.endIndex ?? idx;
+        // DOC-7E — trouvaille confirmée sur un VRAI document (Google Docs
+        // API réelle, pas les fixtures de test) : `startIndex`/`endIndex`
+        // ne sont JAMAIS portés par `el.table` lui-même — uniquement par
+        // l'ÉLÉMENT STRUCTUREL qui l'enveloppe (`el.startIndex`). Lire
+        // `t.startIndex` renvoie systématiquement `undefined` en
+        // production, et retombait silencieusement sur le compteur
+        // approximatif `idx` — jamais fiable pour le PLAN D'ÉCRITURE
+        // (`tableStartLocation.index`). C'est la cause la plus probable de
+        // l'erreur réelle « index hors paragraphe » : `tableDebut` était
+        // déjà faux avant même le calcul des lignes.
+        const tableDebut = el.startIndex ?? idx;
+        if (el.startIndex != null) idx = el.endIndex ?? idx;
         const lignes = t.tableRows || [];
         const nombreColonnes = Math.max(0, ...lignes.map((l) => (l.tableCells || []).reduce((s, c) => s + (c.columnSpan ?? 1), 0)));
         tables.set(tableDebut, { nombreColonnes });
@@ -127,15 +141,14 @@ function parcourirDoc(docJson) {
               tableImbriquee: (cell.content || []).some((x) => x.table),
               rowSpan: cell.rowSpan ?? 1, columnSpan: cell.columnSpan ?? 1,
               styleCellule: cell.tableCellStyle ?? null, styleLigne,
-              cleLigne, debut: null, fin: null, texte: null,
-              styleTexte: null, styleParagraphe: null, debutCellule: cell.startIndex ?? null, finCellule: cell.endIndex ?? null,
+              cleLigne, texte: null, styleTexte: null, styleParagraphe: null,
             });
             parcourir(cell.content, { type: typeCellule, tableDebut, ligneIndex: r, colonneIndex: c }, horsCorps);
             if (cell.endIndex != null) idx = cell.endIndex;
           }
           if (row.endIndex != null) idx = row.endIndex;
         }
-        if (t.endIndex != null) idx = t.endIndex;
+        if (el.endIndex != null) idx = el.endIndex;
       }
     }
   };
@@ -199,15 +212,16 @@ function inspecterLigne(tableDebut, ligneIndex, { cellules, tables }) {
     raison: null,
     nombreColonnes: nbColonnes,
     styleLigne: styleUtile(ligne[0].styleLigne),
-    // Index de fin de la ligne modèle : requis pour calculer les index des
-    // nouvelles lignes (une cellule vide = un caractère « \n »).
-    ligneFin: Math.max(...ligne.map((c) => c.finCellule ?? c.fin ?? 0)),
+    // DOC-7E : aucun index de cellule retenu ici — ni l'ancienne formule
+    // (ligneFin + k × nombreColonnes), ni la frontière de cellule
+    // (debutCellule/finCellule, qui n'est PAS celle du paragraphe
+    // écrivable). Le plan d'écriture relit toujours les vrais index sur
+    // la copie Google Docs (planContenuTableaux), jamais une valeur
+    // capturée ici.
     cellules: ligne
       .sort((a, b) => a.colonneIndex - b.colonneIndex)
       .map((c) => ({
         colonneIndex: c.colonneIndex,
-        debut: c.debutCellule ?? c.debut,
-        fin: c.finCellule ?? c.fin,
         texte: (c.texte ?? "").replace(/\n$/, ""),
         styleTexte: styleUtile(c.styleTexte),
         styleParagraphe: styleUtile(c.styleParagraphe),
@@ -304,50 +318,110 @@ function requeteLigneStyle(tableDebut, ligne, styleLigne) {
 
 // Plan complet des requêtes batchUpdate pour les blocs de tableau.
 // `blocsLignes` : { nomBloc: [ligne1, ligne2, …] } (résolus par DOC-6A/6B).
-// Ordre DÉTERMINISTE : tables du bas vers le haut, lignes du bas vers le
-// haut, cellules de droite à gauche — chaque opération d'écriture textuelle
-// se fait à un index encore stable (les insertions/suppressions suivantes
-// se font à des index PLUS BAS, déjà traités).
-export function planBlocsTableau(docJson, blocsLignes = {}) {
+//
+// DOC-7E — DEUX PHASES : les index des lignes NOUVELLES ne sont plus déduits
+// par une formule non garantie. `planStructureTableaux` ne produit QUE les
+// requêtes STRUCTURELLES (insertion/suppression de lignes + styles, index
+// relatifs à la table) et les SPECS de remplissage ; `planContenuTableaux`
+// produit les requêtes de CONTENU (texte + styles) à partir des VRAIS index
+// lus sur la copie (après relecture de `documents.get`).
+export function planStructureTableaux(docJson, blocsLignes = {}) {
   const occs = detecterBlocsTableau(docJson)
     .filter((o) => o.type === "tableau_ligne")
     .sort((a, b) => b.tableDebut - a.tableDebut);
   const requetes = [];
-  const traitees = [];
+  const blocs = [];
   for (const occ of occs) {
     const lignes = blocsLignes[occ.nom] || [];
     if (!lignes.length) {
       requetes.push({ deleteTableRow: { tableCellLocation: { tableStartLocation: { index: occ.tableDebut }, rowIndex: occ.ligneIndex, columnIndex: 0 } } });
-      traitees.push({ nom: occ.nom, elements: 0 });
+      blocs.push({ nom: occ.nom, tableDebut: occ.tableDebut, ligneIndex: occ.ligneIndex, nombreColonnes: occ.nombreColonnes, nbLignes: 0, cellulesModele: [], cellulesNouvelles: [] });
       continue;
     }
     // 1. Insertion des lignes vides (structure, index relatifs à la table).
     for (let k = 1; k < lignes.length; k++) {
       requetes.push({ insertTableRow: { tableCellLocation: { tableStartLocation: { index: occ.tableDebut }, rowIndex: occ.ligneIndex, columnIndex: 0 }, insertBelow: true } });
     }
-    // 2. Styles des lignes/cellules nouvelles (index-relatifs, sans effet
-    //    sur les index absolus).
-    for (let k = 1; k < lignes.length; k++) {
+    // 2. Styles : lignes/cellules NOUVELLES (k ≥ 1) ; restauration de la ligne
+    //    modèle (k = 0) seulement si des lignes ont été insérées — Google peut
+    //    alors avoir ajusté ses bordures, on les rejoue.
+    for (let k = (lignes.length >= 2 ? 0 : 1); k < lignes.length; k++) {
       if (occ.styleLigne) requetes.push(requeteLigneStyle(occ.tableDebut, occ.ligneIndex + k, occ.styleLigne));
       for (const cell of occ.cellules) {
         if (cell.styleCellule) requetes.push(requeteCelluleStyle(occ.tableDebut, occ.ligneIndex + k, cell.colonneIndex, cell.styleCellule));
       }
     }
-    // 3. Contenu : lignes nouvelles de bas en haut, puis la ligne modèle.
-    for (let k = lignes.length - 1; k >= 1; k--) {
-      for (let c = occ.cellules.length - 1; c >= 0; c--) {
-        const cell = occ.cellules[c];
-        const texte = rendreCellule(cell.texte, occ.nom, lignes[k]);
-        const debut = occ.ligneFin + (k - 1) * occ.nombreColonnes + cell.colonneIndex;
-        requetes.push(...requetesCelluleTexte({ debut, fin: debut + 1, texte, styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe }));
+    // 3. Specs de remplissage (texte rendu + styles), index résolus plus tard.
+    const cellulesModele = occ.cellules.map((cell) => ({
+      colonneIndex: cell.colonneIndex, texte: rendreCellule(cell.texte, occ.nom, lignes[0]),
+      styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe,
+    }));
+    const cellulesNouvelles = [];
+    for (let k = 1; k < lignes.length; k++) {
+      for (const cell of occ.cellules) {
+        cellulesNouvelles.push({
+          k, colonneIndex: cell.colonneIndex, texte: rendreCellule(cell.texte, occ.nom, lignes[k]),
+          styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe,
+        });
       }
     }
-    for (let c = occ.cellules.length - 1; c >= 0; c--) {
-      const cell = occ.cellules[c];
-      const texte = rendreCellule(cell.texte, occ.nom, lignes[0]);
-      requetes.push(...requetesCelluleTexte({ debut: cell.debut, fin: cell.fin, texte, styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe }));
-    }
-    traitees.push({ nom: occ.nom, elements: lignes.length });
+    blocs.push({ nom: occ.nom, tableDebut: occ.tableDebut, ligneIndex: occ.ligneIndex, nombreColonnes: occ.nombreColonnes, nbLignes: lignes.length, cellulesModele, cellulesNouvelles });
   }
-  return { requetes, occurrences: traitees };
+  return { requetes, blocs };
+}
+
+// Retrouve une table dans le JSON de la COPIE par son startIndex (inchangé
+// par l'insertion de lignes : l'index d'une table ne bouge qu'en cas d'écriture
+// AVANT elle, ce qui n'arrive pas en phase structurelle).
+function trouverTable(copyJson, tableDebut) {
+  for (const el of copyJson?.body?.content || []) {
+    // `el.startIndex`, pas `el.table.startIndex` (toujours absent en
+    // réel) — voir le commentaire détaillé dans parcourirDoc().
+    if (el.table && el.startIndex === tableDebut) return el.table;
+  }
+  return null;
+}
+
+// DOC-7E — le point exact de l'audit demandé : la limite ÉCRIVABLE d'une
+// cellule n'est PAS sa frontière structurelle (`tableCell.startIndex` /
+// `.endIndex`, la frontière de la CELLULE elle-même), mais celle de son
+// PREMIER PARAGRAPHE (`cell.content[0].startIndex/.endIndex`) — exactement
+// comme `parcourirDoc()` le fait déjà pour la détection. Insérer à la
+// frontière de cellule a produit l'erreur réelle « index hors paragraphe »
+// (ex. index 756 refusé par Google) : ce n'était pas qu'un problème de
+// FORMULE non garantie (corrigé par la relecture ci-dessous), mais aussi un
+// problème de RÉFÉRENCE (la mauvaise frontière était ciblée, relue ou non).
+function paragrapheCellule(cell) {
+  const el = (cell?.content || []).find((x) => x.paragraph);
+  return el ? { debut: el.startIndex, fin: el.endIndex } : null;
+}
+
+// Requêtes de CONTENU (texte + styles), à partir des VRAIS index de la copie
+// (relecture après insertion). Ordre déterministe DESCENDANT : lignes nouvelles
+// du bas vers le haut, puis ligne modèle ; cellules de droite à gauche — chaque
+// écriture se fait à un index encore stable.
+export function planContenuTableaux(copyJson, plan) {
+  const requetes = [];
+  const blocs = [...(plan.blocs || [])].sort((a, b) => b.tableDebut - a.tableDebut);
+  for (const bloc of blocs) {
+    if (!bloc.nbLignes) continue;
+    const table = trouverTable(copyJson, bloc.tableDebut);
+    if (!table) continue;
+    const lignes = table.tableRows || [];
+    // Lignes nouvelles, de bas en haut, cellules de droite à gauche.
+    const nouvelles = [...(bloc.cellulesNouvelles || [])].sort((a, b) => (b.k - a.k) || (b.colonneIndex - a.colonneIndex));
+    for (const cell of nouvelles) {
+      const p = paragrapheCellule(lignes[bloc.ligneIndex + cell.k]?.tableCells?.[cell.colonneIndex]);
+      if (!p) continue;
+      requetes.push(...requetesCelluleTexte({ debut: p.debut, fin: p.fin, texte: cell.texte, styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe }));
+    }
+    // Ligne modèle, cellules de droite à gauche.
+    const modele = [...(bloc.cellulesModele || [])].sort((a, b) => b.colonneIndex - a.colonneIndex);
+    for (const cell of modele) {
+      const p = paragrapheCellule(lignes[bloc.ligneIndex]?.tableCells?.[cell.colonneIndex]);
+      if (!p) continue;
+      requetes.push(...requetesCelluleTexte({ debut: p.debut, fin: p.fin, texte: cell.texte, styleTexte: cell.styleTexte, styleParagraphe: cell.styleParagraphe }));
+    }
+  }
+  return requetes;
 }

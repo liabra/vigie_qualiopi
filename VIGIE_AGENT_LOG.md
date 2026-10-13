@@ -3649,3 +3649,124 @@ fait qu'après le COMMIT base, jamais sur un échec.
 
 
 
+
+## 2026-10-13 — DOC-7E : corriger les index et la fidélité des tableaux Google Docs (non commité)
+
+### Contexte
+
+Un test réel sur une copie isolée du Livret FSE-IA (via Google Docs API) a confirmé que le
+correctif DOC-7D (schéma des requêtes) était nécessaire mais pas suffisant : les requêtes
+étaient désormais acceptées par Google, mais les INDEX d'insertion restaient faux (insertion
+tentée à l'index 756, refusée — « hors paragraphe »), les nouvelles cellules ne portaient pas
+toujours les propriétés de la ligne modèle, et la ligne modèle elle-même pouvait voir ses
+bordures ajustées par Google après insertion.
+
+### A — Correction des index : architecture à DEUX PHASES
+
+`blocsTableaux.js` — `planBlocsTableau()` est remplacée par deux fonctions :
+- `planStructureTableaux(docJson, blocsLignes)` : UNIQUEMENT les requêtes STRUCTURELLES
+  (`insertTableRow`/`deleteTableRow`, styles lignes/cellules, index relatifs à la table —
+  stables) + des **specs** de remplissage (texte rendu, styles), **sans aucun index de
+  cellule calculé**.
+- `planContenuTableaux(copyJson, plan)` : les requêtes de CONTENU (texte + styles), à partir
+  des **vrais index lus sur la copie** (après une relecture `documents.get` suivant la phase
+  structurelle) — plus jamais une formule (`ligneFin + (k-1) × nombreColonnes + colonneIndex`,
+  supprimée).
+
+`documents.js` (`copierEtRemplir`) orchestre le flux réel : copie → **phase 1** (structure,
+`batchUpdate`) → **relecture** (`documents.get`, **seulement si** au moins un bloc a ajouté des
+lignes — `aNouvellesLignes`) → **phase 2** (contenu avec les vrais index, `batchUpdate`) →
+relecture finale (vérification des balises résiduelles, déjà existante).
+
+**Deuxième bug trouvé pendant l'audit, distinct de la formule** : `inspecterLigne()` utilisait
+`debutCellule`/`finCellule` (la frontière de la CELLULE, `tableCell.startIndex`) en priorité
+sur le vrai début du PARAGRAPHE — exactement le point signalé. Ces champs morts (plus utilisés
+par le plan d'écriture à deux phases) ont été retirés. La frontière réellement écrivable
+(`cell.content[0].startIndex/.endIndex`, le PREMIER PARAGRAPHE de la cellule — jamais
+`tableCell.startIndex` lui-même) est désormais relue fraîchement sur la copie à chaque écriture
+(`paragrapheCellule()`), pour le modèle ET les nouvelles lignes.
+
+**Troisième bug, le plus probablement responsable de l'échec réel (« index 756 »), trouvé par
+une LECTURE réelle `documents.get` sur la copie technique** : `parcourirDoc()` et
+`trouverTable()` lisaient `el.table.startIndex`/`.endIndex` pour `tableDebut` — or sur un VRAI
+document Google Docs, **`startIndex`/`endIndex` ne sont jamais portés par l'objet `table`
+lui-même**, uniquement par l'élément structurel qui l'ENVELOPPE (`el.startIndex`). Confirmé
+noir sur blanc sur la copie technique (`el.table.startIndex === undefined`, `el.startIndex`
+correct). La lecture retombait silencieusement sur un compteur séquentiel approximatif
+(`idx`), documenté comme « jamais fiable pour le plan d'écriture » — et pourtant utilisé pour
+`tableStartLocation.index` dans TOUTES les requêtes de tableau. Corrigé : `el.startIndex` partout
+(détection ET `trouverTable`). Les fixtures de test ont été durcies pour ne PLUS porter
+`startIndex`/`endIndex` sur `table` (comme la vraie API), afin qu'un retour à l'ancien bug fasse
+échouer les tests au lieu de les laisser passer à tort.
+
+### B — Fidélité des styles
+
+- La restauration du style de la ligne MODÈLE (bordures potentiellement ajustées par Google) est
+  rejouée dès qu'au moins une ligne est insérée (pas seulement les nouvelles) — déjà présent dans
+  le correctif DOC-7E initial, conservé et re-testé explicitement.
+- Comparaison RÉELLE tentée (voir § Vérification réelle) : lecture avant/après via
+  `documents.get`, pas seulement les commandes envoyées — bloquée par un droit d'accès (voir
+  limites).
+
+### C — Tests (voir détail § Vérification réelle pour la distinction simulé/réel)
+
+- `blocsTableaux.test.js` entièrement réécrit pour le flux à deux phases (29 tests) : 0/1/3
+  éléments, 6 colonnes, ordre de rendu (bas en haut) vérifié explicitement, champ facultatif
+  (`absence_motif`) vide sans erreur, **aucun texte inséré dans une mauvaise cellule** (vérifié
+  par comparaison directe avec les index de la copie), schéma Google Docs réel + **tous les
+  index d'écriture vérifiés comme appartenant à un vrai paragraphe de la copie** (nouveau,
+  `indexParagraphesDe()`), simulateur d'index rejouant les DEUX phases à la suite.
+- `documents.test.js` : 3 tests d'orchestration ajoutés — 3 lignes (2 nouvelles) → 2
+  `batchUpdate` + 1 relecture structurelle + 1 vérification finale ; 1 ligne (aucune nouvelle)
+  → aucune relecture structurelle ; échec du `batchUpdate` de CONTENU (2ᵉ appel) → l'erreur
+  REMONTE (jamais avalée), tout-ou-rien préservé au niveau du document livré.
+- Non-régression Convocation/Attestation : aucune balise de tableau dans ces modèles, chemin
+  `copierEtRemplir` sans bloc inchangé — confirmé par les tests existants de
+  `generationRobuste.test.js`, tous verts.
+
+### D — Sécurité
+
+Aucune table, aucune colonne, aucune route, aucun composant frontend, aucune permission
+modifiés. Le tout-ou-rien du document LIVRÉ reste garanti : `copierEtRemplir()` conserve son
+`try/catch` unique autour de l'intégralité du flux (copie → phase 1 → relecture → phase 2) —
+toute erreur à n'importe quelle étape met la copie à la corbeille (`nettoyerCopies`) et ne
+laisse **aucune** ligne `documents_generes`/`preuves` écrite (le COMMIT base n'a jamais lieu),
+vérifié par le test d'échec du 2ᵉ `batchUpdate` ci-dessus.
+
+### Vérification réelle (copie technique Google Docs)
+
+Distinction explicite demandée :
+
+- **Tests SIMULÉS** (tous les tests listés en § C ci-dessus) : 100 % verts, backend complet
+  **769/769 deux fois** (766 avant + 3), `diff --check` propre. Aucun accès réseau, aucune
+  donnée réelle.
+- **Test RÉEL** (copie technique `1iMjUTmJ4O55huVC6YwjmZnIosvp04fOlkLpBnahe-ZM`, via
+  `railway run` + les identifiants Drive de production, en utilisant le CODE RÉEL du dépôt —
+  pas une réimplémentation) :
+  - **Lecture réelle réussie** (`documents.get`) : a permis de DÉCOUVRIR et CONFIRMER le
+    troisième bug (`el.table.startIndex` toujours `undefined` en réel) avant même de tenter une
+    écriture — preuve empirique, pas une supposition.
+  - **Écriture réelle BLOQUÉE** : le premier `batchUpdate` (nettoyage des lignes résiduelles
+    d'un essai précédent, avant le test à 3 séances) a échoué avec *« The caller does not have
+    permission »*. Le compte Drive de production peut LIRE la copie mais n'a pas les droits
+    d'ÉDITION dessus (partage probablement en lecture seule). **Aucune écriture n'a eu lieu** —
+    la copie reste exactement dans l'état où le dernier essai (utilisateur) l'avait laissée (4
+    lignes : en-tête, ligne modèle intacte avec ses balises, 2 lignes vides résiduelles).
+  - Le round-trip complet (phase 1 réelle → relecture réelle → phase 2 réelle → comparaison de
+    styles avant/après) **n'a donc pas pu être rejoué** dans cet environnement.
+
+### Ce qui reste à vérifier avant déploiement
+
+1. **Round-trip réel complet**, une fois l'accès en édition accordé au compte Drive de
+   production sur une copie de test (ou en relançant le test manuellement comme précédemment) :
+   confirmer que `insertTableRow`/`updateTableRowStyle`/`updateTableCellStyle` acceptent les
+   nouveaux index (`el.startIndex`), que les 3 séances produisent bien 4 lignes sans balise
+   résiduelle, et comparer RÉELLEMENT les propriétés de style avant/après (bordures, marges,
+   hauteur de ligne) — ce que seuls les tests simulés approximent aujourd'hui.
+2. Les 2 lignes vides résiduelles actuellement présentes sur la copie technique (d'un essai
+   précédent) n'ont pas été nettoyées (l'écriture a échoué) : à faire manuellement, ou lors du
+   prochain essai avec accès en édition.
+3. Le bug `el.table.startIndex` étant structurel à l'API (pas spécifique à ce document), sa
+   correction s'applique à tout modèle utilisant un bloc en ligne de tableau — mais seul un
+   round-trip réel le confirme définitivement sur un cas non trivial (fusions de cellules
+   absentes, styles réellement hétérogènes, etc.).

@@ -312,14 +312,14 @@ function construireSimulateur(docJson) {
         decaler(debut, debut - fin);
         t.lignes.splice(rowIndex, 1);
       } else if (requete.updateTableCellStyle) {
-        const { tableStartLocation, tableRange, tableCellStyle } = requete.updateTableCellStyle;
+        const { tableRange, tableCellStyle } = requete.updateTableCellStyle;
+        const { tableStartLocation, rowIndex, columnIndex } = tableRange.tableCellLocation;
         const t = tables.find((x) => x.debut === tableStartLocation.index);
-        const { rowIndex, columnIndex } = tableRange.tableCellLocation;
         t.lignes[rowIndex].cellules[columnIndex].styleCellule = tableCellStyle;
       } else if (requete.updateTableRowStyle) {
-        const { tableStartLocation, rowIndex, tableRowStyle } = requete.updateTableRowStyle;
+        const { tableStartLocation, rowIndices, tableRowStyle } = requete.updateTableRowStyle;
         const t = tables.find((x) => x.debut === tableStartLocation.index);
-        t.lignes[rowIndex].styleLigne = tableRowStyle;
+        for (const ri of rowIndices) t.lignes[ri].styleLigne = tableRowStyle;
       }
       // updateTextStyle / updateParagraphStyle : sans effet sur la signature
       // structurelle vérifiée ici (styles cellule + ligne).
@@ -405,5 +405,105 @@ test("bloc suivi_pedagogique dans une ligne de tableau : rendu générique, séa
   assert.ok(textes.includes("11/09/2026"));
   assert.ok(textes.includes("autonomie"));
   assert.ok(textes.includes("Un peu rapide"));
+});
+
+// ── DOC-7D : schéma réel Google Docs API ────────────────────
+// Les tests ci-dessous vérifient la FORME EXACTE de chaque requête (noms de
+// champs officiels, champs mutuellement exclusifs, masques `fields`), pas
+// seulement le résultat du simulateur. C'est ce qui a laissé passer la
+// requête invalide d'origine (`rowIndex` et double `tableStartLocation`).
+
+function validerSchemaRequete(requete) {
+  const [op, c] = Object.entries(requete)[0];
+  switch (op) {
+    case "insertTableRow":
+      assert.ok(Number.isInteger(c.tableCellLocation?.tableStartLocation?.index), `${op} : tableStartLocation.index`);
+      assert.ok(Number.isInteger(c.tableCellLocation?.rowIndex), `${op} : rowIndex`);
+      assert.equal(c.tableCellLocation.columnIndex, 0, `${op} : columnIndex = 0`);
+      assert.equal(typeof c.insertBelow, "boolean", `${op} : insertBelow`);
+      break;
+    case "deleteTableRow":
+      assert.ok(Number.isInteger(c.tableCellLocation?.tableStartLocation?.index), `${op} : tableStartLocation.index`);
+      assert.ok(Number.isInteger(c.tableCellLocation?.rowIndex), `${op} : rowIndex`);
+      break;
+    case "updateTableCellStyle":
+      assert.equal(c.tableStartLocation, undefined, `${op} : tableStartLocation interdit avec tableRange`);
+      assert.ok(Number.isInteger(c.tableRange?.tableCellLocation?.tableStartLocation?.index), `${op} : tableRange.tableCellLocation.tableStartLocation.index`);
+      assert.ok(Number.isInteger(c.tableRange?.tableCellLocation?.rowIndex), `${op} : rowIndex`);
+      assert.ok(Number.isInteger(c.tableRange?.tableCellLocation?.columnIndex), `${op} : columnIndex`);
+      assert.ok(c.tableCellStyle, `${op} : tableCellStyle`);
+      assert.equal(c.fields, "*", `${op} : fields`);
+      break;
+    case "updateTableRowStyle":
+      assert.ok(Array.isArray(c.rowIndices) && c.rowIndices.length === 1 && Number.isInteger(c.rowIndices[0]), `${op} : rowIndices (tableau)`);
+      assert.equal(c.rowIndex, undefined, `${op} : rowIndex interdit`);
+      assert.ok(Number.isInteger(c.tableStartLocation?.index), `${op} : tableStartLocation.index`);
+      assert.ok(c.tableRowStyle, `${op} : tableRowStyle`);
+      assert.equal(c.fields, "*", `${op} : fields`);
+      break;
+    case "insertText":
+      assert.ok(Number.isInteger(c.location?.index), `${op} : location.index`);
+      assert.equal(typeof c.text, "string", `${op} : text`);
+      break;
+    case "deleteContentRange":
+      assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
+      break;
+    case "updateTextStyle":
+      assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
+      assert.ok(c.textStyle, `${op} : textStyle`);
+      assert.equal(c.fields, "*", `${op} : fields`);
+      break;
+    case "updateParagraphStyle":
+      assert.ok(Number.isInteger(c.range?.startIndex) && Number.isInteger(c.range?.endIndex), `${op} : range`);
+      assert.ok(c.paragraphStyle, `${op} : paragraphStyle`);
+      assert.equal(c.fields, "*", `${op} : fields`);
+      break;
+    default:
+      assert.fail(`opération inconnue : ${op}`);
+  }
+}
+
+// Ligne modèle à six colonnes (structure du Livret), styles différenciés.
+function ligneModele6() {
+  const fond = (n) => ({ backgroundColor: { color: { rgbColor: { red: n % 2, green: (n + 1) % 2, blue: 0 } } } });
+  return {
+    styleLigne: { minRowHeight: { magnitude: 24, unit: "PT" } },
+    cellules: [
+      { texte: "{{#suivi_pedagogique}}{{seance_date}}", styleCellule: fond(0), styleTexte: { bold: true }, styleParagraphe: { alignment: "CENTER" } },
+      { texte: "{{seance_competences}}", styleCellule: fond(1), styleTexte: { italic: true } },
+      { texte: "{{seance_activites}}", styleCellule: fond(2), styleTexte: {} },
+      { texte: "{{suivi_accompagnement}}", styleCellule: fond(3), styleTexte: {} },
+      { texte: "{{suivi_difficultes}}", styleCellule: fond(4), styleTexte: {} },
+      { texte: "{{suivi_impressions}}{{/suivi_pedagogique}}", styleCellule: fond(5), styleTexte: {} },
+    ],
+  };
+}
+const entete6 = () => ({ cellules: [{ texte: "Date" }, { texte: "Compétences" }, { texte: "Exercices" }, { texte: "Accompagnement" }, { texte: "Difficultés" }, { texte: "Impressions" }] });
+const seance = (d, i) => ({ date_seance: d, competences: [`c${i}`], activites: `a${i}`, accompagnement: `acc${i}`, difficultes: `diff${i}`, impressions: `imp${i}` });
+
+test("DOC-7D : schéma Google Docs valide pour 3 séances, 6 colonnes, styles conservés", () => {
+  const d = doc([tableau([entete6(), ligneModele6()])]);
+  const lignes = [seance("2026-09-08", 1), seance("2026-09-10", 2), seance("2026-09-12", 3)];
+  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: lignes });
+  for (const r of requetes) validerSchemaRequete(r);
+  assert.equal(requetes.filter((r) => r.insertTableRow).length, 2, "3 séances → 2 insertions");
+  assert.equal(requetes.filter((r) => r.updateTableRowStyle).length, 2, "2 lignes nouvelles stylées");
+  assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 12, "2 lignes × 6 cellules stylées");
+});
+
+test("DOC-7D : 0 séance → une seule requête (deleteTableRow), aucun style", () => {
+  const d = doc([tableau([entete6(), ligneModele6()])]);
+  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: [] });
+  assert.equal(requetes.length, 1);
+  validerSchemaRequete(requetes[0]);
+  assert.ok(requetes[0].deleteTableRow);
+});
+
+test("DOC-7D : 1 séance → aucune insertion, aucun replay de style (ligne modèle intacte)", () => {
+  const d = doc([tableau([entete6(), ligneModele6()])]);
+  const { requetes } = planBlocsTableau(d, { suivi_pedagogique: [seance("2026-09-08", 1)] });
+  for (const r of requetes) validerSchemaRequete(r);
+  assert.equal(requetes.filter((r) => r.insertTableRow).length, 0, "1 séance → aucune insertion");
+  assert.equal(requetes.filter((r) => r.updateTableCellStyle).length, 0, "pas de replay de style pour la ligne modèle");
 });
 

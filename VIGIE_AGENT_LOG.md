@@ -3587,5 +3587,65 @@ et la route dans `App.jsx`. Aucune refonte de l'interface générale.
 - ESLint : aucune config dans le projet (rien à exécuter). `git diff --check` propre.
 - Aucun bouton « Générer le Livret », aucun modèle Drive modifié, aucune donnée handicap affichée.
 
+---
+
+## 2026-10-13 — DOC-7D : corriger l'échec réel de génération Google Docs (tableaux)
+
+### Cause racine
+
+Le premier test réel du Livret FSE-IA a échoué avec HTTP 400 `INVALID_ARGUMENT`
+sur `docs.documents.batchUpdate`. Deux requêtes de style du moteur générique
+`blocsTableaux.js` ne respectaient pas le schéma officiel Google Docs API :
+- `updateTableRowStyle` utilisait `rowIndex` (scalaire) au lieu de
+  `rowIndices: [index]` (tableau).
+- `updateTableCellStyle` renseignait à la fois `tableStartLocation` et
+  `tableRange`, deux champs **mutuellement exclusifs**.
+
+Les tests simulés ne vérifiaient que le résultat du simulateur, pas la FORME
+réelle des requêtes : la requête invalide est donc passée.
+
+### Correction
+
+- `requeteCelluleStyle` : ne garde que `tableRange` (dont `tableCellLocation`
+  porte son propre `tableStartLocation`) ; suppression du `tableStartLocation`
+  de premier niveau.
+- `requeteLigneStyle` : `rowIndex` → `rowIndices: [ligne]`.
+
+Audit des autres requêtes de `planBlocsTableau()` : `insertTableRow`,
+`deleteTableRow`, `insertText`, `deleteContentRange`, `updateTextStyle`,
+`updateParagraphStyle` sont conformes (index corrects, masques `fields: "*"`,
+suppression des balises par `deleteContentRange`).
+
+### Tests ajoutés (`server/test/blocsTableaux.test.js`)
+
+- `validerSchemaRequete()` : vérifie la FORME EXACTE de chaque requête (noms de
+  champs officiels, champs mutuellement exclusifs, `rowIndices` tableau, `fields`).
+- 0 / 1 / 3 séances dans un tableau à **six colonnes** (structure du Livret),
+  styles d'origine conservés : 0 → `deleteTableRow` seul ; 1 → aucune insertion
+  ni replay de style ; 3 → 2 insertions + 2 `updateTableRowStyle` +
+  12 `updateTableCellStyle` (2 lignes × 6 cellules).
+- Simulateur mis à jour pour lire `rowIndices` et `tableRange.tableCellLocation`.
+
+### Nettoyage (échec précédent)
+
+La copie Drive créée avant le refus Google est mise à la corbeille par
+`nettoyerCopies()` (déjà couvert par `generationRobuste.test.js`
+« un échec batchUpdate après copie met la copie à la corbeille et n'écrit rien ») :
+aucun document valide (ancien) n'est supprimé — l'archivage des anciens ne se
+fait qu'après le COMMIT base, jamais sur un échec.
+
+### Limites / prochaine étape
+
+- **Test réel Google Docs non exécuté** : aucun accès Google de développement
+  disponible localement (`.env` périmé, Drive non connecté). À effectuer sur une
+  copie isolée avec données fictives avant le prochain déploiement : vérifier
+  qu'un vrai `batchUpdate` accepte les requêtes et que le document comporte bien
+  4 lignes (en-tête + 3 séances) sans balise résiduelle.
+
+### Validation
+
+- Backend **762/762** (759 avant → +3), `git diff --check` propre. Frontend non
+  concerné.
+
 
 

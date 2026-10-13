@@ -280,9 +280,12 @@ function requetesCelluleTexte({ debut, fin, texte, styleTexte, styleParagraphe }
 }
 
 function requeteCelluleStyle(tableDebut, ligne, colonne, styleCellule) {
+  // UpdateTableCellStyleRequest : `tableRange` et `tableStartLocation` sont
+  // MUTUELLEMENT EXCLUSIFS. Pour cibler une cellule arbitraire, on n'utilise
+  // que `tableRange` (dont `tableCellLocation` porte son propre
+  // `tableStartLocation`).
   return {
     updateTableCellStyle: {
-      tableStartLocation: { index: tableDebut },
       tableRange: {
         tableCellLocation: { tableStartLocation: { index: tableDebut }, rowIndex: ligne, columnIndex: colonne },
         rowSpan: 1, columnSpan: 1,
@@ -294,7 +297,9 @@ function requeteCelluleStyle(tableDebut, ligne, colonne, styleCellule) {
 }
 
 function requeteLigneStyle(tableDebut, ligne, styleLigne) {
-  return { updateTableRowStyle: { tableStartLocation: { index: tableDebut }, rowIndex: ligne, tableRowStyle: styleLigne, fields: "*" } };
+  // UpdateTableRowStyleRequest : les lignes ciblées sont données par
+  // `rowIndices` (tableau), PAS par un `rowIndex` scalaire.
+  return { updateTableRowStyle: { tableStartLocation: { index: tableDebut }, rowIndices: [ligne], tableRowStyle: styleLigne, fields: "*" } };
 }
 
 // Plan complet des requêtes batchUpdate pour les blocs de tableau.

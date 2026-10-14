@@ -54,3 +54,29 @@ export async function dependancesSession(id) {
   const blocages = Object.entries(d || {}).filter(([, n]) => Number(n) > 0).map(([cle]) => libelles[cle]);
   return { vide: blocages.length === 0, blocages };
 }
+
+// Dépendances d'une formation : comptes des lignes métier qui lui sont
+// rattachées. Une formation n'est supprimable QUE si tous ces comptes sont
+// à zéro — on ne cascade JAMAIS une session, une preuve, un signalement ou
+// une action qualité (les colonnes formation_id SET NULL de ces tables ne
+// doivent jamais orpheliner silencieusement une donnée métier). Les
+// formation_versions et intervenants_formations (CASCADE) sont du contenu
+// et des rattachements, pas de l'historique à conserver.
+export const DEPENDANCES_FORMATION_SQL = `
+  SELECT
+    (SELECT count(*) FROM sessions s WHERE s.formation_id = $1)::int AS sessions,
+    (SELECT count(*) FROM preuves p WHERE p.formation_id = $1)::int AS preuves,
+    (SELECT count(*) FROM signalements_qualite q WHERE q.formation_id = $1)::int AS signalements,
+    (SELECT count(*) FROM actions_qualite a WHERE a.formation_id = $1)::int AS actions
+`;
+
+// Renvoie { vide, blocages } : `blocages` = libellés des données présentes.
+export async function dependancesFormation(id) {
+  const { rows: [d] } = await query(DEPENDANCES_FORMATION_SQL, [id]);
+  const libelles = {
+    sessions: "des sessions", preuves: "des preuves",
+    signalements: "des signalements qualité", actions: "des actions qualité",
+  };
+  const blocages = Object.entries(d || {}).filter(([, n]) => Number(n) > 0).map(([cle]) => libelles[cle]);
+  return { vide: blocages.length === 0, blocages };
+}

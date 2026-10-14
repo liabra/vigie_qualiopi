@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { Alert, Badge, Button, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
+import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 
 export const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
@@ -25,6 +25,10 @@ export function FormationsPage() {
   const [err, setErr] = useState(null);
   const [panneau, setPanneau] = useState(null); // { mode: "creation" } | { mode: "revision", formation }
   const [succes, setSucces] = useState(null);
+  const [erreurAction, setErreurAction] = useState(null);
+  const [etat, setEtat] = useState("actives"); // actives | archivees
+  const [aSupprimer, setASupprimer] = useState(null);
+  const [enCours, setEnCours] = useState(null); // id en cours d'action
 
   const charger = useCallback(async () => {
     try { setFormations((await api("/api/formations")).formations); setErr(null); } catch (e) { setErr(e.message); }
@@ -32,6 +36,33 @@ export function FormationsPage() {
   useEffect(() => { charger(); }, [charger]);
 
   const nouvelle = <Button variante="primary" onClick={() => { setSucces(null); setPanneau({ mode: "creation" }); }}>+ Nouvelle formation</Button>;
+
+  const affichees = formations
+    ? formations.filter((f) => (etat === "actives" ? f.actif !== false : f.actif === false))
+    : [];
+
+  // Archiver / réactiver : bascule réversible, sans nouvelle version.
+  async function changerActif(f, actif) {
+    setEnCours(f.id); setSucces(null); setErreurAction(null);
+    try {
+      await api(`/api/formations/${f.id}/actif`, { method: "PATCH", body: JSON.stringify({ actif }) });
+      await charger();
+      setSucces(actif ? `« ${f.intitule} » est réactivée.` : `« ${f.intitule} » est archivée.`);
+    } catch (e) { setErreurAction(e.message); }
+    finally { setEnCours(null); }
+  }
+
+  // Suppression définitive : refusée par le serveur si la formation est utilisée.
+  async function supprimer(f) {
+    setEnCours(f.id); setSucces(null); setErreurAction(null);
+    try {
+      await api(`/api/formations/${f.id}`, { method: "DELETE" });
+      setASupprimer(null);
+      await charger();
+      setSucces(`Formation « ${f.intitule} » supprimée.`);
+    } catch (e) { setErreurAction(e.message); }
+    finally { setEnCours(null); }
+  }
 
   return (
     <>
@@ -42,6 +73,7 @@ export function FormationsPage() {
         actions={formations?.length > 0 && nouvelle}
       />
       {succes && <Alert ton="success">{succes}</Alert>}
+      {erreurAction && <Alert ton="error" titre="L'action n'a pas abouti.">{erreurAction}</Alert>}
       {err && <Alert ton="error" titre="Les formations n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
       {!formations && !err && <LoadingState texte="Chargement des formations…" />}
 
@@ -52,45 +84,77 @@ export function FormationsPage() {
       )}
 
       {formations?.length > 0 && (
-        <table className="sess-table param-table">
-          <caption className="visually-hidden">Formations ({formations.length})</caption>
-          <thead>
-            <tr>
-              <th scope="col">Formation</th>
-              <th scope="col">Version</th>
-              <th scope="col">Durée par défaut</th>
-              <th scope="col">Modalité</th>
-              <th scope="col">Tarif</th>
-              <th scope="col" className="sess-num">Sessions</th>
-              <th scope="col"><span className="visually-hidden">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {formations.map((f) => (
-              <tr key={f.id} className={f.actif === false ? "sess-table__ligne--estompee" : undefined}>
-                <td data-label="Formation" className="sess-table__principal">
-                  {f.intitule}
-                  {f.code_interne && <span className="sess-secondaire">Code {f.code_interne}</span>}
-                  {f.actif === false && <span className="param-statut"><Badge>Inactive</Badge></span>}
-                </td>
-                <td data-label="Version">
-                  Version {f.version_numero || "—"}
-                  {f.nb_versions > 1 && <span className="sess-secondaire">{f.nb_versions} versions au total</span>}
-                </td>
-                <td data-label="Durée par défaut">{heures(f.duree_heures_defaut) || "—"}</td>
-                <td data-label="Modalité">{MODALITES[f.modalite] || "—"}</td>
-                <td data-label="Tarif">{euros(f.tarif_ht) || "—"}</td>
-                <td data-label="Sessions" className="sess-num">{f.nb_sessions ?? 0}</td>
-                <td className="sess-table__actions">
-                  <Button compact aria-label={`Réviser la formation ${f.intitule}`}
-                    onClick={() => { setSucces(null); setPanneau({ mode: "revision", formation: f }); }}>
-                    Réviser
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="sess-filtres">
+            <div className="sess-etats" role="group" aria-label="Actives ou archivées">
+              <button type="button" aria-pressed={etat === "actives"}
+                className={"sess-etat" + (etat === "actives" ? " sess-etat--active" : "")}
+                onClick={() => setEtat("actives")}>
+                Actives
+              </button>
+              <button type="button" aria-pressed={etat === "archivees"}
+                className={"sess-etat" + (etat === "archivees" ? " sess-etat--active" : "")}
+                onClick={() => setEtat("archivees")}>
+                Archivées
+              </button>
+            </div>
+          </div>
+
+          {affichees.length === 0 ? (
+            <EmptyState titre={etat === "actives" ? "Aucune formation active" : "Aucune formation archivée"}>
+              {etat === "actives" ? "Aucune formation active dans le catalogue." : "Archivez une formation pour la retrouver ici."}
+            </EmptyState>
+          ) : (
+            <table className="sess-table param-table">
+              <caption className="visually-hidden">Formations ({affichees.length})</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Formation</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Durée par défaut</th>
+                  <th scope="col">Modalité</th>
+                  <th scope="col">Tarif</th>
+                  <th scope="col" className="sess-num">Sessions</th>
+                  <th scope="col"><span className="visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {affichees.map((f) => (
+                  <tr key={f.id} className={f.actif === false ? "sess-table__ligne--estompee" : undefined}>
+                    <td data-label="Formation" className="sess-table__principal">
+                      {f.intitule}
+                      {f.code_interne && <span className="sess-secondaire">Code {f.code_interne}</span>}
+                      {f.actif === false && <span className="param-statut"><Badge>Inactive</Badge></span>}
+                    </td>
+                    <td data-label="Version">
+                      Version {f.version_numero || "—"}
+                      {f.nb_versions > 1 && <span className="sess-secondaire">{f.nb_versions} versions au total</span>}
+                    </td>
+                    <td data-label="Durée par défaut">{heures(f.duree_heures_defaut) || "—"}</td>
+                    <td data-label="Modalité">{MODALITES[f.modalite] || "—"}</td>
+                    <td data-label="Tarif">{euros(f.tarif_ht) || "—"}</td>
+                    <td data-label="Sessions" className="sess-num">{f.nb_sessions ?? 0}</td>
+                    <td className="sess-table__actions">
+                      <Button compact aria-label={`Réviser la formation ${f.intitule}`}
+                        onClick={() => { setSucces(null); setPanneau({ mode: "revision", formation: f }); }}>
+                        Réviser
+                      </Button>
+                      {f.actif !== false
+                        ? <Button compact aria-label={`Archiver la formation ${f.intitule}`} disabled={enCours === f.id}
+                            onClick={() => changerActif(f, false)}>{enCours === f.id ? "Archivage…" : "Archiver"}</Button>
+                        : <Button compact aria-label={`Réactiver la formation ${f.intitule}`} disabled={enCours === f.id}
+                            onClick={() => changerActif(f, true)}>{enCours === f.id ? "Réactivation…" : "Réactiver"}</Button>}
+                      <Button compact variante="danger" aria-label={`Supprimer la formation ${f.intitule}`} disabled={enCours === f.id}
+                        onClick={() => { setSucces(null); setErreurAction(null); setASupprimer(f); }}>
+                        Supprimer
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
 
       <PanneauFormation
@@ -98,6 +162,15 @@ export function FormationsPage() {
         onFermer={() => setPanneau(null)}
         onEnregistree={async (message) => { setPanneau(null); setSucces(message); await charger(); }}
       />
+
+      <ConfirmDialog
+        ouvert={!!aSupprimer} titre="Supprimer définitivement cette formation ?"
+        libelleConfirmer="Supprimer" enCours={enCours === aSupprimer?.id}
+        onConfirmer={() => supprimer(aSupprimer)} onAnnuler={() => setASupprimer(null)}
+      >
+        <p>« {aSupprimer?.intitule} » sera définitivement supprimée du catalogue.</p>
+        <p>La suppression est refusée si des sessions, preuves ou actions qualité y sont rattachées. Cette opération est irréversible.</p>
+      </ConfirmDialog>
     </>
   );
 }

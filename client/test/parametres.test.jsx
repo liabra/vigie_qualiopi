@@ -135,6 +135,75 @@ test("formations : réviser crée une nouvelle version sans perdre les champs no
   assert.equal(corps.intitule, "Aide à domicile");
 });
 
+const FORMATION_ARCHIVEE = { ...FORMATION, id: 8, intitule: "Agent de propreté", code_interne: "APR", actif: false, nb_sessions: 0, nb_versions: 1 };
+
+test("formations : filtre actives / archivées (vue active par défaut)", async () => {
+  await monter("/formations", "admin", { "GET /api/formations": { formations: [FORMATION, FORMATION_ARCHIVEE] } });
+  await attendre(() => texte().includes("Aide à domicile"));
+  assert.ok(bouton("Actives") && bouton("Archivées"), "les deux vues sont proposées");
+  assert.ok(texte().includes("Aide à domicile"), "formation active visible par défaut");
+  assert.ok(!texte().includes("Agent de propreté"), "formation archivée masquée par défaut");
+  await cliquer(bouton("Archivées"));
+  await attendre(() => texte().includes("Agent de propreté"));
+  assert.ok(!texte().includes("Aide à domicile"), "formation active masquée dans la vue archivées");
+  assert.ok(texte().includes("Inactive"), "badge inactive affiché");
+});
+
+test("formations : archiver une formation active (PATCH, sans révision)", async () => {
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [FORMATION] },
+    "PATCH /api/formations/7/actif": { ok: true, actif: false },
+  });
+  await attendre(() => texte().includes("Aide à domicile"));
+  await cliquer(bouton("Archiver"));
+  await attendre(() => appels.some((a) => a.methode === "PATCH" && a.chemin === "/api/formations/7/actif"));
+  assert.deepEqual(appels.find((a) => a.methode === "PATCH").corps, { actif: false });
+  await attendre(() => texte().includes("« Aide à domicile » est archivée."));
+});
+
+test("formations : réactiver une formation archivée (PATCH actif=true)", async () => {
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [FORMATION_ARCHIVEE] },
+    "PATCH /api/formations/8/actif": { ok: true, actif: true },
+  });
+  await attendre(() => bouton("Archivées"));
+  await cliquer(bouton("Archivées"));
+  await attendre(() => texte().includes("Agent de propreté"));
+  await cliquer(bouton("Réactiver"));
+  await attendre(() => appels.some((a) => a.methode === "PATCH" && a.chemin === "/api/formations/8/actif"));
+  assert.deepEqual(appels.find((a) => a.methode === "PATCH").corps, { actif: true });
+  await attendre(() => texte().includes("« Agent de propreté » est réactivée."));
+});
+
+test("formations : suppression définitive avec confirmation (nom affiché)", async () => {
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [FORMATION] },
+    "DELETE /api/formations/7": { ok: true },
+  });
+  await attendre(() => texte().includes("Aide à domicile"));
+  await cliquer(bouton("Supprimer"));
+  await attendre(() => dialogue()?.getAttribute("role") === "alertdialog");
+  assert.ok(dialogue().textContent.includes("Aide à domicile"), "le nom de la formation est rappelé");
+  assert.equal(document.activeElement.textContent, "Annuler", "focus sur Annuler");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Supprimer"));
+  await attendre(() => appels.some((a) => a.methode === "DELETE" && a.chemin === "/api/formations/7"));
+  await attendre(() => texte().includes("Formation « Aide à domicile » supprimée."));
+});
+
+test("formations : suppression refusée par le serveur (dépendances) ⇒ erreur affichée, rien de supprimé", async () => {
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [FORMATION] },
+    "DELETE /api/formations/7": [409, { error: "Suppression refusée : « Aide à domicile » est utilisée (des sessions). Archivez-la plutôt." }],
+  });
+  await attendre(() => texte().includes("Aide à domicile"));
+  await cliquer(bouton("Supprimer"));
+  await attendre(() => dialogue()?.getAttribute("role") === "alertdialog");
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Supprimer"));
+  await attendre(() => appels.some((a) => a.methode === "DELETE"));
+  await attendre(() => texte().includes("Suppression refusée"));
+  assert.ok(texte().includes("Archivez-la plutôt"), "le serveur propose l'archivage");
+});
+
 // ── Prescripteurs ────────────────────────────────────────────
 
 const PRESCRIPTEURS = [

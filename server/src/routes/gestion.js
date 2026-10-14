@@ -26,7 +26,7 @@ import {
   normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
-import { MSG_ARCHIVEE, dependancesSession, verifierSessionActive } from "../services/archive.js";
+import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
 import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
@@ -243,6 +243,48 @@ router.get("/formations/:id/versions", requireAuth, wrap(async (req, res) => {
   res.json({ versions: rows, total: rows.length });
 }));
 
+// Archiver / réactiver : bascule du seul champ `actif`, SANS créer de
+// nouvelle version pédagogique ni toucher aux sessions historiques.
+router.patch("/formations/:id/actif", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
+  const actif = req.body?.actif;
+  if (typeof actif !== "boolean") return res.status(400).json({ error: "Champ actif invalide : booléen attendu." });
+  const { rows: [formation] } = await query(
+    "UPDATE formations SET actif = $2 WHERE id = $1 RETURNING id, actif",
+    [id, actif]
+  );
+  if (!formation) return res.status(404).json({ error: "Formation introuvable." });
+  res.json({ ok: true, actif: formation.actif });
+}));
+
+// Suppression définitive : réservée admin, refusée dès qu'une dépendance
+// métier existe (session, preuve, signalement, action qualité). Seules les
+// versions pédagogiques et les rattachements intervenants partent en cascade.
+router.delete("/formations/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
+  const { rows: [formation] } = await query("SELECT id, intitule FROM formations WHERE id = $1", [id]);
+  if (!formation) return res.status(404).json({ error: "Formation introuvable." });
+
+  const deps = await dependancesFormation(id);
+  if (!deps.vide) {
+    return res.status(409).json({
+      error: `Suppression refusée : « ${formation.intitule} » est utilisée (${deps.blocages.join(", ")}). Archivez-la plutôt.`,
+    });
+  }
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    await cx.query("DELETE FROM formations WHERE id = $1", [id]);
+    await cx.query("COMMIT");
+    res.json({ ok: true });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
+}));
+
 // ── Sessions et groupes ──────────────────────────────────────
 
 router.post("/sessions", requireAdmin, wrap(async (req, res) => {
@@ -269,6 +311,13 @@ router.post("/sessions", requireAdmin, wrap(async (req, res) => {
     [fid]
   );
   if (!version) return res.status(400).json({ error: "Cette formation n'a aucune version : complétez-la d'abord." });
+
+  // Une formation archivée ne produit plus de nouvelle session : on refuse
+  // la création côté API (les sessions historiques, elles, restent intactes).
+  const { rows: [formation] } = await query("SELECT actif FROM formations WHERE id = $1", [fid]);
+  if (formation && formation.actif === false) {
+    return res.status(400).json({ error: "Cette formation est archivée : réactivez-la avant de créer une session." });
+  }
 
   const { rows: [session] } = await query(
     `INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin,

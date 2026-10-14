@@ -3840,3 +3840,98 @@ DOC-7E).
 ### Validation
 
 Backend **773/773, deux fois** (769 + 4), `git diff --check` propre. Frontend non concerné.
+
+---
+
+## 2026-10-14 — DOC-8A : audit des finitions du Livret pédagogique (aucun code modifié)
+
+### 1. `{{session_reference}}` vide dans le Livret
+
+Confirmé **normal**. Le resolver canonique est `session_reference: (ctx) =>
+texte(ctx.session?.reference)` (`server/src/services/resolversCanoniques.js`) : quand
+`sessions.reference` est `NULL`/vide, la valeur est « absente » et le marqueur s'imprime vide.
+Aucun remplacement automatique par le nom du groupe, le nom de la formation ou un identifiant
+technique (conforme au catalogue : SES-12 « référence interne unique » est distinct de SES-02
+« libellé de session »). Pour obtenir une valeur, il suffit de renseigner le champ « Référence »
+de la session dans Vigie. **Aucune anomalie, aucune correction.**
+
+### 2. Parcours des compétences pédagogiques
+
+Chaîne complète vérifiée, **sans anomalie** :
+1. Formulaire Planning (`client/src/sessions/OngletSeances.jsx`) : compétences saisies en puces,
+   envoyées en tableau (`competences: [...]`).
+2. `server/src/routes/seances.js` — `lireCompetences()` : tableau validé, rogné, éléments vides
+   retirés, stocké dans `seances.competences` (`text[]`).
+3. Resolver `seance_competences: (l) => liste(l.competences)`
+   (`server/src/services/resolversBlocs.js`, blocs `seances` et `suivi_pedagogique`) : joint avec
+   « , ». Une liste vide reste « absente » (cellule vide, jamais un faux contenu).
+Le moteur n'est pas modifié. Étape de saisie requise : renseigner les compétences dans le
+Planning (onglet Séances), séance par séance.
+
+### 3. Proposition d'amélioration du modèle Drive
+
+**Visuelles (aucune validation métier nécessaire) :**
+- répéter la ligne d'en-tête sur les pages suivantes (propriété d'en-tête du tableau) ;
+- hauteur de lignes et espacement homogènes ;
+- mention de version/révision du modèle en pied de page.
+
+**Décisions métier (validation humaine requise) :**
+- identifier explicitement le parcours (formation) et la session (référence + dates) ;
+- liste des signataires et informations à conserver ou rendre configurables (organisme, formateur,
+  dates de signature) — à trancher avec Mme Stark avant de figer le modèle.
+
+### 4. Limites
+
+Aucune modification SQL, aucune permission, aucun modèle Drive officiel, aucune régénération.
+Aucun correctif : aucune anomalie réelle démontrée. Vérifié sur le code et les tests existants
+uniquement (pas de round-trip Drive réel dans cet environnement).
+
+---
+
+## 2026-10-14 — FORM-1 : archivage et suppression sécurisée des formations
+
+### Backend
+
+- `server/src/routes/gestion.js` :
+  - `PATCH /api/formations/:id/actif` (admin) : bascule du seul champ `actif`, **sans** créer de
+    nouvelle version pédagogique ni toucher aux sessions historiques.
+  - `DELETE /api/formations/:id` (admin) : refus **409** dès qu'une dépendance métier existe
+    (session, preuve, signalement, action qualité), transaction SQL, supprime sinon (les
+    `formation_versions` et `intervenants_formations` partent en cascade — contenu et
+    rattachements, jamais une session, un stagiaire, un document, une preuve, un indicateur ou
+    un modèle).
+  - `POST /api/sessions` : refuse **400** la création sur une formation archivée.
+- `server/src/services/archive.js` : `dependancesFormation(id)` + `DEPENDANCES_FORMATION_SQL`
+  (même patron que `dependancesSession`), bloquant sur `sessions`, `preuves`,
+  `signalements_qualite`, `actions_qualite`.
+
+### Frontend
+
+- `client/src/parametres/Formations.jsx` : filtre « Actives / Archivées » (réutilise les classes
+  `sess-etats`), actions « Archiver » (réversible, direct), « Réactiver », « Supprimer » (boîte de
+  confirmation rappelant le nom de la formation), messages d'erreur serveur relayés.
+
+### Isolation Qualiopi
+
+Aucune écriture dans `indicateurs`, `modeles_documents`, `modele_indicateurs` ni les autres tables
+du référentiel ; aucun fichier Drive touché. Testé par un comptage d'indicateurs avant/après.
+
+### Tests
+
+- Backend : `server/test/formations.test.js` (10 tests) — archivage/réactivation sans version,
+  session refusée sur formation inactive, sessions historiques intactes, suppression autorisée
+  sans dépendance, suppression bloquée (session / preuve / signalement / action), 404, droits
+  admin, isolation référentiel. `server/test/sessions.test.js` : base simulée étendue à la
+  nouvelle lecture `actif` de `POST /api/sessions`.
+- Frontend : `client/test/parametres.test.jsx` (5 tests) — filtre, archivage, réactivation,
+  suppression avec confirmation, suppression refusée (409).
+
+### Validation
+
+Backend **783/783**, frontend **350/350**, build OK, `git diff --check` propre.
+
+### Limites
+
+Aucun push ni déploiement. La suppression définitive reste refusée dès qu'une session, une
+preuve, un signalement ou une action qualité existe — l'archivage reste la voie recommandée pour
+une formation « utilisée ».

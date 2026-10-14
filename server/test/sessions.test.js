@@ -244,6 +244,7 @@ test("la création normalise toujours la référence (vide ⇒ NULL)", async () 
     const sql = sqlNormalise(text);
     if (sql === SQL_UTILISATEUR) return { rows: [ADMIN] };
     if (sql.startsWith("SELECT id FROM formation_versions")) return { rows: [{ id: 1 }] };
+    if (sql.startsWith("SELECT actif FROM formations")) return { rows: [{ actif: true }] };
     if (sql.startsWith("INSERT INTO sessions")) {
       inserts.push(params);
       // params : [formation_id, version.id, reference, date_debut, date_fin, ...]

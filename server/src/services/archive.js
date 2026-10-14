@@ -71,8 +71,10 @@ export const DEPENDANCES_FORMATION_SQL = `
 `;
 
 // Renvoie { vide, blocages } : `blocages` = libellés des données présentes.
-export async function dependancesFormation(id) {
-  const { rows: [d] } = await query(DEPENDANCES_FORMATION_SQL, [id]);
+// `client` (exécuteur SQL) est injectable pour faire la vérification dans la
+// MÊME transaction que la suppression (atomicité du contrôle + suppression).
+export async function dependancesFormation(id, client = query) {
+  const { rows: [d] } = await client(DEPENDANCES_FORMATION_SQL, [id]);
   const libelles = {
     sessions: "des sessions", preuves: "des preuves",
     signalements: "des signalements qualité", actions: "des actions qualité",

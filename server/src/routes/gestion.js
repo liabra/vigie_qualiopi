@@ -264,18 +264,21 @@ router.patch("/formations/:id/actif", requireAdmin, wrap(async (req, res) => {
 router.delete("/formations/:id", requireAdmin, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
-  const { rows: [formation] } = await query("SELECT id, intitule FROM formations WHERE id = $1", [id]);
-  if (!formation) return res.status(404).json({ error: "Formation introuvable." });
-
-  const deps = await dependancesFormation(id);
-  if (!deps.vide) {
-    return res.status(409).json({
-      error: `Suppression refusée : « ${formation.intitule} » est utilisée (${deps.blocages.join(", ")}). Archivez-la plutôt.`,
-    });
-  }
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
+    // FOR UPDATE : verrouille la ligne pendant la vérification + suppression,
+    // pour qu'aucune dépendance ne soit créée entre le contrôle et la
+    // suppression (lecture et écriture dans la même transaction).
+    const { rows: [formation] } = await cx.query("SELECT id, intitule FROM formations WHERE id = $1 FOR UPDATE", [id]);
+    if (!formation) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Formation introuvable." }); }
+    const deps = await dependancesFormation(id, (t, p) => cx.query(t, p));
+    if (!deps.vide) {
+      await cx.query("ROLLBACK");
+      return res.status(409).json({
+        error: `Suppression refusée : « ${formation.intitule} » est utilisée (${deps.blocages.join(", ")}). Archivez-la plutôt.`,
+      });
+    }
     await cx.query("DELETE FROM formations WHERE id = $1", [id]);
     await cx.query("COMMIT");
     res.json({ ok: true });

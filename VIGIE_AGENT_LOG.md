@@ -3935,3 +3935,58 @@ Backend **783/783**, frontend **350/350**, build OK, `git diff --check` propre.
 Aucun push ni déploiement. La suppression définitive reste refusée dès qu'une session, une
 preuve, un signalement ou une action qualité existe — l'archivage reste la voie recommandée pour
 une formation « utilisée ».
+
+---
+
+## 2026-10-14 — DOC-9B (Étape A) : créer et retrouver un stagiaire hors session
+
+### Objectif
+
+Préparer l'entretien initial FSE-IA : permettre d'enregistrer une personne dans
+`stagiaires` **avant** son inscription à une session. Socle uniquement, sans
+formulaire d'entretien ni questionnaire (étapes suivantes).
+
+### API (`server/src/routes/gestion.js`)
+
+- `GET /api/stagiaires?q=…` (`requireAuth`) : recherche insensible à la casse sur
+  nom, prénom, email ; `q` obligatoire, 2 caractères minimum, `LIMIT 20`
+  (protection contre les recherches abusives) ; projection **minimale**
+  (`id`, `civilite`, `nom`, `prenom`, `email`) — ni téléphone, ni entreprise, ni
+  financeur, ni handicap.
+- `POST /api/stagiaires` (`requireRedacteur`) : crée une personne **sans
+  inscription**, limité à l'identité/contact (civilité, nom, prénom, téléphone,
+  email). Email normalisé (minuscules) et validé ; civilité validée ; nom/prénom
+  obligatoires.
+- **Correspondances** : avant création, les dossiers partagant le même email
+  (normalisé) OU le même nom+prénom (insensible à la casse) sont remontés dans
+  `correspondances` — **jamais fusionnés, jamais refusés automatiquement**
+  (un email partagé ne prouve pas l'identité, un nom/prénom identique ne suffit
+  pas). Décision humaine.
+
+### Sécurité / isolation
+
+- Aucune donnée médicale ni handicap dans cette étape ; `projeterStagiaire`
+  s'applique (champs réservés absents pour le contributeur).
+- Création hors session : aucune inscription, aucun effectif de session, aucun
+  indicateur Qualiopi, aucun document ni évaluation créés (testé).
+- `POST /sessions/:id/stagiaires` inchangé (non-régression testée).
+
+### Tests
+
+`server/test/stagiairesHorsSession.test.js` (7 tests, PostgreSQL réel) :
+création hors session (201, normalisation, aucune inscription), validation
+(nom/prénom, civilité, email), recherche (nom/prénom/email, bornée, paramètres),
+correspondances (email / nom+prénom, sans fusion ni refus), isolation des
+inscriptions, droits (anonyme 401, contributeur + admin autorisés),
+non-régression de l'inscription classique.
+
+### Validation
+
+Backend **790/790**, frontend **350/350**, build OK, `git diff --check` propre.
+
+### Limites / prochaine étape (DOC-9C)
+
+Pas de formulaire d'entretien, pas de questionnaire de positionnement, pas
+d'entité santé, pas de modèle Drive, pas de référentiel modifié, pas de
+déploiement. DOC-9C : table `entretiens` + `entretien_reponses` (multi-entretiens,
+source jeune/accompagnateur) + API brouillon/reprise.

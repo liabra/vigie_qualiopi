@@ -580,6 +580,74 @@ router.post("/sessions/:id/groupes", requireAdmin, wrap(async (req, res) => {
 // Ajouter un stagiaire à un groupe crée la personne si besoin, puis son
 // inscription. C'est l'inscription qui porte le prescripteur, l'état du
 // dossier et l'abandon éventuel.
+
+// Projection minimale d'un stagiaire pour la RECHERCHE et la détection de
+// doublons : uniquement ce qui permet à un humain de décider s'il s'agit de
+// la même personne. Jamais le téléphone, l'entreprise ni le financeur —
+// aucune donnée sensible (handicap) n'est concernée ici.
+const projeterRecherche = (s) => ({
+  id: s.id, civilite: s.civilite, nom: s.nom, prenom: s.prenom, email: s.email,
+});
+
+// DOC-9B — Retrouver une personne existante (hors session), pour vérifier
+// avant création qu'aucun dossier ne correspond déjà. Lecture authentifiée,
+// bornée (aucune recherche abusive), projection minimale.
+router.get("/stagiaires", requireAuth, wrap(async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (!q) return res.status(400).json({ error: "Paramètre de recherche requis (q)." });
+  if (q.length < 2) return res.status(400).json({ error: "Recherche trop courte : au moins 2 caractères." });
+  const motif = `%${q}%`;
+  const { rows } = await query(
+    `SELECT id, civilite, nom, prenom, email
+     FROM stagiaires
+     WHERE nom ILIKE $1 OR prenom ILIKE $1 OR email ILIKE $1
+     ORDER BY nom, prenom, id
+     LIMIT 20`,
+    [motif]
+  );
+  res.json({ stagiaires: rows.map(projeterRecherche), total: rows.length });
+}));
+
+// DOC-9B — Créer une personne SANS inscription (préparation à l'entretien
+// initial FSE-IA). Limité à l'identité et au contact. Les correspondances
+// possibles (même email OU même nom+prénom) sont remontées pour vérification
+// humaine, jamais fusionnées ni refusées automatiquement.
+router.post("/stagiaires", requireRedacteur, wrap(async (req, res) => {
+  const { civilite, nom, prenom, email, telephone } = req.body || {};
+  if (!nom?.trim() || !prenom?.trim()) return manque(res, "nom et prenom");
+  if (civilite && !CIVILITES.includes(civilite)) return res.status(400).json({ error: "Civilité inconnue." });
+  const emailNormalise = normaliserEmail(email);
+  if (emailNormalise && !validerEmail(emailNormalise)) return res.status(400).json({ error: "Email invalide." });
+
+  // Correspondances AVANT création : même email (normalisé) OU même
+  // nom+prénom (insensible à la casse). Un nom/prénom identique ne suffit
+  // jamais à refuser ; un email partagé ne prouve pas qu'il s'agit de la
+  // même personne. La décision reste humaine.
+  const candidats = [];
+  if (emailNormalise) {
+    const { rows } = await query(
+      "SELECT id, civilite, nom, prenom, email FROM stagiaires WHERE email = $1",
+      [emailNormalise]
+    );
+    candidats.push(...rows);
+  }
+  const { rows: memesNom } = await query(
+    "SELECT id, civilite, nom, prenom, email FROM stagiaires WHERE lower(nom) = lower($1) AND lower(prenom) = lower($2)",
+    [nom.trim(), prenom.trim()]
+  );
+  for (const s of memesNom) if (!candidats.some((c) => c.id === s.id)) candidats.push(s);
+
+  const { rows: [stagiaire] } = await query(
+    `INSERT INTO stagiaires (civilite, nom, prenom, email, telephone)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [civilite || null, nom.trim(), prenom.trim(), emailNormalise, telephone?.trim() || null]
+  );
+  res.status(201).json({
+    stagiaire: projeterStagiaire(stagiaire, req.user),
+    correspondances: candidats.map(projeterRecherche),
+  });
+}));
+
 router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) => {
   const sessionId = identifiant(req.params.id);
   if (!sessionId) return res.status(400).json({ error: "Identifiant de session invalide." });

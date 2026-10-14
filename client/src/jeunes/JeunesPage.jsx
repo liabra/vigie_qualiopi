@@ -149,6 +149,7 @@ export function JeunesPage({ admin }) {
         ouvert={panneau}
         onFermer={() => setPanneau(false)}
         onAjoute={async (message) => { setPanneau(false); setSucces(message); await charger(); }}
+        onOuvrirExistant={(personne) => { setPanneau(false); setSucces(`Fiche existante : ${nomComplet(personne)}. Aucun nouveau dossier créé.`); }}
       />
 
       <ConfirmDialog
@@ -163,14 +164,14 @@ export function JeunesPage({ admin }) {
   );
 }
 
-// Formulaire d'ajout : identité + contact uniquement. Les correspondances
-// possibles (doublons) sont remontées APRÈS création pour vérification
-// humaine — jamais de fusion ni de blocage automatique.
-function PanneauAjout({ ouvert, onFermer, onAjoute }) {
+// Formulaire d'ajout en DEUX temps : d'abord la vérification des doublons
+// (GET avant tout enregistrement), puis la création. Aucune fusion, jamais de
+// blocage d'un homonyme ; « Ouvrir la fiche existante » ne crée rien.
+function PanneauAjout({ ouvert, onFermer, onAjoute, onOuvrirExistant }) {
   const [v, setV] = useState(VIDE);
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
-  const [correspondances, setCorrespondances] = useState(null);
+  const [correspondances, setCorrespondances] = useState(null); // null = pas encore vérifié
   const [enCours, setEnCours] = useState(false);
 
   useEffect(() => {
@@ -180,7 +181,7 @@ function PanneauAjout({ ouvert, onFermer, onAjoute }) {
 
   const champ = (cle) => (e) => setV({ ...v, [cle]: e.target.value });
 
-  async function enregistrer(e) {
+  async function verifier(e) {
     e.preventDefault();
     const trouvees = {};
     if (!v.nom.trim()) trouvees.nom = "Indiquez le nom.";
@@ -189,19 +190,28 @@ function PanneauAjout({ ouvert, onFermer, onAjoute }) {
     if (Object.keys(trouvees).length) return;
     setEnCours(true); setErreurServeur(null);
     try {
-      const r = await api("/api/stagiaires", {
-        method: "POST",
-        body: JSON.stringify({ civilite: v.civilite || null, nom: v.nom, prenom: v.prenom, email: v.email || null, telephone: v.telephone || null }),
-      });
-      if (r.correspondances?.length) {
-        setCorrespondances(r.correspondances);
-      } else {
-        await onAjoute(`Jeune « ${v.prenom} ${v.nom} » enregistré.`);
-      }
+      const q = v.email.trim() || v.nom.trim();
+      const r = await api(`/api/stagiaires?q=${encodeURIComponent(q)}`);
+      setCorrespondances(r.stagiaires || []);
     } catch (err) {
       setErreurServeur(err.message);
     } finally { setEnCours(false); }
   }
+
+  async function creer() {
+    setEnCours(true); setErreurServeur(null);
+    try {
+      await api("/api/stagiaires", {
+        method: "POST",
+        body: JSON.stringify({ civilite: v.civilite || null, nom: v.nom, prenom: v.prenom, email: v.email || null, telephone: v.telephone || null }),
+      });
+      await onAjoute(`Jeune « ${v.prenom} ${v.nom} » enregistré.`);
+    } catch (err) {
+      setErreurServeur(err.message);
+    } finally { setEnCours(false); }
+  }
+
+  const enVerification = correspondances === null;
 
   return (
     <Drawer
@@ -209,52 +219,73 @@ function PanneauAjout({ ouvert, onFermer, onAjoute }) {
       titre="Ajouter un jeune"
       description="Identité et coordonnées. L'inscription à une session se fera plus tard, après l'entretien."
       pied={
-        correspondances
-          ? <Button variante="primary" onClick={() => onAjoute(`Jeune « ${v.prenom} ${v.nom} » enregistré. Vérifiez les dossiers similaires.`)}>Fermer</Button>
-          : <>
+        enVerification
+          ? <>
               <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
               <Button variante="primary" type="submit" form="form-jeune" disabled={enCours}>
-                {enCours ? "Enregistrement…" : "Enregistrer"}
+                {enCours ? "Vérification…" : "Vérifier les doublons"}
               </Button>
             </>
+          : correspondances.length === 0
+            ? <>
+                <Button onClick={() => setCorrespondances(null)} disabled={enCours}>Retour</Button>
+                <Button variante="primary" onClick={creer} disabled={enCours}>{enCours ? "Enregistrement…" : "Créer le dossier"}</Button>
+              </>
+            : <>
+                <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
+                <Button variante="primary" onClick={creer} disabled={enCours}>Créer quand même</Button>
+              </>
       }
     >
-      <form id="form-jeune" onSubmit={enregistrer} noValidate>
-        {erreurServeur && <Alert ton="error" titre="Le jeune n'a pas été enregistré.">{erreurServeur}</Alert>}
-        {correspondances && (
-          <Alert ton="warning" titre="Des dossiers similaires existent déjà">
-            <p>Le jeune a été enregistré, mais vérifiez s'il ne s'agit pas d'un doublon :</p>
-            <ul>
-              {correspondances.map((c) => (
-                <li key={c.id}>{c.civilite ? `${c.civilite} ` : ""}{c.prenom} {c.nom}{c.email ? ` — ${c.email}` : ""}</li>
-              ))}
-            </ul>
-          </Alert>
-        )}
-        <FormSection titre="Identité">
-          <Field label="Civilité" facultatif>
-            <select value={v.civilite} onChange={champ("civilite")}>
-              <option value="">Non précisée</option>
-              <option value="M.">M.</option>
-              <option value="Mme">Mme</option>
-            </select>
-          </Field>
-          <Field label="Nom" erreur={erreurs.nom}>
-            <input value={v.nom} onChange={champ("nom")} required />
-          </Field>
-          <Field label="Prénom" erreur={erreurs.prenom}>
-            <input value={v.prenom} onChange={champ("prenom")} required />
-          </Field>
-        </FormSection>
-        <FormSection titre="Contact">
-          <Field label="E-mail" facultatif>
-            <input type="email" value={v.email} onChange={champ("email")} />
-          </Field>
-          <Field label="Téléphone" facultatif>
-            <input type="tel" value={v.telephone} onChange={champ("telephone")} />
-          </Field>
-        </FormSection>
-      </form>
+      {erreurServeur && <Alert ton="error" titre="L'action n'a pas abouti.">{erreurServeur}</Alert>}
+
+      {enVerification && (
+        <form id="form-jeune" onSubmit={verifier} noValidate>
+          <FormSection titre="Identité">
+            <Field label="Civilité" facultatif>
+              <select value={v.civilite} onChange={champ("civilite")}>
+                <option value="">Non précisée</option>
+                <option value="M.">M.</option>
+                <option value="Mme">Mme</option>
+              </select>
+            </Field>
+            <Field label="Nom" erreur={erreurs.nom}>
+              <input value={v.nom} onChange={champ("nom")} required />
+            </Field>
+            <Field label="Prénom" erreur={erreurs.prenom}>
+              <input value={v.prenom} onChange={champ("prenom")} required />
+            </Field>
+          </FormSection>
+          <FormSection titre="Contact">
+            <Field label="E-mail" facultatif>
+              <input type="email" value={v.email} onChange={champ("email")} />
+            </Field>
+            <Field label="Téléphone" facultatif>
+              <input type="tel" value={v.telephone} onChange={champ("telephone")} />
+            </Field>
+          </FormSection>
+        </form>
+      )}
+
+      {correspondances?.length > 0 && (
+        <Alert ton="warning" titre="Des dossiers similaires existent déjà">
+          <p>Vérifiez s'il ne s'agit pas de la même personne. Ouvrir une fiche existante ne crée aucun nouveau dossier.</p>
+          <ul>
+            {correspondances.map((c) => (
+              <li key={c.id} className="jeunes-correspondance">
+                <span>{c.civilite ? `${c.civilite} ` : ""}{c.prenom} {c.nom}{c.email ? ` — ${c.email}` : ""}</span>
+                <Button compact onClick={() => onOuvrirExistant(c)}>Ouvrir la fiche existante</Button>
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
+      {correspondances?.length === 0 && (
+        <Alert ton="success" titre="Aucun doublon trouvé">
+          Aucune fiche existante ne correspond. Vous pouvez créer le dossier.
+        </Alert>
+      )}
     </Drawer>
   );
 }

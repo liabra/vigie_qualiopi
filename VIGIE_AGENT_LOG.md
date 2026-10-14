@@ -4165,3 +4165,45 @@ Backend **814/814**, frontend **358/358**, build OK, `git diff --check` propre.
 Pas de formulaire d'entretien (14 rubriques), pas de questionnaire six phases,
 pas de génération Google Docs, pas de collecte de santé, pas de purge
 automatique. DOC-9D2 : formulaire d'entretien guidé (5 écrans).
+
+---
+
+## 2026-10-14 — DOC-9D1 bis : vérification des doublons AVANT création
+
+### Parcours d'ajout corrigé (`client/src/jeunes/JeunesPage.jsx`)
+
+Le formulaire d'ajout est désormais en **deux temps** :
+1. Saisie identité/contact + bouton « Vérifier les doublons » → `GET
+   /api/stagiaires?q=<email|nom>` (réutilise l'API existante, aucune route
+   ajoutée).
+2. Résultat :
+   - **correspondances trouvées** → liste avec « Ouvrir la fiche existante »
+     (ne crée rien) et « Créer quand même » (POST) ;
+   - **aucune** → « Créer le dossier ».
+Aucune fusion automatique, aucun blocage d'homonyme. « Ouvrir la fiche
+existante » ou « Annuler » ne crée aucune fiche (vérifié par test : aucun POST).
+
+### Test de concurrence renforcé (`server/test/stagiairesSansSuite.test.js`)
+
+Le test couvre désormais le cas critique réel : une **inscription créée pendant
+la suppression** (la transaction de suppression tient `FOR UPDATE`, une
+insertion concurrente est lancée, la suppression committe, puis l'insertion
+échoue par violation de clé étrangère). Il démontre qu'aucune inscription n'est
+détruite en cascade (`inscriptions.stagiaire_id = ON DELETE CASCADE`), le verrou
+garantissant l'atomicité contrôle + suppression.
+
+### Tests
+
+- Frontend : `client/test/jeunes.test.jsx` (9 tests, dont « vérification puis
+  création », « doublons AVANT création », « ouvrir la fiche existante ne crée
+  rien », « créer quand même »).
+- Backend : test de concurrence renforcé (toujours 9 tests).
+
+### Validation
+
+Backend **814/814**, frontend **359/359**, build OK, `git diff --check` propre.
+
+### Limites
+
+Aucun push ni déploiement. Rien d'autre n'a été modifié. DOC-9D2 : formulaire
+d'entretien guidé (5 écrans).

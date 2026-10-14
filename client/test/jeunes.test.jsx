@@ -33,9 +33,12 @@ test("jeunes : liste lisible (état, entretiens, contact) sans données médical
   assert.ok(!/handicap|besoins d'adaptation|médical/i.test(texte()), "aucune donnée médicale affichée");
 });
 
-test("jeunes : ajouter un jeune hors session (identité + contact)", async () => {
+const MATCH = { id: 1, civilite: null, nom: "Lefebvre", prenom: "Noah", email: "noah@exemple.fr", telephone: null, sans_suite_le: null, nb_inscriptions: 0, nb_entretiens: 1, entretiens_en_cours: 1, entretiens_valides: 0 };
+
+test("jeunes : ajouter un jeune hors session (vérification puis création)", async () => {
   const appels = await monter("/jeunes", "admin", {
     "GET /api/stagiaires": { stagiaires: [], total: 0 },
+    "GET /api/stagiaires?q=Lefebvre": { stagiaires: [], total: 0 },
     "POST /api/stagiaires": [201, { stagiaire: { id: 9 }, correspondances: [] }],
   });
   await attendre(() => texte().includes("Aucun jeune"));
@@ -45,19 +48,22 @@ test("jeunes : ajouter un jeune hors session (identité + contact)", async () =>
   await attendre(() => texte().includes("Indiquez le nom."));
   await saisir(champ("Nom"), "Lefebvre");
   await saisir(champ("Prénom"), "Noah");
-  await saisir(champ("E-mail"), "noah@exemple.fr");
   await soumettre("form-jeune");
+  await attendre(() => appels.some((a) => a.methode === "GET" && a.chemin === "/api/stagiaires"));
+  await attendre(() => texte().includes("Aucun doublon trouvé"));
+  await cliquer(bouton("Créer le dossier"));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/stagiaires"));
   assert.deepEqual(appels.find((a) => a.methode === "POST").corps, {
-    civilite: null, nom: "Lefebvre", prenom: "Noah", email: "noah@exemple.fr", telephone: null,
+    civilite: null, nom: "Lefebvre", prenom: "Noah", email: null, telephone: null,
   });
   await attendre(() => texte().includes("Lefebvre"));
 });
 
-test("jeunes : doublons possibles signalés après création, sans blocage", async () => {
+test("jeunes : doublons signalés AVANT création ; ouvrir la fiche existante ne crée rien", async () => {
   const appels = await monter("/jeunes", "admin", {
     "GET /api/stagiaires": { stagiaires: [], total: 0 },
-    "POST /api/stagiaires": [201, { stagiaire: { id: 9 }, correspondances: [{ id: 1, civilite: null, nom: "Lefebvre", prenom: "Noah", email: "noah@exemple.fr" }] }],
+    "GET /api/stagiaires?q=Lefebvre": { stagiaires: [MATCH], total: 1 },
+    "POST /api/stagiaires": [201, { stagiaire: { id: 9 }, correspondances: [] }],
   });
   await attendre(() => bouton("+ Ajouter un jeune"));
   await cliquer(bouton("+ Ajouter un jeune"));
@@ -65,9 +71,32 @@ test("jeunes : doublons possibles signalés après création, sans blocage", asy
   await saisir(champ("Nom"), "Lefebvre");
   await saisir(champ("Prénom"), "Noah");
   await soumettre("form-jeune");
-  await attendre(() => appels.some((a) => a.methode === "POST"));
   await attendre(() => texte().includes("Des dossiers similaires existent déjà"));
-  assert.ok(texte().includes("Noah"), "le doublon est présenté");
+  assert.ok(texte().includes("Ouvrir la fiche existante"), "proposition d'ouvrir la fiche");
+  assert.ok(texte().includes("Créer quand même"), "possibilité de créer quand même");
+  assert.ok(!appels.some((a) => a.methode === "POST"), "aucune création avant décision");
+
+  await cliquer(bouton("Ouvrir la fiche existante"));
+  await attendre(() => texte().includes("Fiche existante"));
+  assert.ok(!appels.some((a) => a.methode === "POST"), "ouvrir la fiche existante ne crée rien");
+});
+
+test("jeunes : « Créer quand même » malgré les doublons", async () => {
+  const appels = await monter("/jeunes", "admin", {
+    "GET /api/stagiaires": { stagiaires: [], total: 0 },
+    "GET /api/stagiaires?q=Lefebvre": { stagiaires: [MATCH], total: 1 },
+    "POST /api/stagiaires": [201, { stagiaire: { id: 9 }, correspondances: [] }],
+  });
+  await attendre(() => bouton("+ Ajouter un jeune"));
+  await cliquer(bouton("+ Ajouter un jeune"));
+  await attendre(() => dialogue());
+  await saisir(champ("Nom"), "Lefebvre");
+  await saisir(champ("Prénom"), "Noah");
+  await soumettre("form-jeune");
+  await attendre(() => texte().includes("Créer quand même"));
+  await cliquer(bouton("Créer quand même"));
+  await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/stagiaires"));
+  await attendre(() => texte().includes("enregistré"));
 });
 
 test("jeunes : classer sans suite puis rouvrir", async () => {

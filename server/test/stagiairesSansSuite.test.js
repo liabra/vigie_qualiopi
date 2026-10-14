@@ -163,32 +163,41 @@ test("droits : contributeur classe/rouvre mais ne supprime pas ; anonyme refusé
 
 // ── Concurrence ──────────────────────────────────────────────
 
-test("concurrence : une insertion d'inscription est bloquée par le verrou de suppression", async () => {
-  const st = await creerStagiaire("Race", "Verrou");
-  const f = ok(await api("POST", "/api/formations", { intitule: "Formation verrou", duree_heures_defaut: 35, modalite: "presentiel" }, A())).formation;
+// Le cas critique : une inscription est créée PENDANT la suppression. Sans le
+// verrou (SELECT ... FOR UPDATE), le DELETE cascade détruirait cette
+// inscription (inscriptions.stagiaire_id = ON DELETE CASCADE). Avec le verrou,
+// l'insertion concurrente est bloquée par la clé étrangère, puis échoue une
+// fois la suppression committée : aucune donnée protégée n'est détruite.
+test("concurrence : une inscription créée pendant la suppression est bloquée puis échoue (pas de cascade)", async () => {
+  const st = await creerStagiaire("Race", "Cascade");
+  const f = ok(await api("POST", "/api/formations", { intitule: "Formation cascade", duree_heures_defaut: 35, modalite: "presentiel" }, A())).formation;
   const s = ok(await api("POST", "/api/sessions", { formation_id: f.id, date_debut: "2026-01-05", date_fin: "2026-03-05" }, A())).session;
 
-  // Connexion dédiée simulant la transaction de suppression qui verrouille
-  // la ligne stagiaire (SELECT ... FOR UPDATE, comme la route DELETE).
+  // Connexion dédiée simulant la transaction de la route DELETE :
+  // SELECT ... FOR UPDATE, vérification (0 inscription), DELETE, COMMIT.
   const cx = await pool.connect();
   await cx.query("BEGIN");
   await cx.query("SELECT id FROM stagiaires WHERE id = $1 FOR UPDATE", [st.id]);
+  const { rows: [{ n }] } = await cx.query("SELECT count(*)::int AS n FROM inscriptions WHERE stagiaire_id = $1", [st.id]);
+  assert.equal(n, 0, "aucune inscription au moment du contrôle");
 
-  // L'insertion concurrente (sur une AUTRE connexion) doit être bloquée par
-  // la clé étrangère : PostgreSQL attend la libération du verrou.
-  let terminee = false;
+  // L'insertion concurrente est lancée PENDANT que le verrou est tenu : elle
+  // attend la clé étrangère.
   const insertion = pool.query(
     "INSERT INTO inscriptions (stagiaire_id, session_id) VALUES ($1, $2)",
     [st.id, s.id]
-  ).then(() => { terminee = true; }).catch(() => { terminee = true; });
+  );
 
-  await new Promise((r) => setTimeout(r, 150));
-  assert.equal(terminee, false, "insertion bloquée tant que le verrou est tenu");
-
-  await cx.query("ROLLBACK");   // libère le verrou SANS supprimer
-  await insertion;              // l'insertion aboutit alors normalement
+  // La suppression se poursuit et committe pendant que l'insertion attend.
+  await cx.query("DELETE FROM stagiaires WHERE id = $1", [st.id]);
+  await cx.query("COMMIT");
   cx.release();
 
-  const { rows: [{ n }] } = await pool.query("SELECT count(*)::int AS n FROM inscriptions WHERE stagiaire_id = $1", [st.id]);
-  assert.equal(n, 1, "l'inscription a bien été créée après libération du verrou");
+  // Après libération, l'insertion échoue par violation de clé étrangère :
+  // l'inscription n'est PAS créée (et n'a donc pas été détruite en cascade).
+  await assert.rejects(insertion, /foreign key|violates|23503/i);
+
+  const { rows: [{ reste }] } = await pool.query("SELECT count(*)::int AS reste FROM inscriptions WHERE stagiaire_id = $1", [st.id]);
+  assert.equal(reste, 0, "aucune inscription résiduelle");
+  assert.equal((await pool.query("SELECT 1 FROM stagiaires WHERE id = $1", [st.id])).rowCount, 0, "stagiaire supprimé");
 });

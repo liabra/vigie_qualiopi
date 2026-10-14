@@ -10,6 +10,7 @@ import qualiteRoutes from "./routes/qualite.js";
 import parcoursRoutes from "./routes/parcours.js";
 import intervenantsRoutes from "./routes/intervenants.js";
 import seancesRoutes from "./routes/seances.js";
+import entretiensRoutes from "./routes/entretiens.js";
 import pilotageRoutes from "./routes/pilotage.js";
 import variablesRoutes from "./routes/variables.js";
 
@@ -38,6 +39,7 @@ export function createApp() {
   app.use("/api", parcoursRoutes);
   app.use("/api", intervenantsRoutes);
   app.use("/api", seancesRoutes);
+  app.use("/api", entretiensRoutes);
   app.use("/api", pilotageRoutes);
   app.use("/api", variablesRoutes);
   app.use("/api", apiRoutes);

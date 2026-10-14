@@ -3990,3 +3990,65 @@ Pas de formulaire d'entretien, pas de questionnaire de positionnement, pas
 d'entité santé, pas de modèle Drive, pas de référentiel modifié, pas de
 déploiement. DOC-9C : table `entretiens` + `entretien_reponses` (multi-entretiens,
 source jeune/accompagnateur) + API brouillon/reprise.
+
+---
+
+## 2026-10-14 — DOC-9C : socle des entretiens initiaux FSE-IA
+
+### Schéma (migration `026_entretiens_initiaux.sql`, additif)
+
+- `entretiens` : un entretien par stagiaire, **plusieurs possibles** par personne
+  (aucun UNIQUE). `statut` (`brouillon` / `valide`), `version` (verrou optimiste),
+  `cree_par` / `valide_par`, `cree_le` / `mis_a_jour_le` / `valide_le`. Jamais
+  rattaché à une session.
+- `entretien_reponses` : `cle` (bornée), `valeur` (≤ 4000), `source`
+  (`jeune` / `accompagnateur`), `UNIQUE (entretien_id, cle)`.
+
+### Service pur (`server/src/services/entretiens.js`)
+
+- `CLES_ENTRETIEN` : liste FERMÉE de 14 clés (rubriques 3–7, 9–11, 13), la
+  source étant **dérivée** de la clé (`synthese`/`plan_action`/`posture` =
+  accompagnateur ; `parole_jeune` et les autres = jeune).
+- `validerReponse` / `validerReponses` : refus des clés inconnues, vides, trop
+  longues ou en double.
+- **Absent volontairement** : rubrique 2 (handicap), rubrique 8 (six phases),
+  rubrique 12 (suivi), rubrique 14 (signatures). Aucune donnée médicale, RQTH,
+  diagnostic ni handicap.
+
+### API (`server/src/routes/entretiens.js`, monté dans app.js)
+
+- `POST /api/stagiaires/:id/entretiens` (requireRedacteur) : crée un brouillon.
+- `GET /api/stagiaires/:id/entretiens` (requireAuth) : liste (état, sans les textes).
+- `GET /api/entretiens/:id` (requireAuth) : consultation + réponses (reprise).
+- `PUT /api/entretiens/:id/reponses` (requireRedacteur) : remplacement complet des
+  réponses, **verrou optimiste** (`version`), refus d'un entretien déjà validé.
+- `POST /api/entretiens/:id/valider` (requireRedacteur) : validation **explicite**
+  (brouillon → valide), jamais automatique ; revalidation → 409.
+
+### Règles métier
+
+- Plusieurs entretiens par jeune ; aucun entretien rattaché à une session.
+- Source dérivée de la clé, jamais choisie par l'appelant.
+- Validation explicite ; un entretien validé est en lecture seule.
+- Conflit de version → 409, aucune écriture partielle (transaction + `FOR UPDATE`).
+- Aucune copie automatique vers `recueils_besoin`.
+
+### Tests
+
+- `server/test/entretiensService.test.js` (4 tests, pur) : clés, sources, refus.
+- `server/test/entretiens.test.js` (10 tests, PostgreSQL réel) : migration,
+  multi-entretiens, création sans inscription, sauvegarde/reprise, sources,
+  refus des données interdites, validation explicite, conflit de version,
+  droits, non-régression DOC-9B.
+- `transversal.test.js` / `qualite.test.js` : compteurs de migrations 25 → 26
+  (montée incrémentale 011→026 / 015→026) et liste des tables clés étendue.
+
+### Validation
+
+Backend **804/804**, frontend **350/350**, build OK, `git diff --check` propre.
+
+### Limites / prochaine étape (DOC-9D)
+
+Pas de formulaire React (DOC-9D), pas de questionnaire des six phases, pas
+d'entité santé, pas de copie vers `recueils_besoin`, pas de modèle Drive, pas de
+déploiement. DOC-9D : formulaire de saisie des entretiens (5 écrans).

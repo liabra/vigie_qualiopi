@@ -26,7 +26,7 @@ import {
   normaliserCivilite, trouverPrescripteur, normaliser,
 } from "../services/csvStagiaires.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
-import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, verifierSessionActive } from "../services/archive.js";
+import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, dependancesStagiaire, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
 import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
@@ -646,6 +646,52 @@ router.post("/stagiaires", requireRedacteur, wrap(async (req, res) => {
     stagiaire: projeterStagiaire(stagiaire, req.user),
     correspondances: candidats.map(projeterRecherche),
   });
+}));
+
+// DOC-9C bis — Classer « Sans suite » une personne NON inscrite (réversible).
+// Ne change aucun statut d'inscription : une personne inscrite ne peut pas
+// être classée sans suite.
+router.post("/stagiaires/:id/sans-suite", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
+  const { rows: [s] } = await query("SELECT id FROM stagiaires WHERE id = $1", [id]);
+  if (!s) return res.status(404).json({ error: "Stagiaire introuvable." });
+  const { rows: [{ n }] } = await query("SELECT count(*)::int AS n FROM inscriptions WHERE stagiaire_id = $1", [id]);
+  if (n > 0) return res.status(409).json({ error: "Cette personne a des inscriptions : impossible de la classer sans suite." });
+  const { rows: [maj] } = await query(
+    "UPDATE stagiaires SET sans_suite_le = now(), sans_suite_par = $2 WHERE id = $1 RETURNING *",
+    [id, req.user.id]
+  );
+  res.json({ stagiaire: projeterStagiaire(maj, req.user) });
+}));
+
+// Rouvrir un dossier « Sans suite » : le jeune revient.
+router.post("/stagiaires/:id/rouvrir", requireRedacteur, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
+  const { rows: [maj] } = await query(
+    "UPDATE stagiaires SET sans_suite_le = NULL, sans_suite_par = NULL WHERE id = $1 RETURNING *",
+    [id]
+  );
+  if (!maj) return res.status(404).json({ error: "Stagiaire introuvable." });
+  res.json({ stagiaire: projeterStagiaire(maj, req.user) });
+}));
+
+// DOC-9C bis — Suppression définitive, réservée admin. Refusée dès qu'une
+// inscription, une preuve ou un document généré existe. Les entretiens et
+// leurs réponses partent en cascade (suppression cohérente, sans orphelin).
+// Aucune purge automatique : seule cette route supprime.
+router.delete("/stagiaires/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
+  const { rows: [s] } = await query("SELECT id FROM stagiaires WHERE id = $1", [id]);
+  if (!s) return res.status(404).json({ error: "Stagiaire introuvable." });
+  const deps = await dependancesStagiaire(id);
+  if (!deps.vide) {
+    return res.status(409).json({ error: `Suppression refusée : cette personne a ${deps.blocages.join(", ")}.` });
+  }
+  await query("DELETE FROM stagiaires WHERE id = $1", [id]);
+  res.json({ ok: true });
 }));
 
 router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) => {

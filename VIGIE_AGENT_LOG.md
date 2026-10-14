@@ -4052,3 +4052,64 @@ Backend **804/804**, frontend **350/350**, build OK, `git diff --check` propre.
 Pas de formulaire React (DOC-9D), pas de questionnaire des six phases, pas
 d'entité santé, pas de copie vers `recueils_besoin`, pas de modèle Drive, pas de
 déploiement. DOC-9D : formulaire de saisie des entretiens (5 écrans).
+
+---
+
+## 2026-10-14 — DOC-9C bis : jeunes non inscrits, « Sans suite » et suppression sécurisée
+
+### Schéma (migration `027_sans_suite_stagiaires.sql`, additif)
+
+- `stagiaires.sans_suite_le` (timestamptz, NULL = actif) et
+  `sans_suite_par` (FK utilisateurs). Réversible. Aucun statut d'inscription
+  modifié.
+
+### Dépendances d'un stagiaire (audit FK)
+
+`inscriptions.stagiaire_id` (CASCADE), `preuve_fichiers.stagiaire_id` (SET NULL),
+`documents_generes.stagiaire_id` (CASCADE), `entretiens.stagiaire_id` (CASCADE).
+Seuls `entretiens`/`entretien_reponses` partent en cascade (souhaité) ; les trois
+autres sont des dépendances métier à préserver.
+
+### API (`server/src/routes/gestion.js`)
+
+- `POST /api/stagiaires/:id/sans-suite` (requireRedacteur) : classe « Sans suite »
+  une personne **non inscrite** (409 si une inscription existe).
+- `POST /api/stagiaires/:id/rouvrir` (requireRedacteur) : réouverture (NULL).
+- `DELETE /api/stagiaires/:id` (requireAdmin) : suppression définitive, refusée
+  **409** dès qu'une inscription, un fichier de preuve ou un document généré
+  existe (`dependancesStagiaire` dans archive.js). Cascade cohérente des
+  entretiens/réponses, sans orphelin.
+
+### Règles métier / protections
+
+- Suppression réservée admin ; confirmation explicite côté interface (à venir en
+  DOC-9D).
+- Aucune purge automatique : seule la route `DELETE` supprime.
+- Aucune réponse confidentielle dans les erreurs (les messages ne portent que
+  les libellés de dépendances, jamais le contenu des entretiens).
+- Aucun Drive, référentiel Qualiopi ni module Accompagnement modifié.
+
+### Durée de conservation (proposition à faire valider par A2C)
+
+Aucune purge automatique implémentée. Proposition à valider : conserver les
+dossiers « Sans suite » **24 mois** après le dernier entretien (ou la dernière
+relance), puis suppression définitive par l'administrateur — sous réserve des
+obligations légales (RGPD/CNIL, délais de prescription) et de celles du
+financeur (traçabilité des bénéficiaires). À confirmer avant toute automatisation.
+
+### Tests
+
+`server/test/stagiairesSansSuite.test.js` (8 tests, PostgreSQL réel) : migration,
+sans suite + réouverture, refus si inscrit, suppression autorisée (cascade
+entretiens/réponses), refusée (inscription, fichier de preuve), 404, droits.
+`transversal.test.js` / `qualite.test.js` : compteurs de migrations 26 → 27.
+
+### Validation
+
+Backend **812/812**, frontend **350/350**, build OK, `git diff --check` propre.
+
+### Limites / décisions restant à valider
+
+Pas de formulaire React (confirmation explicite de suppression à venir en
+DOC-9D), pas de purge automatique (durée de conservation à valider par A2C), pas
+de déploiement. DOC-9D : formulaire de saisie des entretiens (5 écrans).

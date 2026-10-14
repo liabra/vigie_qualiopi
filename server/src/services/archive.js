@@ -55,6 +55,28 @@ export async function dependancesSession(id) {
   return { vide: blocages.length === 0, blocages };
 }
 
+// Dépendances d'un stagiaire : comptes des données métier qui lui sont
+// rattachées. Un stagiaire n'est supprimable QUE si tous ces comptes sont à
+// zéro — on ne cascade JAMAIS une inscription (et ses absences/QCM/recueils),
+// un fichier de preuve ni un document généré. Les entretiens et leurs
+// réponses, eux, partent en cascade (suppression cohérente, sans orphelin).
+export const DEPENDANCES_STAGIAIRE_SQL = `
+  SELECT
+    (SELECT count(*) FROM inscriptions i WHERE i.stagiaire_id = $1)::int AS inscriptions,
+    (SELECT count(*) FROM preuve_fichiers pf WHERE pf.stagiaire_id = $1)::int AS preuves,
+    (SELECT count(*) FROM documents_generes d WHERE d.stagiaire_id = $1)::int AS documents
+`;
+
+// Renvoie { vide, blocages } : `blocages` = libellés des données présentes.
+export async function dependancesStagiaire(id, client = query) {
+  const { rows: [d] } = await client(DEPENDANCES_STAGIAIRE_SQL, [id]);
+  const libelles = {
+    inscriptions: "des inscriptions", preuves: "des fichiers de preuve", documents: "des documents générés",
+  };
+  const blocages = Object.entries(d || {}).filter(([, n]) => Number(n) > 0).map(([cle]) => libelles[cle]);
+  return { vide: blocages.length === 0, blocages };
+}
+
 // Dépendances d'une formation : comptes des lignes métier qui lui sont
 // rattachées. Une formation n'est supprimable QUE si tous ces comptes sont
 // à zéro — on ne cascade JAMAIS une session, une preuve, un signalement ou

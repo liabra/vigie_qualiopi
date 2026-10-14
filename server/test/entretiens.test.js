@@ -74,8 +74,8 @@ test("migration 026 : tables entretiens et entretien_reponses présentes", async
   for (const t of ["entretiens", "entretien_reponses"]) {
     assert.equal((await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t])).rowCount, 1, t);
   }
-  const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom DESC LIMIT 1");
-  assert.match(rows[0].nom, /^026_/);
+  const { rows } = await pool.query("SELECT nom FROM schema_migrations WHERE nom = '026_entretiens_initiaux.sql'");
+  assert.equal(rows.length, 1, "migration 026 appliquée");
 });
 
 // ── Création / listage / multiple ────────────────────────────

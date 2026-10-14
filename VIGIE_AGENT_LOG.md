@@ -4251,3 +4251,54 @@ fois (1) l'accès Drive rétabli, (2) DOC-9D2 livré, (3) décisions métier pri
 
 Aucun code modifié (inventaire uniquement) → aucune exécution de tests requise ;
 la base reste verte (backend 814/814, frontend 359/359). `git diff --check` propre.
+
+---
+
+## 2026-10-14 — DOC-10B : reprise autonome de la chaîne documentaire
+
+### Nouvelle stratégie
+
+L'absence d'accès Drive ne bloque plus que la lecture/l'écriture distante. Les
+adaptations indépendantes de Drive (résolveurs, blocs) sont déjà complètes.
+
+### Information vérifiée : « Compte rendu d'entretien prescripteur / entreprise »
+
+Le modèle existe (Drive `1sjn4Rfvut5Bnjp7XynCfnws4u41mG-PNt8FDpX0VXQ8`) et contient
+**4 marqueurs réels, tous déjà couverts** par le catalogue + les résolveurs :
+
+- `{{formation_intitule}}` → `formation_intitule` ✅
+- `{{formation_duree_heures}}` → `formation_duree_heures` ✅ (`version.duree_heures_defaut`)
+- `{{session_date_debut}}` → `session_date_debut` ✅
+- `{{session_date_fin}}` → `session_date_fin` ✅
+
+**Aucun nouveau résolveur requis** : les valeurs exactes sont déjà assertées dans
+`server/test/resolversCanoniques.test.js` (`formation_intitule`="Aide à domicile",
+`formation_duree_heures`=400, `session_date_debut`="05/01/2026",
+`session_date_fin`="05/03/2026").
+
+Les champs **manuels** (prescripteur, interlocuteur, date d'entretien, synthèse
+administrative) restent **non résolubles** — jamais inventés, laissés à la saisie
+humaine.
+
+### Travaux réalisés (A)
+
+- Moteur documentaire complet et testé pour toutes les données résolubles.
+- « Compte rendu prescripteur » : 4 marqueurs confirmés et déjà résolus → aucune
+  adaptation technique supplémentaire.
+- « Emploi du temps » : bloc `seances` prêt.
+- `DOC-10_CHAINE_MODELES.md` mis à jour (statuts « préparé », §6 marqueurs
+  confirmés, §7 dépendances restantes au format attendu).
+
+### Dépendances restantes (B)
+
+Accès Google (copie du modèle ou export texte/DOCX) pour : compte rendu
+prescripteur (portée à confirmer), analyse des besoins FSE-IA (dépend de
+DOC-9D2), emploi du temps, convention (données financeur/prescripteur), livret
+d'accueil (données organisme/référent handicap), certificat (métadonnées
+document), bilan (`bilan_*`), indicateurs (`indicateur_*`). Aucune variable
+inventée.
+
+### Validation
+
+Aucun code modifié (documentation uniquement) → la base reste verte (backend
+814/814, frontend 359/359). `git diff --check` propre.

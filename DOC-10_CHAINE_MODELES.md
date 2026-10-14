@@ -39,10 +39,11 @@ Conformément aux consignes : **aucune tentative de contournement de
 l'authentification**, aucun contenu inventé, aucune modification des modèles
 Drive officiels.
 
-→ **Résultat d'exécution** : l'inventaire et l'analyse par modèle sont livrés
-ci-dessous ; l'intégration effective est **bloquée** en attente (a) d'un accès
-Drive, (b) du formulaire d'entretien DOC-9D2, (c) des décisions métier sur les
-données manquantes. Aucun code spéculatif n'est ajouté.
+→ **Résultat d'exécution (DOC-10B)** : l'absence d'accès Drive ne bloque plus que
+la lecture/l'écriture distante. Les marqueurs déjà résolus sont confirmés et
+testés ; les adaptations indépendantes de Drive (résolveurs, blocs) sont déjà
+complètes. L'intégration effective reste en attente de (a) l'enregistrement
+Drive des modèles, (b) DOC-9D2, (c) décisions métier sur les données manquantes.
 
 ---
 
@@ -57,10 +58,10 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
 | Attestation de formation | ✅ | stagiaire | historique + canoniques | — | — (déjà fait) |
 | Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
 | Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
-| Compte rendu prescripteur/entreprise | ❓🔒 | session ? | `prescripteur_nom` (PAR-01) | `prescripteur_contact_*`, `financeur_nom` | décision métier (portée/données) + Drive |
+| Compte rendu prescripteur/entreprise | 🟡 (préparé) | session | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) | enregistrer le modèle + Drive |
 | Convention de formation | ❓🔒 | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | `financeur_nom`, `convention_reference`, `prescripteur_contact_*` | données financeur + Drive |
 | Livret d'accueil | ❓🔒 | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` | données organisme + Drive |
-| Emploi du temps | 🟡🔒 | session | bloc `seances` (date/heure/theme/lieu…) | `seance_numero`, `seance_duree_heures` | lecture modèle + Drive |
+| Emploi du temps | 🟡 (préparé) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | `seance_numero`, `seance_duree_heures` | lecture modèle + Drive |
 | Certificat de réalisation | ❓🔒 | stagiaire | `document_date` | `document_reference/version/redacteur/approbateur`, `signataire_*` | métadonnées document + Drive |
 | Bilan de session | ❓🔒 | session | — | `bilan_*` (BIL-01..05, aucun résolveur) | définition métier + Drive |
 | Indicateurs de résultats | ❓🔒 | formation | — | `indicateur_*` (IND-01..04, aucune formule) | formule officielle + Drive |
@@ -80,10 +81,12 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
   `entretien_reponses` (DOC-9C) qui n'ont **aucune variable canonique ni
   résolveur**. Le formulaire DOC-9D2 n'existe pas encore. → préparé, intégration
   reportée.
-- **Compte rendu prescripteur/entreprise** : seuls `prescripteur_nom` et les
-  champs formation/session sont résolus ; les coordonnées du prescripteur
-  (`prescripteur_contact_*`, `financeur_nom`) n'existent pas en base
-  (`prescripteurs` n'a que `code`/`nom`/`actif`). → décision métier requise.
+- **Compte rendu prescripteur/entreprise** (DOC-10B) : le modèle existe et
+  contient **4 marqueurs réels, tous déjà résolus** — `{{formation_intitule}}`,
+  `{{formation_duree_heures}}`, `{{session_date_debut}}`, `{{session_date_fin}}`.
+  Les champs manuels (prescripteur, interlocuteur, date d'entretien, synthèse
+  administrative) restent **non résolubles** (jamais inventés). → préparé :
+  l'intégration ne requiert plus que l'enregistrement Drive + ces champs manuels.
 
 ### Lot 2 — Documents de session
 - **Convention** : données financeur/prescripteur absentes.
@@ -132,3 +135,54 @@ Aucun push/déploiement, aucune modification de modèles Drive officiels, aucune
 suppression/réinitialisation de données, aucune modification du référentiel
 Qualiopi, aucune donnée sensible réelle en test, aucun document déclaré validé
 sans validation humaine.
+
+---
+
+## 6. Marqueurs confirmés (DOC-10B)
+
+**Compte rendu d'entretien prescripteur / entreprise** (Drive
+`1sjn4Rfvut5Bnjp7XynCfnws4u41mG-PNt8FDpX0VXQ8`) : les 4 marqueurs suivants y
+figurent réellement et sont **déjà couverts par le catalogue + les résolveurs** :
+
+| Marqueur | Variable canonique | Résolveur | Source |
+|---|---|---|---|
+| `{{formation_intitule}}` | `formation_intitule` | ✅ | `formation.intitule` |
+| `{{formation_duree_heures}}` | `formation_duree_heures` | ✅ | `version.duree_heures_defaut` |
+| `{{session_date_debut}}` | `session_date_debut` | ✅ | `session.date_debut` |
+| `{{session_date_fin}}` | `session_date_fin` | ✅ | `session.date_fin` |
+
+**Aucun nouveau résolveur requis.** Les valeurs exactes sont déjà assertées dans
+`server/test/resolversCanoniques.test.js` (`formation_intitule`="Aide à
+ domicile", `formation_duree_heures`=400, `session_date_debut`="05/01/2026",
+`session_date_fin`="05/03/2026").
+
+Les champs **manuels** (prescripteur, interlocuteur, date d'entretien, synthèse
+administrative) sont volontairement **non résolubles** : jamais inventés, laissés
+à la saisie humaine dans le document.
+
+---
+
+## 7. Dépendances restantes (format attendu, variables manquantes, décisions)
+
+### Travaux réalisés hors ligne (A)
+
+- Moteur documentaire complet et testé pour toutes les données résolubles
+  (164 variables, 46 résolveurs, 10 blocs).
+- « Compte rendu prescripteur » : 4 marqueurs **confirmés et déjà résolus** —
+  aucune adaptation technique supplémentaire nécessaire.
+- « Emploi du temps » : bloc `seances` prêt (date, heure, thème, lieu,
+  compétences, activités) — la structure exacte du tableau reste à lire sur le
+  modèle.
+
+### Dépendances restantes (B)
+
+| Modèle | Format attendu | Variables manquantes | Décision métier nécessaire |
+|---|---|---|---|
+| Compte rendu prescripteur | accès Google (copie) ou texte/DOCX | aucune (4 marqueurs OK) — champs manuels | portée à confirmer (session) |
+| Analyse des besoins FSE-IA | accès Google + DOC-9D2 | résolveurs `entretiens` (14 rubriques) | — (dépend du form DOC-9D2) |
+| Emploi du temps | accès Google (copie) ou texte | `seance_numero`, `seance_duree_heures` (bloc) | structure de tableau |
+| Convention de formation | accès Google | `financeur_nom`, `convention_reference`, `prescripteur_contact_*` | données financeur/prescripteur |
+| Livret d'accueil | accès Google | `organisme_*`, `referent_handicap_*` | données organisme + référent handicap |
+| Certificat de réalisation | accès Google | `document_reference/version/redacteur/approbateur`, `signataire_*` | métadonnées document + signataires |
+| Bilan de session | accès Google | `bilan_*` (BIL-01..05) | formule/indicateurs du bilan |
+| Indicateurs de résultats | accès Google | `indicateur_*` (IND-01..04) | formule officielle |

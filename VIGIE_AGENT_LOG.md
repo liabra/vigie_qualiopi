@@ -4207,3 +4207,47 @@ Backend **814/814**, frontend **359/359**, build OK, `git diff --check` propre.
 
 Aucun push ni déploiement. Rien d'autre n'a été modifié. DOC-9D2 : formulaire
 d'entretien guidé (5 écrans).
+
+---
+
+## 2026-10-14 — DOC-10 : chaîne d'intégration des modèles Qualiopi A2C
+
+### Résultat : inventaire livré, intégration BLOQUÉE sur l'accès Drive
+
+- **Vérifications initiales** : arbre Git propre (`2b981fc`), moteur documentaire
+  opérationnel (catalogue v1.4 / 164 variables, 46 résolveurs, 10 blocs,
+  marqueurs historiques, précontrôle). Aucune réécriture nécessaire.
+- **Accès Google Drive indisponible** localement (aucun `.env`,
+  `GOOGLE_CLIENT_ID/SECRET`, compte de service non configurés). Lecture, copie
+  et test réel des modèles Drive impossibles ici.
+
+### Livrable
+
+- `DOC-10_CHAINE_MODELES.md` (créé, versionné à la racine) : tableau de pilotage
+  comparant les modèles Vigie aux fichiers Drive, avec statut, portée pressentie,
+  variables disponibles/manquantes et action restante.
+
+### Classification
+
+- **Terminé et testé réellement** (hors périmètre, non dupliqués) : Convocation,
+  Attestation de formation, Livret FSE-IA.
+- **Bloqué (accès Drive) + À compléter** : Fiche d'analyse des besoins FSE-IA
+  (dépend aussi de DOC-9D2 et de résolveurs `entretiens` inexistants),
+  Emploi du temps (faisable via bloc `seances` mais modèle à lire).
+- **Validation métier requise** : Compte rendu prescripteur, Convention,
+  Livret d'accueil, Certificat, Bilan de session, Indicateurs de résultats,
+  Suivi inscrits/abandons — variables sans résolveur (données financeur/
+  prescripteur/organisme absentes, `bilan_*`/`indicateur_*` sans formule).
+- **Hors périmètre** : émargement (EduSign), quiz/satisfaction (Google Forms).
+- **Fichiers Drive vides** : ignorés (non fonctionnels).
+
+### Arrêt de la chaîne (conforme aux consignes)
+
+Aucun contournement d'authentification, aucun contenu inventé, aucun code
+spéculatif, aucune modification de modèles Drive. L'intégration reprendra une
+fois (1) l'accès Drive rétabli, (2) DOC-9D2 livré, (3) décisions métier prises.
+
+### Validation
+
+Aucun code modifié (inventaire uniquement) → aucune exécution de tests requise ;
+la base reste verte (backend 814/814, frontend 359/359). `git diff --check` propre.

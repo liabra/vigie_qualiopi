@@ -1,0 +1,134 @@
+# DOC-10 — Chaîne d'intégration des modèles Qualiopi A2C
+
+> Tableau de pilotage de l'automatisation documentaire. Mis à jour par l'agent
+> à chaque lot. Aucun document n'est « validé » sans test réel sur Google Docs.
+
+---
+
+## 0. État des lieux au démarrage
+
+- **Git** : arbre propre au commit `2b981fc` (5 commits locaux DOC-9B/9C/9D non
+  poussés). Aucun conflit, aucune modification non commitée.
+- **Moteur documentaire** : opérationnel et complet — catalogue canonique
+  (v1.4, 164 variables), 46 résolveurs scalaires, 10 blocs répétables,
+  marqueurs historiques (23), précontrôle, génération Google Docs (tableaux
+  inclus) et Google Sheets. **Ne pas le réécrire.**
+- **Accès Google Drive** : **INDISPONIBLE dans cet environnement** (aucun
+  `.env`, `GOOGLE_CLIENT_ID/SECRET` et compte de service non configurés
+  localement). Les fichiers Drive ne peuvent donc être **ni lus, ni copiés, ni
+  testés réellement** ici.
+
+### Modèles fonctionnels déjà validés (hors périmètre, ne pas dupliquer)
+
+| Modèle | Portée | Statut | Références tests |
+|---|---|---|---|
+| Convocation | stagiaire | **Terminé, testé réellement** | `migrationConvocation.test.js`, `generationRobuste.test.js` |
+| Attestation de formation | stagiaire | **Terminé, testé réellement** | `migrationAttestation.test.js`, `documents.test.js` |
+| Livret de suivi pédagogique FSE-IA | stagiaire | **Terminé, testé réellement** | `blocsTableaux.test.js`, `seances.test.js`, `suivi.test.js` |
+
+---
+
+## 1. Contrainte bloquante transversale
+
+L'intégration d'un modèle requiert de **lire le modèle Drive** (pour connaître
+ses balises `{{…}}` et sa structure de tableaux), de **l'enregistrer** (avec un
+`drive_file_id`) puis de **tester la génération réelle** sur une copie. Ces
+trois étapes sont impossibles sans accès Google autorisé.
+
+Conformément aux consignes : **aucune tentative de contournement de
+l'authentification**, aucun contenu inventé, aucune modification des modèles
+Drive officiels.
+
+→ **Résultat d'exécution** : l'inventaire et l'analyse par modèle sont livrés
+ci-dessous ; l'intégration effective est **bloquée** en attente (a) d'un accès
+Drive, (b) du formulaire d'entretien DOC-9D2, (c) des décisions métier sur les
+données manquantes. Aucun code spéculatif n'est ajouté.
+
+---
+
+## 2. Inventaire de pilotage
+
+Légende : ✅ Terminé · 🟡 À compléter · 🔒 Bloqué (accès Drive) · ❓ Validation
+métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonctionnel.
+
+| Document | Statut | Portée pressentie | Variables disponibles | Manques | Action restante |
+|---|---|---|---|---|---|
+| Convocation | ✅ | stagiaire | historique + canoniques | — | — (déjà fait) |
+| Attestation de formation | ✅ | stagiaire | historique + canoniques | — | — (déjà fait) |
+| Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
+| Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
+| Compte rendu prescripteur/entreprise | ❓🔒 | session ? | `prescripteur_nom` (PAR-01) | `prescripteur_contact_*`, `financeur_nom` | décision métier (portée/données) + Drive |
+| Convention de formation | ❓🔒 | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | `financeur_nom`, `convention_reference`, `prescripteur_contact_*` | données financeur + Drive |
+| Livret d'accueil | ❓🔒 | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` | données organisme + Drive |
+| Emploi du temps | 🟡🔒 | session | bloc `seances` (date/heure/theme/lieu…) | `seance_numero`, `seance_duree_heures` | lecture modèle + Drive |
+| Certificat de réalisation | ❓🔒 | stagiaire | `document_date` | `document_reference/version/redacteur/approbateur`, `signataire_*` | métadonnées document + Drive |
+| Bilan de session | ❓🔒 | session | — | `bilan_*` (BIL-01..05, aucun résolveur) | définition métier + Drive |
+| Indicateurs de résultats | ❓🔒 | formation | — | `indicateur_*` (IND-01..04, aucune formule) | formule officielle + Drive |
+| Feuille d'émargement | ⛔ | — | — | — | géré par **EduSign**, ne pas recréer |
+| Quiz de positionnement | ⛔ | — | — | — | Google Forms existant |
+| Résultats de quiz | ⛔ | — | — | — | Google Forms existant |
+| Satisfaction stagiaire/formateur | ⛔ | — | — | — | Google Forms existant |
+| Suivi inscrits/abandons | ❓ | session | `abandon_*`, `presence_*`, `absence_*` | agrégation session (aucune formule officielle) | décision métier |
+| Fichiers génériques vides (Drive) | ∅ | — | — | — | ignorés (non fonctionnels) |
+
+---
+
+## 3. Analyse détaillée par modèle (résumé des écarts)
+
+### Lot 1 — Documents d'entrée
+- **Analyse des besoins FSE-IA** : dépend des données `entretiens`/
+  `entretien_reponses` (DOC-9C) qui n'ont **aucune variable canonique ni
+  résolveur**. Le formulaire DOC-9D2 n'existe pas encore. → préparé, intégration
+  reportée.
+- **Compte rendu prescripteur/entreprise** : seuls `prescripteur_nom` et les
+  champs formation/session sont résolus ; les coordonnées du prescripteur
+  (`prescripteur_contact_*`, `financeur_nom`) n'existent pas en base
+  (`prescripteurs` n'a que `code`/`nom`/`actif`). → décision métier requise.
+
+### Lot 2 — Documents de session
+- **Convention** : données financeur/prescripteur absentes.
+- **Livret d'accueil** : données organisme (`organisme_*`, `referent_handicap_*`)
+  absentes — seule `organisme_nom` est résolue.
+- **Emploi du temps** : techniquement faisable via le bloc `seances` (date,
+  heure, thème, lieu, phase, groupe, compétences, activités) ; nécessite la
+  lecture du modèle pour confirmer la structure de tableau.
+
+### Lot 3 — Évaluations et résultats
+- **Positionnement / résultats de quiz** : hors périmètre (Google Forms) ;
+  `evaluations` (bloc) résout intitulé/date/score/score_max/pourcentage, mais
+  `evaluation_moment/methode/niveau` n'ont pas de colonne.
+
+### Lot 4 — Fin de formation
+- **Certificat de réalisation** : métadonnées documentaires (`document_*`,
+  `signataire_*`) non résolues.
+- **Bilan de session** / **Indicateurs de résultats** : aucun résolveur, aucune
+  formule officielle définie (exclusion explicite en DOC-3A/DOC-6A).
+
+---
+
+## 4. Blocages et plan de reprise
+
+### Blocages (à lever AVANT tout lot d'intégration)
+1. **Accès Google Drive** (bloquant) : configurer `GOOGLE_CLIENT_ID/SECRET/
+   REDIRECT_URI` + compte de service pour lire/copier les modèles.
+2. **DOC-9D2** (formulaire d'entretien) : conditionne la fiche d'analyse des
+   besoins et le compte rendu d'entretien.
+3. **Décisions métier** : portée et contenu des modèles génériques (convention,
+   livret d'accueil, certificat, bilan, indicateurs) ; données financeur/
+   prescripteur/organisme manquantes.
+
+### Ordre de reprise prévu (une fois l'accès Drive rétabli)
+1. Lire chaque modèle Drive → relever ses balises et tableaux.
+2. Pour chaque modèle, ne créer que les **résolveurs réellement nécessaires**
+   (jamais de donnée inventée).
+3. Enregistrer (`POST /api/modeles`) avec `portee` et `indicateurs`.
+4. Tester la génération sur copie (fictives, tableaux, multi-personnes).
+5. Valider « techniquement » uniquement après test réel réussi.
+
+---
+
+## 5. Interdictions respectées
+Aucun push/déploiement, aucune modification de modèles Drive officiels, aucune
+suppression/réinitialisation de données, aucune modification du référentiel
+Qualiopi, aucune donnée sensible réelle en test, aucun document déclaré validé
+sans validation humaine.

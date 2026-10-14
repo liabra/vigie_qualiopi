@@ -589,23 +589,47 @@ const projeterRecherche = (s) => ({
   id: s.id, civilite: s.civilite, nom: s.nom, prenom: s.prenom, email: s.email,
 });
 
-// DOC-9B — Retrouver une personne existante (hors session), pour vérifier
-// avant création qu'aucun dossier ne correspond déjà. Lecture authentifiée,
-// bornée (aucune recherche abusive), projection minimale.
+// DOC-9D1 — Liste des jeunes (avec ou sans inscription), filtrable et paginée.
+// Projection SÉCURISÉE : identité + contact + état, jamais entreprise,
+// financeur, situation de handicap ni besoins d'adaptation.
+const ETATS_STAGIAIRE = ["tous", "sans_suite", "inscrits", "entretiens_en_cours", "entretiens_valides"];
+
 router.get("/stagiaires", requireAuth, wrap(async (req, res) => {
   const q = String(req.query.q ?? "").trim();
-  if (!q) return res.status(400).json({ error: "Paramètre de recherche requis (q)." });
-  if (q.length < 2) return res.status(400).json({ error: "Recherche trop courte : au moins 2 caractères." });
-  const motif = `%${q}%`;
-  const { rows } = await query(
-    `SELECT id, civilite, nom, prenom, email
-     FROM stagiaires
-     WHERE nom ILIKE $1 OR prenom ILIKE $1 OR email ILIKE $1
-     ORDER BY nom, prenom, id
-     LIMIT 20`,
-    [motif]
-  );
-  res.json({ stagiaires: rows.map(projeterRecherche), total: rows.length });
+  const etat = String(req.query.etat ?? "tous");
+  if (q && q.length < 2) return res.status(400).json({ error: "Recherche trop courte : au moins 2 caractères." });
+  if (!ETATS_STAGIAIRE.includes(etat)) return res.status(400).json({ error: "Filtre inconnu." });
+
+  const conditions = [];
+  const params = [];
+  if (q) {
+    params.push(`%${q}%`);
+    conditions.push(`(s.nom ILIKE $${params.length} OR s.prenom ILIKE $${params.length} OR s.email ILIKE $${params.length})`);
+  }
+  if (etat === "sans_suite") conditions.push("s.sans_suite_le IS NOT NULL");
+  else if (etat === "inscrits") conditions.push("EXISTS (SELECT 1 FROM inscriptions i WHERE i.stagiaire_id = s.id)");
+  else if (etat === "entretiens_en_cours") conditions.push("EXISTS (SELECT 1 FROM entretiens e WHERE e.stagiaire_id = s.id AND e.statut = 'brouillon')");
+  else if (etat === "entretiens_valides") conditions.push("EXISTS (SELECT 1 FROM entretiens e WHERE e.stagiaire_id = s.id AND e.statut = 'valide')");
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const limite = Math.min(Math.max(parseInt(String(req.query.limite ?? "50"), 10) || 50, 1), 100);
+  const offset = Math.max(parseInt(String(req.query.offset ?? "0"), 10) || 0, 0);
+
+  const colonnes = `s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.sans_suite_le,
+    (SELECT count(*)::int FROM inscriptions i WHERE i.stagiaire_id = s.id) AS nb_inscriptions,
+    (SELECT count(*)::int FROM entretiens e WHERE e.stagiaire_id = s.id) AS nb_entretiens,
+    (SELECT count(*)::int FROM entretiens e WHERE e.stagiaire_id = s.id AND e.statut = 'brouillon') AS entretiens_en_cours,
+    (SELECT count(*)::int FROM entretiens e WHERE e.stagiaire_id = s.id AND e.statut = 'valide') AS entretiens_valides`;
+
+  const [{ rows }, { rows: [compte] }] = await Promise.all([
+    query(
+      `SELECT ${colonnes} FROM stagiaires s ${where} ORDER BY s.nom, s.prenom, s.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limite, offset]
+    ),
+    query(`SELECT count(*)::int AS total FROM stagiaires s ${where}`, params),
+  ]);
+
+  res.json({ stagiaires: rows, total: compte.total });
 }));
 
 // DOC-9B — Créer une personne SANS inscription (préparation à l'entretien
@@ -684,14 +708,28 @@ router.post("/stagiaires/:id/rouvrir", requireRedacteur, wrap(async (req, res) =
 router.delete("/stagiaires/:id", requireAdmin, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de stagiaire invalide." });
-  const { rows: [s] } = await query("SELECT id FROM stagiaires WHERE id = $1", [id]);
-  if (!s) return res.status(404).json({ error: "Stagiaire introuvable." });
-  const deps = await dependancesStagiaire(id);
-  if (!deps.vide) {
-    return res.status(409).json({ error: `Suppression refusée : cette personne a ${deps.blocages.join(", ")}.` });
-  }
-  await query("DELETE FROM stagiaires WHERE id = $1", [id]);
-  res.json({ ok: true });
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    // FOR UPDATE : verrouille la ligne pendant la vérification + suppression.
+    // Toute insertion concurrente d'inscription / fichier de preuve / document
+    // (qui référence cette ligne par clé étrangère) est bloquée jusqu'à la fin
+    // de la transaction : impossible de créer une dépendance entre le contrôle
+    // et la suppression, donc aucune cascade ne peut détruire une donnée métier.
+    const { rows: [s] } = await cx.query("SELECT id FROM stagiaires WHERE id = $1 FOR UPDATE", [id]);
+    if (!s) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Stagiaire introuvable." }); }
+    const deps = await dependancesStagiaire(id, (t, p) => cx.query(t, p));
+    if (!deps.vide) {
+      await cx.query("ROLLBACK");
+      return res.status(409).json({ error: `Suppression refusée : cette personne a ${deps.blocages.join(", ")}.` });
+    }
+    await cx.query("DELETE FROM stagiaires WHERE id = $1", [id]);
+    await cx.query("COMMIT");
+    res.json({ ok: true });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
 }));
 
 router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) => {

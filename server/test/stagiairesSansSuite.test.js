@@ -160,3 +160,35 @@ test("droits : contributeur classe/rouvre mais ne supprime pas ; anonyme refusé
   assert.equal((await api("DELETE", `/api/stagiaires/${st.id}`, undefined, C())).statut, 403, "suppression réservée admin");
   assert.equal((await api("POST", `/api/stagiaires/${st.id}/rouvrir`, undefined, C())).statut, 200);
 });
+
+// ── Concurrence ──────────────────────────────────────────────
+
+test("concurrence : une insertion d'inscription est bloquée par le verrou de suppression", async () => {
+  const st = await creerStagiaire("Race", "Verrou");
+  const f = ok(await api("POST", "/api/formations", { intitule: "Formation verrou", duree_heures_defaut: 35, modalite: "presentiel" }, A())).formation;
+  const s = ok(await api("POST", "/api/sessions", { formation_id: f.id, date_debut: "2026-01-05", date_fin: "2026-03-05" }, A())).session;
+
+  // Connexion dédiée simulant la transaction de suppression qui verrouille
+  // la ligne stagiaire (SELECT ... FOR UPDATE, comme la route DELETE).
+  const cx = await pool.connect();
+  await cx.query("BEGIN");
+  await cx.query("SELECT id FROM stagiaires WHERE id = $1 FOR UPDATE", [st.id]);
+
+  // L'insertion concurrente (sur une AUTRE connexion) doit être bloquée par
+  // la clé étrangère : PostgreSQL attend la libération du verrou.
+  let terminee = false;
+  const insertion = pool.query(
+    "INSERT INTO inscriptions (stagiaire_id, session_id) VALUES ($1, $2)",
+    [st.id, s.id]
+  ).then(() => { terminee = true; }).catch(() => { terminee = true; });
+
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(terminee, false, "insertion bloquée tant que le verrou est tenu");
+
+  await cx.query("ROLLBACK");   // libère le verrou SANS supprimer
+  await insertion;              // l'insertion aboutit alors normalement
+  cx.release();
+
+  const { rows: [{ n }] } = await pool.query("SELECT count(*)::int AS n FROM inscriptions WHERE stagiaire_id = $1", [st.id]);
+  assert.equal(n, 1, "l'inscription a bien été créée après libération du verrou");
+});

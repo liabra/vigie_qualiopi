@@ -15,6 +15,7 @@ export const NAVIGATION = [
     titre: "Formation",
     entrees: [
       { to: "/sessions", libelle: "Sessions" },
+      { to: "/jeunes", libelle: "Jeunes" },
       { to: "/formations", libelle: "Formations", admin: true },
       { to: "/intervenants", libelle: "Intervenants" },
       { to: "/justificatifs-intervenants", libelle: "Justificatifs des intervenants", admin: true },

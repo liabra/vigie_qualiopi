@@ -31,6 +31,7 @@ import { TableauBordQualite } from "./qualite/TableauBordQualite.jsx";
 import { SyntheseSatisfactions } from "./qualite/SyntheseSatisfactions.jsx";
 import { IntervenantsPage } from "./intervenants/IntervenantsPage.jsx";
 import { JustificatifsPilotage } from "./intervenants/JustificatifsPilotage.jsx";
+import { JeunesPage } from "./jeunes/JeunesPage.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -170,6 +171,7 @@ export default function App() {
         <Route path="accueil" element={<Accueil user={user} />} />
 
         <Route path="sessions" element={<SessionsListe admin={isAdmin} />} />
+        <Route path="jeunes" element={<JeunesPage admin={isAdmin} />} />
         <Route path="sessions/:sessionId" element={session("apercu")} />
         <Route path="sessions/:sessionId/stagiaires" element={session("stagiaires")} />
         <Route path="sessions/:sessionId/planning" element={session("planning")} />

@@ -4113,3 +4113,55 @@ Backend **812/812**, frontend **350/350**, build OK, `git diff --check` propre.
 Pas de formulaire React (confirmation explicite de suppression à venir en
 DOC-9D), pas de purge automatique (durée de conservation à valider par A2C), pas
 de déploiement. DOC-9D : formulaire de saisie des entretiens (5 écrans).
+
+---
+
+## 2026-10-14 — DOC-9D1 : accueil et gestion des jeunes hors session
+
+### Contrôle de sécurité préalable (bloquant) — corrigé
+
+`DELETE /api/stagiaires/:id` présentait la même faille que FORM-1 : la
+vérification des dépendances et le `DELETE` n'étaient PAS dans la même
+transaction, sans verrou. `inscriptions.stagiaire_id` étant `ON DELETE CASCADE`,
+une inscription créée concurrentiellement entre le contrôle et la suppression
+aurait été détruite en cascade. **Correction** : transaction unique +
+`SELECT … FOR UPDATE` sur la ligne stagiaire (toute insertion concurrente
+d'inscription / fichier de preuve / document est bloquée par la clé étrangère
+jusqu'à la fin de la transaction), vérification `dependancesStagiaire` sur la
+même connexion. Test de concurrence ajouté (insertion bloquée par le verrou,
+puis aboutit après libération).
+
+### API
+
+- `GET /api/stagiaires` unifié : liste paginée (`limite` ≤ 100, `offset`),
+  filtres serveur (`etat` : tous / entretiens_en_cours / entretiens_valides /
+  inscrits / sans_suite), recherche `q` (≥ 2 caractères). Projection sécurisée :
+  identité + contact + état (compteurs), jamais entreprise, financeur,
+  situation de handicap ni besoins d'adaptation.
+
+### Interface (`client/src/jeunes/`)
+
+- Page « Jeunes » (route `/jeunes`, entrée « Formation ») : recherche, filtre
+  par état, liste (nom, état, entretiens, téléphone), badges.
+- Ajout hors session (identité + contact), doublons possibles signalés après
+  création (jamais fusionnés ni bloqués).
+- « Sans suite » / « Rouvrir » / « Supprimer » (admin, `ConfirmDialog` avec
+  confirmation explicite, Échap annule).
+- Aucune donnée médicale ni handicap affichée ni collectée.
+
+### Tests
+
+- Backend : `stagiairesHorsSession.test.js` (liste filtrable, projection
+  sécurisée), `stagiairesSansSuite.test.js` (test de concurrence).
+- Frontend : `client/test/jeunes.test.jsx` (8 tests) ; `navigation.test.js` /
+  `routes.test.jsx` mis à jour pour l'entrée « Jeunes ».
+
+### Validation
+
+Backend **814/814**, frontend **358/358**, build OK, `git diff --check` propre.
+
+### Limites / prochaine étape (DOC-9D2)
+
+Pas de formulaire d'entretien (14 rubriques), pas de questionnaire six phases,
+pas de génération Google Docs, pas de collecte de santé, pas de purge
+automatique. DOC-9D2 : formulaire d'entretien guidé (5 écrans).

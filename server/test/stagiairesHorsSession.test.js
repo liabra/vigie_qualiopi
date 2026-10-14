@@ -104,12 +104,43 @@ test("recherche : nom, prénom, email ; bornée ; paramètres validés", async (
   const vide = ok(await api("GET", "/api/stagiaires?q=zzz-inexistant", undefined, A()));
   assert.equal(vide.total, 0);
 
-  assert.equal((await api("GET", "/api/stagiaires", undefined, A())).statut, 400, "q requis");
   assert.equal((await api("GET", "/api/stagiaires?q=a", undefined, A())).statut, 400, "trop court");
 
-  // Projection minimale : ni téléphone, ni entreprise, ni handicap.
+  // Sans q : liste complète (DOC-9D1), toujours bornée et sécurisée.
+  const tout = ok(await api("GET", "/api/stagiaires", undefined, A()));
+  assert.ok(tout.total >= 2, "liste complète sans paramètre");
+  assert.ok(tout.stagiaires.some((s) => s.prenom === "Alice"));
+
+  // Projection sécurisée : identité + contact + état, jamais entreprise,
+  // financeur, handicap ni besoins d'adaptation.
   const proj = parNom.stagiaires[0];
-  assert.deepEqual(Object.keys(proj).sort(), ["civilite", "email", "id", "nom", "prenom"]);
+  const cles = Object.keys(proj).sort();
+  for (const interdite of ["entreprise", "financeur", "situation_handicap", "besoins_adaptation"]) {
+    assert.ok(!cles.includes(interdite), `champ réservé absent : ${interdite}`);
+  }
+  assert.ok(cles.includes("telephone") && cles.includes("nb_inscriptions") && cles.includes("nb_entretiens"));
+});
+
+test("liste filtrable par état : sans_suite, inscrits, entretiens_en_cours, entretiens_valides", async () => {
+  // Un jeune sans suite.
+  const ss = ok(await api("POST", "/api/stagiaires", { nom: "Sans", prenom: "Suite", email: "sans.suite@exemple.fr" }, A())).stagiaire;
+  await api("POST", `/api/stagiaires/${ss.id}/sans-suite`, undefined, A());
+
+  // Un jeune avec un entretien en cours (brouillon).
+  const ec = ok(await api("POST", "/api/stagiaires", { nom: "EnCours", prenom: "Brouillon", email: "encours@exemple.fr" }, A())).stagiaire;
+  ok(await api("POST", `/api/stagiaires/${ec.id}/entretiens`, undefined, A()));
+
+  // Un jeune avec un entretien validé.
+  const ev = ok(await api("POST", "/api/stagiaires", { nom: "Valide", prenom: "Valide", email: "valide@exemple.fr" }, A())).stagiaire;
+  const evEnt = ok(await api("POST", `/api/stagiaires/${ev.id}/entretiens`, undefined, A())).entretien;
+  await api("POST", `/api/entretiens/${evEnt.id}/valider`, undefined, A());
+
+  const parEtat = async (etat) => (ok(await api("GET", `/api/stagiaires?etat=${etat}`, undefined, A()))).stagiaires.map((s) => s.id);
+
+  assert.ok((await parEtat("sans_suite")).includes(ss.id), "sans suite visible");
+  assert.ok((await parEtat("entretiens_en_cours")).includes(ec.id), "brouillon visible");
+  assert.ok((await parEtat("entretiens_valides")).includes(ev.id), "validé visible");
+  assert.equal((await api("GET", "/api/stagiaires?etat=inconnu", undefined, A())).statut, 400, "filtre inconnu refusé");
 });
 
 // ── Correspondances (doublons potentiels) ────────────────────

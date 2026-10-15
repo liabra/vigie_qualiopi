@@ -4446,3 +4446,46 @@ Le modèle n'est pas encore enregistré avec `generation_multiple: true` en
 base réelle (action humaine, hors périmètre du code) ; le parcours de
 génération multiple n'a pas été testé dans l'application avec l'OAuth réel
 de Vigie. Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-10D (suite) : propositions pour les modèles vides
+
+### Méthode
+
+Aucune nouvelle recherche Drive. Propositions construites UNIQUEMENT à
+partir de sources déjà lues dans ce chantier (convention réelle, exemple de
+bilan 2024, blocs Vigie existants, variables canoniques) et consignées dans
+`DOC-10_CHAINE_MODELES.md` §10 — explicitement marquées « Proposition à
+valider », jamais présentées comme officielles.
+
+- **Emploi du temps** : entièrement couvrable automatiquement par le bloc
+  `seances` déjà suivi (date/heure/thème/lieu/compétences/activités) ; ne
+  manque qu'un fichier Drive avec les balises, à créer par A2C.
+- **Convention de formation** : 5 articles sur 11 templatisables avec des
+  variables canoniques existantes ; les articles juridiques (règlement
+  intérieur, RGPD) et la signature restent manuels/à relire par A2C.
+- **Livret d'accueil** : seule une structure est proposée (aucun contenu
+  réel non nominatif disponible) ; le texte de présentation doit être
+  rédigé par A2C.
+- **Certificat de réalisation** : variables automatiques identifiées ;
+  référence/version/signataire et la mention Qualiopi exacte restent
+  manuels — je n'invente pas cette mention à valeur de preuve.
+- **Bilan de session** : contexte (§2 de l'exemple réel) templatisable ;
+  les sections sur les taux (satisfaction/assiduité/objectifs/abandon)
+  restent bloquées — l'exemple donne des résultats déjà calculés, jamais la
+  méthode. Confirmé, pas de nouvelle information permettant de lever ce
+  blocage.
+
+Aucune formule d'indicateur, aucune signature, aucune mention juridique
+n'a été inventée.
+
+### Validation
+
+Documentation uniquement, aucun code modifié → base inchangée (821/821
+backend, 359/359 frontend). `git diff --check` propre.
+
+### Limites
+
+Toutes ces propositions nécessitent une validation A2C avant toute création
+de fichier Drive ou enregistrement de modèle. Aucun push ni déploiement.

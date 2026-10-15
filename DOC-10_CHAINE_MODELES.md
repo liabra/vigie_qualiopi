@@ -59,11 +59,11 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
 | Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
 | Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
 | Compte rendu prescripteur/entreprise | 🟡 (techniquement prêt, multi-générations OK, test réel restant) | session (`generation_multiple`) | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés, lus réellement sur Drive le 15/10/2026) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) — volontairement non résolus | enregistrer le modèle (`POST /api/modeles`, avec `generation_multiple: true`) + test réel de génération (OAuth Vigie) |
-| Convention de formation | ∅ (officiel vide) + ❓ (version réelle sans balise trouvée ailleurs) | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | templatiser ou traiter en manuel : décision métier | décision métier (templatiser le document réel ?) |
-| Livret d'accueil | ∅ (confirmé vide, lu réellement le 15/10/2026) | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` + contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
-| Emploi du temps | ∅ (confirmé vide, lu réellement le 15/10/2026) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
-| Certificat de réalisation | ∅ (confirmé vide, lu réellement le 15/10/2026) | stagiaire | `document_date` | contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
-| Bilan de session | ❓🔒 (exemple réel trouvé, formule non explicite) | session | — | `bilan_*` (BIL-01..05, aucun résolveur) | décision métier sur la méthode (l'exemple ne suffit pas) |
+| Convention de formation | 🗒️ Proposition à valider (§10.2) | session/formation | `formation_intitule`, `formation_objectif_general`, `session_date_*`, `session_lieu`, `session_horaires` | signature, articles juridiques (7/9) à relire par A2C | validation A2C puis templatisation du document réel |
+| Livret d'accueil | 🗒️ Proposition à valider (structure seule, §10.3) | formation | `organisme_nom`, `formation_*`, `session_lieu/horaires` | tout le texte de présentation + `referent_handicap_*` (n'existe pas en base) | A2C rédige le contenu sur cette structure |
+| Emploi du temps | 🗒️ Proposition à valider (§10.1) | session | bloc `seances` complet (date/heure/theme/lieu/compétences/activités) déjà suivi par Vigie | aucun | créer le fichier Drive avec ces balises (A2C) |
+| Certificat de réalisation | 🗒️ Proposition à valider (§10.4) | stagiaire | `stagiaire_nom_complet`, `formation_intitule`, `session_date_*`, `document_date` | référence/version document, signataire, mention Qualiopi exacte | validation A2C de la mention consacrée |
+| Bilan de session | 🗒️ Proposition (contexte §10.5 seulement) + ❓🔒 (sections 3-5) | session | contexte (§10.5) | `bilan_*` (BIL-01..05, aucun résolveur) | décision métier sur la méthode (l'exemple ne suffit pas) |
 | Indicateurs de résultats | ❓🔒 (exemple réel trouvé, formule non explicite) | formation | — | `indicateur_*` (IND-01..04, aucune formule) | décision métier sur la formule (l'exemple ne suffit pas) |
 | Feuille d'émargement | ⛔ | — | — | — | géré par **EduSign**, ne pas recréer |
 | Quiz de positionnement | ⛔ | — | — | — | Google Forms existant |
@@ -327,3 +327,109 @@ Backend **821/821**, frontend **359/359**, build OK, `git diff --check` propre.
 Enregistrer réellement le modèle avec `generation_multiple: true` (action
 humaine via l'interface) et vérifier le parcours de génération multiple dans
 l'application elle-même (OAuth Vigie) — non testé en conditions réelles ici.
+
+---
+
+## 10. DOC-10D — Propositions de modèles pour les documents vides
+
+**Aucune de ces propositions n'est un document officiel.** Elles ne
+s'appuient QUE sur des sources déjà lues dans ce chantier (sans nouvelle
+recherche Drive) : la convention réelle trouvée en DOC-10C, l'exemple réel
+de bilan de session (DOC-10C), les champs déjà suivis par Vigie (blocs
+`seances`/`absences`/`evaluations`, variables canoniques), et les règles
+métier déjà documentées (`PROJECT_HANDOFF.md`). Aucune formule d'indicateur,
+aucune signature, aucune décision administrative n'est inventée.
+
+### 10.1 Emploi du temps (à partir du planning réel déjà suivi)
+
+Vigie suit déjà, par séance (`seances`), tout ce qu'un emploi du temps
+affiche : `date_seance`, `heure_debut`, `heure_fin`, `theme`, `competences`,
+`activites`, `lieu`, `phase_numero`, `groupe_nom` (bloc déjà rendu en
+tableau par `blocsTableaux.js` pour le Livret FSE-IA).
+
+- **Automatique** : toutes les colonnes ci-dessus, pour chaque séance de la
+  session (bloc `seances`), + `formation_intitule`, `session_date_debut`,
+  `session_date_fin`, `session_lieu`.
+- **Manuel** : aucun — un emploi du temps n'a normalement pas de champ à
+  remplir à la main.
+- **Validation nécessaire** : la mise en page exacte (un modèle Google Doc
+  ou Sheet doit être créé par A2C avec ce tableau de colonnes et les
+  marqueurs correspondants ; Vigie ne peut pas créer ce fichier Drive
+  elle-même).
+- **Statut** : techniquement prêt dès qu'un fichier Drive portant ces
+  balises existe — **Proposition à valider**.
+
+### 10.2 Convention de formation (à partir de la convention réelle trouvée)
+
+La « Convention individuelle de formation » réelle (lue en DOC-10C, 11
+articles) ne contient aucune balise, mais sa structure est réutilisable :
+
+| Article | Automatique (variable canonique) | Manuel |
+|---|---|---|
+| 1 — Objet | `formation_intitule` | — |
+| 2 — Objectifs | `formation_objectif_general` | programme détaillé (document séparé, déjà le cas) |
+| 4 — Organisation | `session_date_debut`, `session_date_fin`, `session_lieu`, `session_horaires` | — |
+| 8 — Conditions financières | — | gratuité déjà actée dans le texte réel ; `financeur_nom` si jamais facturé |
+| 11 — Signature | — | nom/qualité/signature A2C + stagiaire (manuscrite, jamais générée) |
+
+- **Validation nécessaire** : articles 7 (règlement intérieur) et 9 (RGPD)
+  engagent juridiquement l'association — toute reformulation doit être
+  relue par A2C avant usage, je ne propose aucun changement de leur texte.
+- **Statut** : **Proposition à valider** (templatiser la convention réelle
+  avec ces 5 marqueurs, le reste du texte inchangé).
+
+### 10.3 Livret d'accueil
+
+Aucun contenu réel non nominatif n'a été trouvé pour ce modèle (le fichier
+officiel est vide ; le seul autre « livret d'accueil » trouvé sur le Drive
+est un document sans rapport, un registre d'accessibilité). Je ne propose
+donc qu'une **structure**, pas un texte :
+
+- **Automatique** : `organisme_nom`, `formation_intitule`,
+  `formation_public_vise`, `formation_prerequis`, `formation_accessibilite`,
+  `session_lieu`, `session_horaires`.
+- **Manuel / à rédiger par A2C** : présentation de l'association, règlement
+  intérieur (déjà un document séparé), contact du référent handicap
+  (`referent_handicap_*` n'existe dans aucune table Vigie actuellement —
+  décision métier : faut-il l'ajouter ?).
+- **Validation nécessaire** : tout le texte de présentation (ton, contenu)
+  — je n'écris aucune phrase de présentation à la place d'A2C.
+- **Statut** : **Proposition à valider** (structure seulement, contenu à
+  rédiger par A2C).
+
+### 10.4 Certificat de réalisation
+
+- **Automatique** : `stagiaire_nom_complet`, `formation_intitule`,
+  `session_date_debut`, `session_date_fin`, `session_duree_heures` (ou
+  `presence_heures_realisees` si le certificat doit indiquer les heures
+  réellement suivies plutôt que prévues — décision métier), `document_date`.
+- **Manuel** : `document_reference`/`document_version` (numérotation
+  qualité, aucune règle connue dans Vigie), `signataire_nom`/`signataire_qualite`
+  (jamais une signature générée).
+- **Validation nécessaire** : la mention exacte attendue par Qualiopi
+  (« certificat de réalisation » a un format consacré) — je ne rédige pas
+  cette mention, c'est un texte à valeur de preuve Qualiopi.
+- **Statut** : **Proposition à valider**.
+
+### 10.5 Bilan de session (à partir de l'exemple réel 2024)
+
+L'exemple réel trouvé en DOC-10C donne une structure exploitable (sections
+1 à 7). Proposition de template à partir de cette structure, **sans aucune
+formule inventée** :
+
+| Section | Automatique | Reste bloqué |
+|---|---|---|
+| 2 — Contexte | `formation_intitule`, `formation_public_vise`, `session_date_debut`, `session_date_fin`, `session_nombre_inscrits`, `session_nombre_termines` | — |
+| 3.1 — Satisfaction | — | aucune formule officielle de taux global (le bloc `evaluations` donne des scores individuels, pas un agrégat session) |
+| 3.2 — Assiduité | — | `presence_taux`/`absence_taux` sont calculés PAR STAGIAIRE (lot L2) ; aucune formule d'agrégation session validée |
+| 3.3 — Objectifs pédagogiques | — | aucune notion de « compétence acquise/en cours/non acquise » dans les tables Vigie actuelles |
+| 3.4 — Abandons | `abandon_statut` par stagiaire, comptable | formule du taux (nombre/nombre inscrits ?) non validée officiellement |
+| 4/5 — Analyse | — | texte rédactionnel, jamais généré automatiquement (analyse pédagogique humaine) |
+
+- **Validation nécessaire** : la méthode de calcul de CHAQUE taux (3.1 à
+  3.4) avant tout résolveur — exactement le blocage déjà identifié en
+  DOC-10/DOC-10B/DOC-10C, confirmé à nouveau par la lecture de l'exemple
+  réel (qui donne des résultats déjà calculés, jamais la méthode).
+- **Statut** : **Proposition à valider** pour la structure et le contexte
+  (section 2) ; **bloqué** pour les sections 3/4/5 tant que la méthode de
+  calcul n'est pas validée par A2C.

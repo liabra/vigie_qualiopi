@@ -58,7 +58,7 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
 | Attestation de formation | ✅ | stagiaire | historique + canoniques | — | — (déjà fait) |
 | Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
 | Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
-| Compte rendu prescripteur/entreprise | 🟡 (techniquement prêt, test réel restant) | session | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés, lus réellement sur Drive le 15/10/2026) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) — volontairement non résolus | enregistrer le modèle (`POST /api/modeles`) + test réel de génération (OAuth Vigie) |
+| Compte rendu prescripteur/entreprise | 🟡 (techniquement prêt, multi-générations OK, test réel restant) | session (`generation_multiple`) | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés, lus réellement sur Drive le 15/10/2026) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) — volontairement non résolus | enregistrer le modèle (`POST /api/modeles`, avec `generation_multiple: true`) + test réel de génération (OAuth Vigie) |
 | Convention de formation | ∅ (officiel vide) + ❓ (version réelle sans balise trouvée ailleurs) | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | templatiser ou traiter en manuel : décision métier | décision métier (templatiser le document réel ?) |
 | Livret d'accueil | ∅ (confirmé vide, lu réellement le 15/10/2026) | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` + contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
 | Emploi du temps | ∅ (confirmé vide, lu réellement le 15/10/2026) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
@@ -270,3 +270,60 @@ droits d'accès de ce fichier sur le Drive (un formulaire rempli ne devrait
 pas être dans un dossier de modèles vierges). Aucune autre exploration large
 par mot-clé n'a été tentée après cette découverte, pour éviter de faire
 remonter d'autres données personnelles sans nécessité.
+
+**DOC-10D : consigne appliquée.** Le document sensible n'a pas été rouvert,
+pas modifié, pas extrait. Seule la vérification de rangement/permissions
+reste à faire, par A2C — aucune action technique ne peut la remplacer.
+
+---
+
+## 9. DOC-10D — Plusieurs documents par session (compte rendu prescripteur)
+
+### Constat
+
+Le besoin métier confirmé par l'autrice : une session peut donner lieu à
+**plusieurs entretiens prescripteur/entreprise**, chacun devant produire SON
+propre document — sans qu'un deuxième entretien écrase le premier.
+`documents_generes` imposait jusqu'ici UN SEUL document vivant par
+(modèle, session, groupe, stagiaire) : un index unique conçu pour les
+documents liés à une entité précise (« régénérer remplace »), inadapté à un
+document réutilisable par occurrence.
+
+### Solution technique (migration 028, additive)
+
+- `modeles_documents.generation_multiple` (booléen, `false` par défaut) :
+  active, PAR MODÈLE, la possibilité de produire plusieurs documents
+  indépendants pour la même session. Refusé pour la portée `stagiaire`
+  (chaque stagiaire a déjà son document propre).
+- `documents_generes.libelle` (texte libre, nullable) : distingue deux
+  générations du même modèle pour la même session (ex. le prescripteur
+  concerné). Jamais interprété par le moteur de substitution, jamais une
+  donnée obligatoire pour les modèles existants.
+- L'index unique inclut désormais `COALESCE(libelle, '')` : deux libellés
+  différents ne se remplacent JAMAIS ; le même libellé continue de se
+  remplacer, exactement comme avant pour tous les autres modèles (libellé
+  `NULL` partout ⇒ comportement identique à l'ancien index, aucune
+  régression sur Convocation/Attestation/Livret).
+- `POST /api/generations` accepte un `libelle` optionnel (200 caractères
+  max) ; `genererDocuments()` l'exige si `generation_multiple` est vrai, le
+  refuse sinon — jamais de valeur inventée à sa place.
+- `POST /api/modeles` accepte `generation_multiple` à la création.
+
+### Tests
+
+`server/test/generationCompteRenduPrescripteur.test.js` (+4, total 7) :
+un libellé différent crée un nouveau document sans toucher aux précédents ;
+le même libellé sans confirmation est bloqué (409, comportement inchangé) ;
+un modèle `generation_multiple` exige un libellé ; un modèle ordinaire
+refuse un libellé inattendu. `transversal.test.js`/`qualite.test.js` : compteurs
+de migrations 27 → 28.
+
+### Validation
+
+Backend **821/821**, frontend **359/359**, build OK, `git diff --check` propre.
+
+### Reste à faire
+
+Enregistrer réellement le modèle avec `generation_multiple: true` (action
+humaine via l'interface) et vérifier le parcours de génération multiple dans
+l'application elle-même (OAuth Vigie) — non testé en conditions réelles ici.

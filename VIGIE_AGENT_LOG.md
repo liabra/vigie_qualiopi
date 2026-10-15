@@ -4394,3 +4394,55 @@ la progression autonome par lots à ce stade.
 
 Aucun code modifié dans ce lot (documentation uniquement) → la base reste
 verte (backend 817/817). `git diff --check` propre. Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-10D : plusieurs documents par session + consigne confidentialité
+
+### Confidentialité
+
+Le document sensible identifié en DOC-10C n'a pas été rouvert, ni modifié,
+ni cité. Consigné dans `DOC-10_CHAINE_MODELES.md` §8 que seule une
+vérification de rangement/permissions par A2C reste nécessaire. Aucune
+recherche Drive générique (type « Modèle » ou « Formation ») effectuée dans
+ce lot : uniquement l'identifiant Drive déjà connu du compte rendu
+prescripteur.
+
+### Compte rendu prescripteur : plusieurs entretiens par session
+
+Besoin confirmé : une session peut avoir plusieurs entretiens prescripteur,
+chacun avec son propre document. Jusqu'ici `documents_generes` imposait un
+seul document vivant par (modèle, session, groupe, stagiaire) — un
+régénérer remplaçait toujours.
+
+**Migration 028 (additive)** : `modeles_documents.generation_multiple`
+(booléen, `false` par défaut, refusé pour la portée `stagiaire`) ;
+`documents_generes.libelle` (texte libre, nullable) ; l'index unique inclut
+désormais `COALESCE(libelle,'')`. Comportement inchangé pour tous les
+modèles existants (libellé `NULL` partout).
+
+- `genererDocuments()` : exige un libellé si `generation_multiple`, le
+  refuse sinon ; l'existant n'est recherché que pour le MÊME libellé (un
+  libellé différent n'est jamais vu comme « déjà généré », donc jamais
+  bloqué ni écrasé) ; le nom de fichier inclut le libellé.
+- `POST /api/generations` : `libelle` optionnel (200 caractères max).
+- `POST /api/modeles` : `generation_multiple` à la création.
+
+### Tests
+
+`generationCompteRenduPrescripteur.test.js` (+4, total 7) : libellés
+différents → documents indépendants ; même libellé sans confirmation → 409
+inchangé ; modèle multiple sans libellé → refusé (rien d'inventé à la
+place) ; modèle ordinaire avec libellé → refusé. Compteurs de migrations mis
+à jour (27→28) dans `transversal.test.js`/`qualite.test.js`.
+
+### Validation
+
+Backend **821/821**, frontend **359/359**, build OK, `git diff --check` propre.
+
+### Limites
+
+Le modèle n'est pas encore enregistré avec `generation_multiple: true` en
+base réelle (action humaine, hors périmètre du code) ; le parcours de
+génération multiple n'a pas été testé dans l'application avec l'OAuth réel
+de Vigie. Aucun push ni déploiement.

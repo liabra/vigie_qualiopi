@@ -488,7 +488,7 @@ const generationsEnCours = new Map();
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
 // DOC-3C : `admin` (booléen, estAdmin(req.user) calculé par la route) sert
 // au précontrôle pour les variables/blocs `sensibilite: "restreinte"`.
-export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, client: clientGoogle = null } = {}) {
+export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null } = {}) {
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
@@ -504,21 +504,38 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   if (!modele) throw new Error("Modèle introuvable ou désactivé.");
   const { rows: indicateurs } = await query("SELECT indicateur_id FROM modele_indicateurs WHERE modele_id = $1", [modeleId]);
 
+  // DOC-10D : un modèle `generation_multiple` (ex. compte rendu d'entretien
+  // prescripteur) peut être généré PLUSIEURS FOIS pour la même session — un
+  // par occurrence (prescripteur, entretien…) — distinguées par `libelle`,
+  // jamais par une donnée personnelle obligatoire. Les autres modèles
+  // gardent EXACTEMENT le comportement d'avant (un seul document vivant).
+  const libelleNorm = modele.generation_multiple ? String(libelle || "").trim() : null;
+  if (modele.generation_multiple && !libelleNorm) {
+    throw new Error("Ce modèle autorise plusieurs documents par session : indiquez un libellé pour distinguer cette génération (ex. le prescripteur concerné).");
+  }
+  if (!modele.generation_multiple && libelle) {
+    throw new Error("Ce modèle ne permet qu'un seul document par session : aucun libellé n'est attendu.");
+  }
+
   const ctx = await contexteGeneration(sessionId, groupeId);
   const aProduire = await cibles(modele, ctx);
   if (!aProduire.length) {
     throw new Error("Aucun stagiaire inscrit (hors abandons) : rien à générer pour ce modèle.");
   }
 
-  // Déjà produits pour ce couple : on ne double jamais sans consigne.
+  // Déjà produits pour ce couple (modèle/session/groupe ET libellé) : on ne
+  // double jamais sans consigne — mais un libellé DIFFÉRENT n'est jamais
+  // considéré comme « déjà généré » (c'est précisément ce qui permet
+  // plusieurs documents indépendants pour la même session).
   const { rows: existants } = await query(
     `SELECT * FROM documents_generes
-     WHERE modele_id = $1 AND COALESCE(session_id, 0) = $2 AND COALESCE(groupe_id, 0) = $3`,
-    [modeleId, sessionId || 0, groupeId || 0]
+     WHERE modele_id = $1 AND COALESCE(session_id, 0) = $2 AND COALESCE(groupe_id, 0) = $3
+       AND COALESCE(libelle, '') = COALESCE($4, '')`,
+    [modeleId, sessionId || 0, groupeId || 0, libelleNorm]
   );
   if (existants.length && !remplacer) {
     const e = new Error(
-      `${existants.length} document(s) ont déjà été générés pour ce modèle sur cette session. ` +
+      `${existants.length} document(s) ont déjà été générés pour ce modèle sur cette session${libelleNorm ? ` (« ${libelleNorm} »)` : ""}. ` +
       "Relancez en confirmant le remplacement pour les refaire."
     );
     e.dejaGeneres = existants.length;
@@ -590,7 +607,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       // Nom de fichier sûr : jamais de séparateur de chemin ni de nom vide.
       const brut = stagiaire
         ? `${modele.nom} - ${stagiaire.nom} ${stagiaire.prenom}`
-        : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}`;
+        : `${modele.nom} - ${ctx.groupe?.nom || ctx.session.reference || ctx.session.date_debut}${libelleNorm ? ` - ${libelleNorm}` : ""}`;
       const nom = nomSain(brut);
 
       const ancien = dejaParCle.get(stagiaire?.id ?? 0);
@@ -652,14 +669,14 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     for (const p of produits) {
       await cx.query(
         `INSERT INTO documents_generes (modele_id, session_id, groupe_id, stagiaire_id, generation_id,
-           drive_file_id, drive_url, nom, preuve_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT (modele_id, COALESCE(session_id, 0), COALESCE(groupe_id, 0), COALESCE(stagiaire_id, 0))
+           drive_file_id, drive_url, nom, preuve_id, libelle)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (modele_id, COALESCE(session_id, 0), COALESCE(groupe_id, 0), COALESCE(stagiaire_id, 0), COALESCE(libelle, ''))
          DO UPDATE SET drive_file_id = EXCLUDED.drive_file_id, drive_url = EXCLUDED.drive_url,
            nom = EXCLUDED.nom, generation_id = EXCLUDED.generation_id, preuve_id = EXCLUDED.preuve_id,
            genere_le = now(), remplace_le = now()`,
         [modeleId, sessionId, groupeId, p.stagiaire?.id || null, gen.id,
-         p.copie.id, p.copie.webViewLink || null, p.nom, preuves[0] || null]
+         p.copie.id, p.copie.webViewLink || null, p.nom, preuves[0] || null, libelleNorm]
       );
     }
     await cx.query("COMMIT");
@@ -672,7 +689,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     return {
       generationId: gen.id, modele: modele.nom, portee: modele.portee,
       documents: produits.length, remplaces, preuves: preuves.length,
-      dossierId,
+      dossierId, libelle: libelleNorm,
       anciensNonArchives,
       marqueursNonRemplaces: produits.filter((p) => !p.copie.marqueursRemplaces).length,
       // Marqueurs écrits dans le modèle mais absents de la convention :

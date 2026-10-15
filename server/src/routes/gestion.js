@@ -1447,11 +1447,17 @@ router.get("/modeles", requireAuth, wrap(async (req, res) => {
 }));
 
 router.post("/modeles", requireAdmin, wrap(async (req, res) => {
-  const { nom, lien, portee, description, indicateurs, drive_mime } = req.body || {};
+  const { nom, lien, portee, description, indicateurs, drive_mime, generation_multiple } = req.body || {};
   if (!nom?.trim()) return manque(res, "nom");
   if (!PORTEES.includes(portee)) return res.status(400).json({ error: "Portée inconnue." });
   const fileId = extraireFileId(lien);
   if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
+  // DOC-10D : plusieurs documents indépendants pour une même session n'a de
+  // sens que pour une portée non liée à un stagiaire précis (chaque
+  // stagiaire a déjà SON document, régénérer le remplace délibérément).
+  if (generation_multiple === true && portee === "stagiaire") {
+    return res.status(400).json({ error: "Un modèle de portée « stagiaire » ne peut pas autoriser plusieurs documents par session." });
+  }
   // Un numéro d'indicateur doit être un entier positif : une valeur
   // illisible est refusée ici, jamais laissée à PostgreSQL (conversion 500).
   const bruts = Array.isArray(indicateurs) ? indicateurs : [];
@@ -1465,10 +1471,10 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   try {
     await cx.query("BEGIN");
     const { rows: [modele] } = await cx.query(
-      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par, generation_multiple)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [nom.trim(), fileId, `https://drive.google.com/open?id=${fileId}`, drive_mime || null,
-       portee, description?.trim() || null, req.user.id]
+       portee, description?.trim() || null, req.user.id, generation_multiple === true]
     );
     const { rows: trouves } = await cx.query(
       `SELECT i.id, i.numero FROM indicateurs i
@@ -1525,7 +1531,7 @@ router.get("/modeles/:id/diagnostic", requireAdmin, wrap(async (req, res) => {
 
 // ── Génération ───────────────────────────────────────────────
 router.post("/generations", requireRedacteur, wrap(async (req, res) => {
-  const { modele_id, session_id, groupe_id = null, remplacer = false } = req.body || {};
+  const { modele_id, session_id, groupe_id = null, remplacer = false, libelle = null } = req.body || {};
   const modeleId = identifiant(modele_id);
   const sessionId = identifiant(session_id);
   if (!modeleId) return res.status(400).json({ error: "Identifiant de modèle invalide." });
@@ -1535,11 +1541,18 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     groupeId = identifiant(groupe_id);
     if (!groupeId) return res.status(400).json({ error: "Identifiant de groupe invalide." });
   }
+  // DOC-10D : libellé libre (ex. le prescripteur concerné) qui distingue
+  // plusieurs générations d'un même modèle « generation_multiple » pour la
+  // même session — jamais une donnée obligatoire pour les autres modèles
+  // (la règle « un seul libellé, ou aucun » est tranchée par le service).
+  if (libelle != null && (typeof libelle !== "string" || libelle.trim().length > 200)) {
+    return res.status(400).json({ error: "Libellé invalide : texte de 200 caractères maximum." });
+  }
   const etat = await verifierSessionActive(sessionId);
   if (etat.erreur) return res.status(etat.statut).json({ error: etat.erreur });
   try {
     const r = await genererDocuments({
-      modeleId, sessionId, groupeId,
+      modeleId, sessionId, groupeId, libelle: libelle?.trim() || null,
       remplacer: remplacer === true, utilisateurId: req.user.id, admin: estAdmin(req.user),
     });
     res.json(r);

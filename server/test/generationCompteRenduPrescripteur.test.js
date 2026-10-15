@@ -54,32 +54,51 @@ function corpsModeleReel() {
   ];
 }
 
-function baseSimulee() {
+// DOC-10D : `generes` persiste les lignes `documents_generes` ENTRE deux
+// appels de `genererDocuments` dans un même test (comme la vraie table) —
+// nécessaire pour vérifier qu'un libellé différent n'écrase jamais un
+// document précédent, et qu'un même libellé continue, lui, à le remplacer.
+function baseSimulee({ generationMultiple = false } = {}) {
   const session = {
     id: 1, reference: "SESS-CR1", date_debut: "2026-01-05", date_fin: "2026-03-05",
     lieu: "Cayenne", formateur: "Mme Carr", horaire: "8h30–12h00",
     duree_heures_reelle: null, formation_id: 1, intitule: "Aide à domicile",
     duree_heures_defaut: 400, statut: "planifiee",
   };
-  const executer = async (text) => {
+  const generes = [];
+  const executer = async (text, params = []) => {
     const sql = sqlNormalise(text);
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [] };
     if (sql.startsWith("SELECT * FROM modeles_documents WHERE id = $1 AND actif")) {
-      return { rows: [{ id: 2, nom: "Compte rendu prescripteur", drive_file_id: "CR1", drive_mime: DOC, portee: "session" }] };
+      return { rows: [{ id: 2, nom: "Compte rendu prescripteur", drive_file_id: "CR1", drive_mime: DOC, portee: "session", generation_multiple: generationMultiple }] };
     }
     if (sql.startsWith("SELECT indicateur_id FROM modele_indicateurs")) return { rows: [] };
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) return { rows: [{ ...session }] };
     if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 4, termines: 0 }] };
     if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: [] };
-    if (sql.startsWith("SELECT * FROM documents_generes")) return { rows: [] };
+    if (sql.startsWith("SELECT * FROM documents_generes")) {
+      const [modeleId, sessionId, groupeId, libelle] = params;
+      return { rows: generes.filter((g) =>
+        g.modele_id === modeleId && (g.session_id ?? 0) === sessionId && (g.groupe_id ?? 0) === groupeId
+        && (g.libelle ?? "") === (libelle ?? "")) };
+    }
     if (sql.startsWith("INSERT INTO generations")) return { rows: [{ id: 50 }] };
     if (sql.startsWith("DELETE FROM preuve_fichiers")) return { rows: [] };
     if (sql.startsWith("INSERT INTO preuve_fichiers")) return { rows: [] };
-    if (sql.startsWith("INSERT INTO documents_generes")) return { rows: [] };
+    if (sql.startsWith("INSERT INTO documents_generes")) {
+      const [modeleId, sessionId, groupeId, stagiaireId, generationId, driveFileId, driveUrl, nom, preuveId, libelle] = params;
+      const i = generes.findIndex((g) =>
+        g.modele_id === modeleId && (g.session_id ?? 0) === (sessionId ?? 0) && (g.groupe_id ?? 0) === (groupeId ?? 0)
+        && (g.libelle ?? "") === (libelle ?? ""));
+      const ligne = { modele_id: modeleId, session_id: sessionId, groupe_id: groupeId, stagiaire_id: stagiaireId, drive_file_id: driveFileId, nom, libelle };
+      if (i === -1) generes.push(ligne); else generes[i] = ligne;
+      return { rows: [] };
+    }
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = { query: executer, connect: async () => ({ query: executer, release: () => {} }) };
   setPoolFactory(() => pool);
+  return { generes };
 }
 
 function clientGoogleSimule() {
@@ -143,4 +162,53 @@ test("DOC-10C : aucune balise n'est envoyée pour les champs manuels (jamais de 
   // "SYNTHÈSE ADMINISTRATIVE"…) ne portent aucune balise {{…}} dans le
   // modèle réel : aucune requête de remplacement ne doit les cibler.
   for (const c of cibles) assert.match(c, /^\{\{.*\}\}$/, "seules des balises {{…}} sont remplacées, jamais du texte libre");
+});
+
+// DOC-10D : une session peut donner lieu à plusieurs entretiens avec des
+// prescripteurs différents — chacun doit pouvoir produire SON document,
+// sans écraser les précédents ni exiger un remplacement explicite.
+test("DOC-10D : un libellé différent crée un NOUVEAU document, sans toucher aux précédents", async () => {
+  const { generes } = baseSimulee({ generationMultiple: true });
+  const { client: c1 } = clientGoogleSimule();
+  const r1 = await genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, libelle: "Pôle Emploi", client: c1 });
+  assert.equal(r1.documents, 1);
+  assert.equal(r1.remplaces, 0, "premier entretien : rien à remplacer");
+
+  const { client: c2 } = clientGoogleSimule();
+  const r2 = await genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, libelle: "Mission Locale", client: c2 });
+  assert.equal(r2.documents, 1);
+  assert.equal(r2.remplaces, 0, "deuxième entretien : nouveau document, pas un remplacement");
+
+  assert.equal(generes.length, 2, "les deux documents coexistent, aucun n'a été écrasé");
+  assert.deepEqual(generes.map((g) => g.libelle).sort(), ["Mission Locale", "Pôle Emploi"]);
+});
+
+test("DOC-10D : le MÊME libellé sans confirmation de remplacement est bloqué (409)", async () => {
+  baseSimulee({ generationMultiple: true });
+  const { client: c1 } = clientGoogleSimule();
+  await genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, libelle: "Pôle Emploi", client: c1 });
+
+  const { client: c2 } = clientGoogleSimule();
+  await assert.rejects(
+    genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, libelle: "Pôle Emploi", client: c2 }),
+    (e) => { assert.equal(e.dejaGeneres, 1); return true; }
+  );
+});
+
+test("DOC-10D : un modèle generation_multiple exige un libellé (jamais de champ inventé à sa place)", async () => {
+  baseSimulee({ generationMultiple: true });
+  const { client } = clientGoogleSimule();
+  await assert.rejects(
+    genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, client }),
+    /libellé/i
+  );
+});
+
+test("DOC-10D : un modèle ordinaire (generation_multiple=false) refuse un libellé inattendu", async () => {
+  baseSimulee({ generationMultiple: false });
+  const { client } = clientGoogleSimule();
+  await assert.rejects(
+    genererDocuments({ modeleId: 2, sessionId: 1, utilisateurId: 1, libelle: "Pôle Emploi", client }),
+    /un seul document/i
+  );
 });

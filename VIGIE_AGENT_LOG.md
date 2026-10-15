@@ -4356,3 +4356,41 @@ frontend concerné (aucun changement d'interface).
   l'autrice, dans l'application, sur une session de test — jamais présenté
   ici comme validé.
 - Aucun push ni déploiement.
+
+---
+
+## 2026-10-15 — DOC-10C (suite) : Lot A relu, arrêt sur alerte confidentialité
+
+### Lot A (Emploi du temps, Convention, Livret d'accueil) : rien à coder
+
+Le dossier Drive officiel A2C (`1IBuxEq-wgkg3vwUCaaETfHoSDuxCF1nF`, 20 fichiers)
+a été listé et chaque modèle potentiellement concerné relu réellement :
+
+- `MODELE_Emploi_Du_Temps`, `MODELE_Convention_Formation`, `MODELE_Livret_Accueil`,
+  `MODELE_Certificat_Realisation`, `MODELE_Analyse_Besoins` et 10 autres modèles
+  officiels sont **tous vides** (0 caractère). Conformément à la consigne,
+  aucun contenu n'est inventé : classés **∅**, en attente de rédaction par A2C.
+- Une « Convention individuelle de formation » réelle et complète existe
+  ailleurs sur le Drive, mais sans aucune balise `{{…}}` — document figé à
+  usage manuel. La templatiser est une décision métier, pas un gap technique.
+- `MODELE_Bilan_Session` et `MODELE_Indicateurs_Resultats` existent réellement
+  mais sont des **exemples chiffrés d'une session passée (2024)**, pas des
+  gabarits à formule générique : ne lèvent pas le besoin de décision métier
+  sur `bilan_*`/`indicateur_*` (IND-01..04).
+
+### ⚠️ Alerte confidentialité — exploration Drive arrêtée par prudence
+
+Une recherche Drive générique a fait remonter un fichier dont le TITRE
+contient « Modèle » mais dont le CONTENU est un formulaire **rempli avec
+l'identité et des informations de handicap d'une personne réelle** — pas un
+gabarit vide. Le fichier n'a été ni copié, ni modifié ; son contenu détaillé
+n'est reproduit nulle part dans ce dépôt. Signalé à l'autrice (rangement/
+droits d'accès à vérifier sur ce fichier). **Aucune autre recherche Drive par
+mot-clé n'a été tentée après cette découverte**, pour ne pas faire remonter
+d'autres données personnelles sans nécessité — c'est la raison de l'arrêt de
+la progression autonome par lots à ce stade.
+
+### Validation
+
+Aucun code modifié dans ce lot (documentation uniquement) → la base reste
+verte (backend 817/817). `git diff --check` propre. Aucun push ni déploiement.

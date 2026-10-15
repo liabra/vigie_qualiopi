@@ -59,12 +59,12 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
 | Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
 | Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
 | Compte rendu prescripteur/entreprise | 🟡 (techniquement prêt, test réel restant) | session | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés, lus réellement sur Drive le 15/10/2026) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) — volontairement non résolus | enregistrer le modèle (`POST /api/modeles`) + test réel de génération (OAuth Vigie) |
-| Convention de formation | ❓🔒 | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | `financeur_nom`, `convention_reference`, `prescripteur_contact_*` | données financeur + Drive |
-| Livret d'accueil | ❓🔒 | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` | données organisme + Drive |
-| Emploi du temps | 🟡 (préparé) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | `seance_numero`, `seance_duree_heures` | lecture modèle + Drive |
-| Certificat de réalisation | ❓🔒 | stagiaire | `document_date` | `document_reference/version/redacteur/approbateur`, `signataire_*` | métadonnées document + Drive |
-| Bilan de session | ❓🔒 | session | — | `bilan_*` (BIL-01..05, aucun résolveur) | définition métier + Drive |
-| Indicateurs de résultats | ❓🔒 | formation | — | `indicateur_*` (IND-01..04, aucune formule) | formule officielle + Drive |
+| Convention de formation | ∅ (officiel vide) + ❓ (version réelle sans balise trouvée ailleurs) | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | templatiser ou traiter en manuel : décision métier | décision métier (templatiser le document réel ?) |
+| Livret d'accueil | ∅ (confirmé vide, lu réellement le 15/10/2026) | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` + contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
+| Emploi du temps | ∅ (confirmé vide, lu réellement le 15/10/2026) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
+| Certificat de réalisation | ∅ (confirmé vide, lu réellement le 15/10/2026) | stagiaire | `document_date` | contenu à écrire par A2C | A2C doit d'abord rédiger le modèle (rien à lire) |
+| Bilan de session | ❓🔒 (exemple réel trouvé, formule non explicite) | session | — | `bilan_*` (BIL-01..05, aucun résolveur) | décision métier sur la méthode (l'exemple ne suffit pas) |
+| Indicateurs de résultats | ❓🔒 (exemple réel trouvé, formule non explicite) | formation | — | `indicateur_*` (IND-01..04, aucune formule) | décision métier sur la formule (l'exemple ne suffit pas) |
 | Feuille d'émargement | ⛔ | — | — | — | géré par **EduSign**, ne pas recréer |
 | Quiz de positionnement | ⛔ | — | — | — | Google Forms existant |
 | Résultats de quiz | ⛔ | — | — | — | Google Forms existant |
@@ -228,3 +228,45 @@ avec des identifiants de production à la chaîne pour chaque modèle.
   chantier technique) et laisser l'autrice réaliser un test de génération réel
   dans l'application (OAuth Vigie), sur une session de test, jamais sur un
   dossier de stagiaire réel.
+
+### Lot A relu (Emploi du temps, Convention, Livret d'accueil)
+
+Le dossier Drive des modèles officiels A2C (`1IBuxEq-wgkg3vwUCaaETfHoSDuxCF1nF`)
+a été entièrement listé (lecture seule, métadonnées + contenu). Constat :
+
+- `MODELE_Emploi_Du_Temps`, `MODELE_Convention_Formation`, `MODELE_Livret_Accueil`,
+  `MODELE_Certificat_Realisation`, `MODELE_Analyse_Besoins`, `MODELE_Reglement_Interieur`,
+  `MODELE_Compte_Rendu_Entretien`, `MODELE_Emargement`, `MODELE_Quiz_Positionnement`,
+  `MODELE_Resultats_Quiz`, `MODELE_Satisfaction_Stagiaire`, `MODELE_Satisfaction_Formateur`,
+  `MODELE_Livret_Suivi_Pedagogique`, `MODELE_Preuve_Remise_Supports`,
+  `MODELE_Attestation_Fin_Formation` sont **tous vides (0 caractère, taille Drive
+  identique de 1024 octets)**. → **∅**, confirmés, aucun contenu à inventer.
+  (`MODELE_Livret_Suivi_Pedagogique` est un doublon vide sans rapport avec le
+  Livret FSE-IA déjà fonctionnel, trouvé ailleurs sur le Drive.)
+- Une « Convention individuelle de formation » RÉELLE et complète existe
+  ailleurs sur le Drive (hors dossier officiel), mais **ne contient aucune
+  balise `{{…}}`** : c'est un document figé à usage manuel (champs de
+  signature en blanc), pas un modèle exploitable par le moteur de
+  substitution sans décision métier (faut-il le templatiser ? avec quelles
+  variables ?). Reste ❓🔒.
+- `MODELE_Indicateurs_Resultats` (classeur) et `MODELE_Bilan_Session` (document)
+  existent et sont non vides, mais il s'agit d'un **exemple réel rempli pour
+  une session passée (2024, « Café numérique e-Senior »)**, pas d'un gabarit
+  générique à balises : aucune formule de calcul exploitable n'y est écrite
+  (les chiffres sont déjà calculés, pas la méthode). Confirme la structure
+  attendue (satisfaction / assiduité / atteinte des objectifs pédagogiques /
+  abandon) mais ne lève PAS le besoin de décision métier sur la formule
+  officielle `IND-01..04` ni `bilan_*`. Reste ❓🔒.
+
+### ⚠️ Alerte confidentialité (à signaler, pas une action technique)
+
+Une recherche Drive générique sur « besoins » a fait remonter un fichier
+dont le TITRE contient « Modèle » mais dont le CONTENU est un formulaire
+**rempli avec l'identité et des informations de handicap d'une personne
+réelle** (pas un gabarit vide). Ce fichier n'a été ni copié, ni modifié, ni
+cité ici avec son contenu détaillé — seule son existence et sa nature sont
+signalées. Point d'attention pour l'autrice : vérifier le rangement / les
+droits d'accès de ce fichier sur le Drive (un formulaire rempli ne devrait
+pas être dans un dossier de modèles vierges). Aucune autre exploration large
+par mot-clé n'a été tentée après cette découverte, pour éviter de faire
+remonter d'autres données personnelles sans nécessité.

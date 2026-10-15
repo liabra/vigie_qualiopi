@@ -58,7 +58,7 @@ métier requise · ⛔ Hors périmètre · ∅ Fichier Drive vide / non fonction
 | Attestation de formation | ✅ | stagiaire | historique + canoniques | — | — (déjà fait) |
 | Livret FSE-IA | ✅ | stagiaire | bloc `suivi_pedagogique` | — | — (déjà fait) |
 | Analyse des besoins FSE-IA | 🔒🟡 | stagiaire | aucune (données `entretiens` non résolues) | résolveurs entretien + DOC-9D2 | form DOC-9D2 + résolveurs + Drive |
-| Compte rendu prescripteur/entreprise | 🟡 (préparé) | session | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) | enregistrer le modèle + Drive |
+| Compte rendu prescripteur/entreprise | 🟡 (techniquement prêt, test réel restant) | session | `formation_intitule`, `formation_duree_heures`, `session_date_debut`, `session_date_fin` (4 marqueurs confirmés, lus réellement sur Drive le 15/10/2026) | champs manuels (prescripteur, interlocuteur, date entretien, synthèse) — volontairement non résolus | enregistrer le modèle (`POST /api/modeles`) + test réel de génération (OAuth Vigie) |
 | Convention de formation | ❓🔒 | session/formation | `formation_*`, `session_*`, `prescripteur_nom` | `financeur_nom`, `convention_reference`, `prescripteur_contact_*` | données financeur + Drive |
 | Livret d'accueil | ❓🔒 | formation | `organisme_nom` (ORG-01) | `organisme_*`, `referent_handicap_*` | données organisme + Drive |
 | Emploi du temps | 🟡 (préparé) | session | bloc `seances` (date/heure/theme/lieu/compétences/activités) | `seance_numero`, `seance_duree_heures` | lecture modèle + Drive |
@@ -186,3 +186,45 @@ administrative) sont volontairement **non résolubles** : jamais inventés, lais
 | Certificat de réalisation | accès Google | `document_reference/version/redacteur/approbateur`, `signataire_*` | métadonnées document + signataires |
 | Bilan de session | accès Google | `bilan_*` (BIL-01..05) | formule/indicateurs du bilan |
 | Indicateurs de résultats | accès Google | `indicateur_*` (IND-01..04) | formule officielle |
+
+---
+
+## 8. DOC-10C — Connecteur Google Drive natif disponible + pilote
+
+### Levée du blocage d'accès Drive
+
+Un connecteur Google Drive natif (`claude.ai Google Drive`) est disponible et
+autorisé dans l'environnement d'exécution de cette session — distinct de la
+méthode indirecte (identifiants Railway/production) utilisée en DOC-2.5/DOC-7E.
+Il permet la **lecture réelle** de n'importe quel modèle Drive (métadonnées,
+texte intégral) sans configuration supplémentaire.
+
+**Limite constatée** : ce connecteur n'expose que `search`, `get_metadata`,
+`read_content`, `download_content`, `copy`, `create`, `update` (titre/parent),
+`trash` — **aucune opération `docs.documents.batchUpdate`** (remplacement de
+texte, style, tableaux). Il ne peut donc **pas** rejouer le chemin de code réel
+de Vigie (`genererDocuments` → `copierEtRemplir`, qui appelle directement
+`batchUpdate`). Une copie faite avec ce connecteur ne prouverait rien sur le
+moteur de génération lui-même. La validation réelle du moteur reste donc
+conditionnée à l'OAuth propre de Vigie (compte Drive connecté dans
+l'application), testé par l'autrice en conditions réelles — jamais recréée ici
+avec des identifiants de production à la chaîne pour chaque modèle.
+
+### Pilote : Compte rendu prescripteur / entreprise
+
+- Modèle relu intégralement (texte réel, y compris son unique tableau — une
+  mise en page statique, sans ligne à dupliquer, donc hors périmètre du moteur
+  de blocs `blocsTableaux.js`).
+- Les 4 marqueurs canoniques confirmés en DOC-10B sont vérifiés par un test
+  d'intégration (`server/test/generationCompteRenduPrescripteur.test.js`) qui
+  rejoue le texte réel du modèle à travers `genererDocuments()` avec un client
+  Google simulé : un seul document produit par session (portée `session`, pas
+  par stagiaire), les 4 marqueurs correctement substitués, aucune balise
+  envoyée pour les champs manuels (texte libre, jamais inventé).
+- **Aucun code moteur modifié** : les résolveurs et le moteur de blocs
+  couvrent déjà ce modèle sans adaptation.
+- **Reste à faire avant un usage réel** : enregistrer le modèle en base
+  (`POST /api/modeles`, action humaine via l'interface, hors périmètre de ce
+  chantier technique) et laisser l'autrice réaliser un test de génération réel
+  dans l'application (OAuth Vigie), sur une session de test, jamais sur un
+  dossier de stagiaire réel.

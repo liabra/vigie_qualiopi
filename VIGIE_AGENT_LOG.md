@@ -4302,3 +4302,57 @@ inventée.
 
 Aucun code modifié (documentation uniquement) → la base reste verte (backend
 814/814, frontend 359/359). `git diff --check` propre.
+
+---
+
+## 2026-10-15 — DOC-10C : connecteur Drive natif + pilote « Compte rendu prescripteur »
+
+### Blocage Drive levé (lecture)
+
+Un connecteur Google Drive natif est disponible dans cet environnement
+(distinct de la méthode Railway/production utilisée en DOC-2.5/DOC-7E) :
+lecture réelle des métadonnées et du texte intégral de n'importe quel modèle,
+sans configuration. Utilisé en lecture seule pour relire le modèle « Compte
+rendu d'entretien prescripteur / entreprise » (Drive
+`1sjn4Rfvut5Bnjp7XynCfnws4u41mG-PNt8FDpX0VXQ8`) : les 4 marqueurs
+`{{formation_intitule}}`, `{{formation_duree_heures}}`,
+`{{session_date_debut}}`, `{{session_date_fin}}` confirmés déjà couverts
+(DOC-10B), aucun nouveau marqueur.
+
+**Limite constatée et documentée** (`DOC-10_CHAINE_MODELES.md` §8) : ce
+connecteur ne sait que lire/copier/renommer/déplacer/mettre à la corbeille —
+il n'expose aucune opération `docs.documents.batchUpdate`. Il ne peut donc pas
+servir à tester réellement le moteur de génération de Vigie (qui appelle
+`batchUpdate` directement). La validation réelle du moteur reste conditionnée
+à l'OAuth propre de Vigie, testée par l'autrice — pas recréée ici à la chaîne
+avec des identifiants de production pour chaque modèle du chantier.
+
+### Pilote technique : Compte rendu prescripteur / entreprise
+
+- Modèle relu intégralement y compris son tableau (mise en page statique, pas
+  de ligne à dupliquer — hors périmètre de `blocsTableaux.js`).
+- Aucun résolveur, aucun bloc, aucune ligne de moteur modifiée : les 4
+  marqueurs étaient déjà résolus (DOC-3D/DOC-10B).
+- Nouveau test d'intégration (`server/test/generationCompteRenduPrescripteur
+  .test.js`, 3 tests) qui rejoue le texte RÉEL du modèle à travers
+  `genererDocuments()` (client Google simulé, comme `generationAssiduite
+  .test.js`) : un seul document par session (portée `session`, pas par
+  stagiaire), les 4 marqueurs substitués avec les bonnes valeurs, aucune
+  requête de remplacement envoyée pour les champs manuels (texte libre,
+  jamais inventé).
+
+### Validation
+
+Backend **817/817** (814 + 3 nouveaux), `git diff --check` propre. Aucun test
+frontend concerné (aucun changement d'interface).
+
+### Limites / ce qui reste à faire
+
+- Le modèle n'est pas encore **enregistré** en base (`modeles_documents`) —
+  action normale via l'interface (`POST /api/modeles`), hors périmètre d'un
+  chantier de code.
+- **Aucun test réel de génération Google Docs n'a été fait** dans cet
+  environnement (le connecteur disponible ne le permet pas) : à faire par
+  l'autrice, dans l'application, sur une session de test — jamais présenté
+  ici comme validé.
+- Aucun push ni déploiement.

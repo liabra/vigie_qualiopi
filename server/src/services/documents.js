@@ -451,7 +451,7 @@ function erreurGoogle(e) {
 // Met à la corbeille, au mieux, les copies déjà créées : on ne masque
 // jamais l'erreur d'origine, et un fichier orphelin vaut mieux qu'une
 // génération annoncée réussie à tort.
-async function nettoyerCopies(d, ids, jeton) {
+export async function nettoyerCopies(d, ids, jeton) {
   for (const id of ids) {
     await appelGoogle(
       "drive.files.update",

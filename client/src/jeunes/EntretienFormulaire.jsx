@@ -35,6 +35,9 @@ export function EntretienFormulaire() {
   const [erreur, setErreur] = useState(null);
   const [conflit, setConflit] = useState(false);
   const [confirmerValidation, setConfirmerValidation] = useState(false);
+  const [ficheEnCours, setFicheEnCours] = useState(false);
+  const [ficheErreur, setFicheErreur] = useState(null);
+  const [confirmerRegeneration, setConfirmerRegeneration] = useState(false);
   const [err, setErr] = useState(null);
   useTitrePage(jeune ? `Entretien — ${nomComplet(jeune)}` : "Entretien");
   const modifie = modifieReponses || modifiePositionnement || modifieChoix || modifieLignes.experiences || modifieLignes.plan_action;
@@ -209,6 +212,21 @@ export function EntretienFormulaire() {
     }
   }
 
+  // DOC-9E — Génération de la fiche FSE-IA (document Google Docs créé par
+  // Vigie à partir des données structurées, PAS une copie du modèle
+  // officiel — indisponible dans cet environnement, cf. VIGIE_AGENT_LOG.md).
+  async function genererFiche(remplacer = false) {
+    setFicheEnCours(true); setFicheErreur(null);
+    try {
+      const r = await api(`/api/entretiens/${entretienId}/fiche`, { method: "POST", body: JSON.stringify({ remplacer }) });
+      setEntretien(r.entretien);
+      setConfirmerRegeneration(false);
+    } catch (e) {
+      if (e.status === 409) { setConfirmerRegeneration(true); return; }
+      setFicheErreur(e.message);
+    } finally { setFicheEnCours(false); }
+  }
+
   if (err) return <Alert ton="error" titre="L'entretien n'a pas pu être chargé." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>;
   if (!jeune || !entretien) return <LoadingState texte="Chargement de l'entretien…" />;
 
@@ -229,6 +247,30 @@ export function EntretienFormulaire() {
           Quelqu'un (ou un autre onglet) a enregistré une version plus récente. Rechargez pour voir ces changements —
           vos saisies non enregistrées sur cet écran seront perdues.
           <div><Button compact onClick={charger}>Recharger l'entretien</Button></div>
+        </Alert>
+      )}
+
+      {lectureSeule && (
+        <Alert ton="info" titre="Fiche FSE-IA">
+          {ficheErreur && <p>{ficheErreur}</p>}
+          {entretien.fiche_drive_url ? (
+            <p>
+              Fiche générée le {new Date(entretien.fiche_generee_le).toLocaleDateString("fr-FR")} —{" "}
+              <a href={entretien.fiche_drive_url} target="_blank" rel="noreferrer">Voir le document</a>.{" "}
+              <Button compact onClick={() => genererFiche(false)} disabled={ficheEnCours}>
+                {ficheEnCours ? "Régénération…" : "Régénérer"}
+              </Button>
+            </p>
+          ) : (
+            <>
+              <p>Aucune fiche n'a encore été générée pour cet entretien. Ce document est créé directement par Vigie à
+                partir des réponses structurées : il ne reproduit pas la mise en page exacte du modèle officiel FSE-IA
+                (inaccessible dans cet environnement).</p>
+              <Button variante="primary" onClick={() => genererFiche(false)} disabled={ficheEnCours}>
+                {ficheEnCours ? "Génération…" : "Générer la fiche FSE-IA"}
+              </Button>
+            </>
+          )}
         </Alert>
       )}
 
@@ -287,6 +329,14 @@ export function EntretienFormulaire() {
       >
         <p>L'entretien passera en lecture seule : plus aucune réponse ne pourra être modifiée.</p>
         <p>Aucune inscription n'est créée par cette validation.</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        ouvert={confirmerRegeneration} titre="Régénérer la fiche FSE-IA ?"
+        libelleConfirmer="Régénérer" enCours={ficheEnCours}
+        onConfirmer={() => genererFiche(true)} onAnnuler={() => setConfirmerRegeneration(false)}
+      >
+        <p>Une fiche existe déjà pour cet entretien. La régénérer créera un nouveau document et mettra l'ancien à la corbeille.</p>
       </ConfirmDialog>
     </>
   );

@@ -4718,3 +4718,102 @@ propre sur tout le code et les tests.
 Toutes les réponses sont désormais structurées et récupérables (vérifié en
 lot C), prêtes pour une future génération Google Docs (étape F, non
 commencée). Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-9E : génération de la fiche d'entretien FSE-IA
+
+### Lot A — Analyse technique
+
+- Modèle Drive officiel (`1UFNfiGHItkI8w8jsTGd2_07SvkQMbY8Y8j7cZbezVt0`)
+  toujours inaccessible dans cet environnement (confirmé de nouveau,
+  aucune nouvelle recherche Drive effectuée). Toutes les données de
+  l'entretien (migrations 026-031) sont disponibles après validation :
+  réponses, positionnement, choix, expériences, plan d'action.
+- Le moteur documentaire existant (`genererDocuments`/`cibles`/
+  `contexteGeneration`) est bâti autour d'une SESSION — un entretien n'en a
+  aucune (il précède l'inscription). Le forcer dans ce moteur aurait exigé
+  d'inventer un contexte de session fictif. **Décision** : un générateur
+  dédié, qui réutilise les briques bas niveau existantes (`getDrive`,
+  `appelGoogle`, `etatJeton`, `nettoyerCopies` — exporté depuis
+  `documents.js` pour l'occasion), pas le moteur session par session.
+- Catalogue canonique **non modifié** : aucune variable canonique
+  ajoutée ; les données viennent directement des tables d'entretien.
+
+### Lot B — Modèle de travail
+
+Faute d'accès au modèle réel, le document est **composé directement par
+Vigie** depuis les données structurées — pas une copie du modèle officiel.
+Les 14 rubriques et leur ORDRE officiel sont respectés ; les questions
+reprennent les formulations déjà vérifiées en DOC-9D2/DOC-9D3 (elles-mêmes
+transcrites du modèle réel). Simplification délibérée et documentée : le
+rendu est en texte structuré (titres + paragraphes), pas en tableaux
+Google natifs — limite assumée, à corriger quand l'accès Drive sera
+rétabli.
+
+### Lot C — Génération (`ficheEntretien.js`, pur ; `ficheEntretienDocument.js`, Google)
+
+- Identification, réponses du jeune, observations de l'accompagnateur,
+  choix cochés, tableaux d'expériences et de plan d'action, les 34
+  compétences avec leur niveau (ou « non évalué », jamais un niveau
+  inventé), priorités et observations des 6 phases : tous restitués
+  fidèlement, aucune supposition.
+- Rubrique 2 : jamais rendue — ni données, ni fausse mention (« Aucun
+  handicap déclaré » explicitement testée comme absente).
+- Rubrique 12 : renvoi vers le module Accompagnement, pas dupliqué.
+- Rubrique 14 : signatures manuelles, jamais préremplies.
+
+### Lot D — Intégration Vigie
+
+- `POST /entretiens/:id/fiche` (droits `requireRedacteur`, identiques au
+  reste de l'entretien) : refuse tant que l'entretien n'est pas `valide`
+  (400) ; un document déjà généré bloque la régénération sans
+  `remplacer: true` explicite (409, jamais un écrasement silencieux) ;
+  l'ancien fichier n'est mis à la corbeille qu'APRÈS le succès du nouveau.
+  Un échec Google ne laisse aucun document orphelin ni aucune trace en
+  base (même philosophie « tout ou rien » que les autres générations).
+- Sécurité : la fiche est scopée à SON entretien (`entretien_id`), donc à
+  SON jeune — aucune route ne permet de la récupérer depuis un autre
+  entretien ou un autre jeune ; droits identiques à la lecture/écriture de
+  l'entretien (`requireAuth`/`requireRedacteur`), rien de nouveau inventé.
+- Frontend (`EntretienFormulaire.jsx`) : bandeau « Fiche FSE-IA » visible
+  uniquement sur un entretien validé, bouton « Générer » puis lien vers le
+  document, « Régénérer » avec confirmation explicite.
+
+### Lot E — Tests
+
+Backend (+13) : `ficheEntretien.test.js` (8, pur : ordre des rubriques,
+aucune donnée médicale, libellés humains pour les sélections/choix,
+tableaux sans nombre imposé, 34 compétences toujours listées, verbatim de
+la parole du jeune préservé) ; `entretiens.test.js` (+5 : refus avant
+validation, génération puis régénération bloquée/confirmée avec
+archivage de l'ancienne, échec Google sans trace, droits, Drive
+indisponible/lecture seule). Frontend (+2) : génération puis affichage du
+lien, régénération refusée puis confirmée ; aucune action proposée sur un
+brouillon.
+
+**Test réel sur Google Docs** : non fait — aucun accès OAuth isolé
+disponible dans cet environnement pour une copie de test. Je ne présente
+pas la simulation (clients Google mockés) comme une génération réelle
+validée.
+
+### Validation
+
+Backend **859/859**, frontend **375/375**, build OK, `git diff --check`
+propre.
+
+### Reste nécessaire à la validation réelle
+
+1. Rétablir l'accès Drive au modèle officiel (partage avec le connecteur
+   ou une autre méthode) pour comparer le rendu généré à la mise en page
+   exacte du modèle et, si souhaité, reconstruire un vrai gabarit à
+   balises au lieu d'un document composé par Vigie.
+2. Un test de génération réelle (OAuth Vigie, environnement de test) pour
+   confirmer que `docs.documents.create`/`batchUpdate` se comportent comme
+   simulé ici.
+3. Décision éventuelle : migrer vers une table `documents_generes`-like
+   dédiée si le volume de fiches générées justifie un suivi centralisé
+   (actuellement : 4 colonnes directement sur `entretiens`, suffisant pour
+   un document par entretien).
+
+Aucun push ni déploiement.

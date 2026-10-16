@@ -4,7 +4,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, bouton, champ, cliquer, demonter, monter, saisir, texte } from "./outils.jsx";
+import { attendre, bouton, champ, cliquer, demonter, dialogue, monter, saisir, texte } from "./outils.jsx";
 
 // Les boutons d'étape portent un compteur (" 0/34") : recherche par préfixe.
 const etapeBouton = (libelle) => [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(libelle));
@@ -151,4 +151,40 @@ test("entretien validé : lecture seule, aucun champ modifiable, aucun bouton d'
   assert.equal(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?").value, "Retour à l'emploi.");
   assert.ok(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?").disabled, "champ désactivé en lecture seule");
   assert.ok(!bouton("Enregistrer le brouillon"), "aucune action d'écriture proposée sur un entretien validé");
+});
+
+// DOC-9E — Génération de la fiche FSE-IA depuis un entretien validé.
+test("fiche FSE-IA : génération puis affichage du lien, régénération refusée sans confirmation puis confirmée", async () => {
+  const valide = { ...ENTRETIEN_BROUILLON, statut: "valide", valide_le: "2026-10-16T12:00:00Z" };
+  let fois = 0;
+  const appels = await monter("/jeunes/1/entretiens/5", "admin", {
+    "GET /api/stagiaires/1": { stagiaire: JEUNE },
+    "GET /api/entretiens/5": { entretien: valide, reponses: [] },
+    "POST /api/entretiens/5/fiche": (corps) => {
+      fois += 1;
+      if (fois === 1) return [200, { entretien: { ...valide, fiche_drive_file_id: "doc-1", fiche_drive_url: "https://drive/doc-1", fiche_generee_le: "2026-10-16T13:00:00Z" }, fiche: { id: "doc-1" } }];
+      if (!corps.remplacer) return [409, { error: "Une fiche a déjà été générée pour cet entretien.", fiche_existante: { drive_file_id: "doc-1" } }];
+      return [200, { entretien: { ...valide, fiche_drive_file_id: "doc-2", fiche_drive_url: "https://drive/doc-2", fiche_generee_le: "2026-10-16T14:00:00Z" }, fiche: { id: "doc-2" } }];
+    },
+  });
+  await attendre(() => texte().includes("Accueil et identification"));
+  assert.ok(texte().includes("Aucune fiche n'a encore été générée"));
+  await cliquer(bouton("Générer la fiche FSE-IA"));
+  await attendre(() => texte().includes("Voir le document"));
+  assert.ok(document.querySelector('a[href="https://drive/doc-1"]'));
+
+  await cliquer(bouton("Régénérer"));
+  await attendre(() => texte().includes("Régénérer la fiche FSE-IA ?"));
+  await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent.trim() === "Régénérer"));
+  await attendre(() => document.querySelector('a[href="https://drive/doc-2"]'));
+  assert.ok(appels.filter((a) => a.chemin === "/api/entretiens/5/fiche").length >= 2);
+});
+
+test("fiche FSE-IA : aucune action proposée tant que l'entretien est en brouillon", async () => {
+  await monter("/jeunes/1/entretiens/5", "admin", {
+    "GET /api/stagiaires/1": { stagiaire: JEUNE },
+    "GET /api/entretiens/5": { entretien: ENTRETIEN_BROUILLON, reponses: [] },
+  });
+  await attendre(() => texte().includes("Accueil et identification"));
+  assert.ok(!texte().includes("Générer la fiche FSE-IA"));
 });

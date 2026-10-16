@@ -15,6 +15,9 @@ import { validerReponses } from "../services/entretiens.js";
 import { validerEvaluations, validerPhases } from "../services/positionnementEntretien.js";
 import { validerChoixListe } from "../services/entretienChoix.js";
 import { validerLignes, BLOCS_LIGNES } from "../services/entretienLignes.js";
+import { chargerEntretienComplet } from "../services/entretienLecture.js";
+import { getDrive, etatJeton, DRIVE_FILE } from "../services/google.js";
+import { genererFicheEntretienDocument } from "../services/ficheEntretienDocument.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -48,40 +51,9 @@ router.get("/stagiaires/:id/entretiens", requireAuth, wrap(async (req, res) => {
 router.get("/entretiens/:id", requireAuth, wrap(async (req, res) => {
   const id = parseIdPositif(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant d'entretien invalide." });
-  const { rows: [entretien] } = await query("SELECT * FROM entretiens WHERE id = $1", [id]);
-  if (!entretien) return res.status(404).json({ error: "Entretien introuvable." });
-  const { rows: reponses } = await query(
-    "SELECT cle, valeur, source FROM entretien_reponses WHERE entretien_id = $1 ORDER BY id",
-    [id]
-  );
-  // DOC-9D2 lot B : évaluations (34 compétences au plus) et phases
-  // (priorité/observations) du questionnaire de positionnement.
-  const { rows: evaluations } = await query(
-    "SELECT phase, competence_code, niveau FROM entretien_positionnement_evaluations WHERE entretien_id = $1 ORDER BY phase, competence_code",
-    [id]
-  );
-  const { rows: phases } = await query(
-    "SELECT phase, priorite, observations FROM entretien_positionnement_phases WHERE entretien_id = $1 ORDER BY phase",
-    [id]
-  );
-  // DOC-9D3 lot B : groupes de cases cochées + tableaux répétables
-  // (expériences, plan d'action).
-  const { rows: choix } = await query(
-    "SELECT groupe, code FROM entretien_choix WHERE entretien_id = $1 ORDER BY groupe, code",
-    [id]
-  );
-  const { rows: experiences } = await query(
-    "SELECT ordre, structure, duree, missions, retenue FROM entretien_experiences WHERE entretien_id = $1 ORDER BY ordre",
-    [id]
-  );
-  const { rows: planAction } = await query(
-    "SELECT ordre, objectif, phase, action, echeance, etat FROM entretien_plan_action WHERE entretien_id = $1 ORDER BY ordre",
-    [id]
-  );
-  res.json({
-    entretien, reponses, positionnement: { evaluations, phases },
-    choix, lignes: { experiences, plan_action: planAction },
-  });
+  const donnees = await chargerEntretienComplet(id);
+  if (!donnees) return res.status(404).json({ error: "Entretien introuvable." });
+  res.json(donnees);
 }));
 
 // Enregistrer progressivement les réponses (remplacement complet, verrou
@@ -257,6 +229,50 @@ router.post("/entretiens/:id/valider", requireRedacteur, wrap(async (req, res) =
     return res.status(409).json({ error: "Entretien déjà validé." });
   }
   res.json({ entretien });
+}));
+
+// DOC-9E — Générer la fiche FSE-IA d'un entretien VALIDÉ. Un seul document
+// vivant par entretien : régénérer exige `remplacer: true` explicite,
+// jamais un écrasement silencieux (même logique que la génération de
+// documents de session).
+router.post("/entretiens/:id/fiche", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'entretien invalide." });
+  const donnees = await chargerEntretienComplet(id);
+  if (!donnees) return res.status(404).json({ error: "Entretien introuvable." });
+  if (donnees.entretien.statut !== "valide") {
+    return res.status(400).json({ error: "L'entretien doit être validé avant de générer la fiche." });
+  }
+  if (donnees.entretien.fiche_drive_file_id && req.body?.remplacer !== true) {
+    return res.status(409).json({
+      error: "Une fiche a déjà été générée pour cet entretien. Confirmez le remplacement pour la régénérer.",
+      fiche_existante: { drive_file_id: donnees.entretien.fiche_drive_file_id, drive_url: donnees.entretien.fiche_drive_url },
+    });
+  }
+  const { rows: [stagiaire] } = await query("SELECT nom, prenom FROM stagiaires WHERE id = $1", [donnees.entretien.stagiaire_id]);
+  if (!stagiaire) return res.status(404).json({ error: "Jeune introuvable." });
+
+  const d = await getDrive();
+  if (!d) return res.status(503).json({ error: "Google Drive est indisponible ou non connecté. Impossible de générer la fiche." });
+  if (!d.row.scopes.split(/\s+/).includes(DRIVE_FILE)) {
+    return res.status(400).json({ error: "Le Drive est connecté en lecture seule. Reconnectez-le pour autoriser la création de documents." });
+  }
+  const jeton = etatJeton(d.row);
+
+  try {
+    const fiche = await genererFicheEntretienDocument(d, {
+      donneesEntretien: donnees, stagiaire, ancienFicheId: donnees.entretien.fiche_drive_file_id || null,
+    }, jeton);
+    const { rows: [maj] } = await query(
+      `UPDATE entretiens SET fiche_drive_file_id = $2, fiche_drive_url = $3, fiche_generee_le = now(), fiche_generee_par = $4
+       WHERE id = $1 RETURNING *`,
+      [id, fiche.id, fiche.webViewLink || null, req.user.id]
+    );
+    res.json({ entretien: maj, fiche });
+  } catch (e) {
+    if (e.statut) return res.status(e.statut).json({ error: e.message });
+    return res.status(400).json({ error: "Impossible de générer la fiche : " + (e.message || "erreur inconnue") });
+  }
 }));
 
 export default router;

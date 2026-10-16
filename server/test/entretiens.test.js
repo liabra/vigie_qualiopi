@@ -20,6 +20,7 @@ import { migrate } from "../src/migrate.js";
 import { seedReferentiel } from "../src/seed.js";
 import { createApp } from "../src/app.js";
 import { encode } from "../src/session.js";
+import { setDriveFactory, DRIVE_FILE } from "../src/services/google.js";
 
 const PORT = 55464;
 const DATA = path.join(os.tmpdir(), "vq-entretiens-" + process.pid);
@@ -49,6 +50,7 @@ before(async () => {
 after(async () => {
   setPoolFactory(null);
   setQueryExecutor(null);
+  setDriveFactory(null);
   if (serveur) await new Promise((r) => serveur.close(r));
   if (pool) await pool.end().catch(() => {});
   if (cluster) await cluster.stop().catch(() => {});
@@ -338,6 +340,117 @@ test("choix/lignes : figés après validation, droits — anonyme refusé", asyn
   ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
   assert.equal((await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [] }, A())).statut, 409);
   assert.equal((await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: 1, bloc: "plan_action", lignes: [] }, A())).statut, 409);
+});
+
+// ── DOC-9E : génération de la fiche FSE-IA ───────────────────
+
+function driveSimule({ echoueA = null } = {}) {
+  let n = 0;
+  const requetes = [];
+  const supprimes = [];
+  return {
+    requetes, supprimes,
+    factory: () => ({
+      row: { scopes: DRIVE_FILE, expiry: Date.now() + 60_000, access_token: "x" },
+      docs: {
+        documents: {
+          create: async ({ requestBody }) => {
+            if (echoueA === "create") throw Object.assign(new Error("Panne Google"), { response: { status: 500 } });
+            return { data: { documentId: "doc-" + ++n } };
+          },
+          batchUpdate: async ({ documentId, requestBody }) => {
+            if (echoueA === "batchUpdate") throw Object.assign(new Error("Panne Google"), { response: { status: 500 } });
+            requetes.push({ documentId, requests: requestBody.requests });
+            return { data: {} };
+          },
+        },
+      },
+      drive: {
+        files: {
+          get: async ({ fileId }) => ({ data: { id: fileId, name: "Fiche", webViewLink: "https://drive/" + fileId } }),
+          update: async ({ fileId, requestBody }) => { if (requestBody.trashed) supprimes.push(fileId); return { data: {} }; },
+        },
+      },
+    }),
+  };
+}
+
+test("fiche : refusée tant que l'entretien n'est pas validé, aucune écriture", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  const { factory } = driveSimule();
+  setDriveFactory(factory);
+  const r = await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A());
+  assert.equal(r.statut, 400);
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.entretien.fiche_drive_file_id, null);
+});
+
+test("fiche : générée une première fois, puis la régénération est bloquée sans confirmation, puis régénérée avec remplacer:true (ancienne mise à la corbeille)", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  ok(await api("PUT", `/api/entretiens/${e.id}/reponses`, { version: 1, reponses: [{ cle: "parole_fierte", valeur: "D'avoir osé venir." }] }, A()));
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+
+  const { factory, requetes, supprimes } = driveSimule();
+  setDriveFactory(factory);
+
+  const r1 = await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A());
+  assert.equal(r1.statut, 200);
+  const premierId = r1.corps.fiche.id;
+  assert.ok(premierId);
+  assert.equal(r1.corps.entretien.fiche_drive_file_id, premierId);
+  // Le texte inséré doit contenir la réponse réelle, verbatim.
+  assert.ok(requetes[0].requests[0].insertText.text.includes("D'avoir osé venir."));
+
+  const r2 = await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A());
+  assert.equal(r2.statut, 409, "régénération refusée sans confirmation explicite");
+  assert.equal(r2.corps.fiche_existante.drive_file_id, premierId);
+
+  const r3 = await api("POST", `/api/entretiens/${e.id}/fiche`, { remplacer: true }, A());
+  assert.equal(r3.statut, 200);
+  assert.notEqual(r3.corps.fiche.id, premierId, "un nouveau document est créé, pas une réécriture du même fichier");
+  assert.deepEqual(supprimes, [premierId], "l'ancienne fiche est mise à la corbeille après le succès de la nouvelle");
+
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.entretien.fiche_drive_file_id, r3.corps.fiche.id);
+});
+
+test("fiche : un échec Google ne laisse aucun document orphelin ni aucune trace en base", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+
+  const { factory, supprimes } = driveSimule({ echoueA: "batchUpdate" });
+  setDriveFactory(factory);
+  const r = await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A());
+  assert.equal(r.statut, 400);
+  assert.deepEqual(supprimes, ["doc-1"], "le document partiellement créé est mis à la corbeille, jamais présenté comme réussi");
+
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.entretien.fiche_drive_file_id, null, "aucune trace en base d'une génération échouée");
+});
+
+test("fiche : droits — anonyme refusé, contributeur autorisé", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+  const { factory } = driveSimule();
+  setDriveFactory(factory);
+  assert.equal((await api("POST", `/api/entretiens/${e.id}/fiche`, {}, undefined)).statut, 401);
+  assert.equal((await api("POST", `/api/entretiens/${e.id}/fiche`, {}, C())).statut, 200, "contributeur autorisé");
+});
+
+test("fiche : modèle Drive indisponible → 503, Drive en lecture seule → 400", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+
+  setDriveFactory(() => null);
+  assert.equal((await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A())).statut, 503);
+
+  setDriveFactory(() => ({ row: { scopes: "https://www.googleapis.com/auth/drive.readonly", expiry: Date.now() + 60_000, access_token: "x" } }));
+  assert.equal((await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A())).statut, 400);
 });
 
 // ── Non-régression DOC-9B ────────────────────────────────────

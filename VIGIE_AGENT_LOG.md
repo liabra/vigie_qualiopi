@@ -4937,3 +4937,81 @@ Conditions avant la rentrée :
    l'entretien et sur un modèle DOC-10D, en environnement isolé — je ne
    peux pas le faire moi-même ici.
 Sous ces trois conditions, GO pour une recette de préproduction.
+
+---
+
+## 2026-10-16 — SÉCU-01 : sauvegardes PostgreSQL
+
+### 1. Diagnostic
+
+- **Railway (vérifié via l'API MCP, lecture seule)** : service `Postgres-Vlqb`,
+  image `ghcr.io/railwayapp-templates/postgres-ssl:18`, instance simple (pas de
+  cluster HA), volume 5 Go. L'état des sauvegardes natives Railway (onglet
+  « Backups ») n'est **pas exposé par l'API** — seul le dashboard le montre. Le
+  constat du 24/09/2026 (« No Backups », plan actuel) n'a donc PAS pu être
+  recontrôlé automatiquement ici : **à reconfirmer par Lia dans le dashboard**.
+- **Migrations 026 → 030** : déjà couvertes par les tests existants
+  (`transversal.test.js`, `qualite.test.js`) — ordre, idempotence et montée
+  incrémentale toujours vertes, aucune incompatibilité trouvée.
+- **Correction d'un fait obsolète** : la note « client pg_dump non installé »
+  (24/09/2026) ne s'applique plus à ce poste — `pg_dump`/`pg_restore` 18.6 y sont
+  présents (Postgres.app), même version majeure que l'image Railway.
+- Aucun secret affiché à aucun moment (URLs/mots de passe lus uniquement depuis
+  des variables d'environnement, jamais imprimés).
+
+### 2. Deux niveaux proposés
+
+- **Niveau 1 — Railway natif** : dépend du plan, se configure uniquement dans le
+  dashboard. Rien à préparer côté code ; action humaine seule.
+- **Niveau 2 — export chiffré externe** : `pg_dump -Fc` + chiffrement AES-256
+  (OpenSSL, déjà disponible partout, aucun outil payant) + suppression immédiate
+  du fichier en clair. Choix délibérément simple (deux scripts shell, aucune
+  dépendance nouvelle, aucun service tiers) plutôt qu'un outil de sauvegarde
+  managé — suffisant pour le volume de données d'A2C.
+
+### 3. Préparé et testé
+
+- `server/scripts/sauvegarder.sh` : exporte, chiffre, détecte l'échec (pg_dump
+  ou chiffrement), ne laisse jamais de dump en clair derrière lui.
+- `server/scripts/restaurer.sh` : déchiffre puis restaure vers une **cible
+  explicite** ; refuse par sécurité si la cible == `DATABASE_URL`/
+  `DATABASE_PUBLIC_URL` de l'environnement (protection contre une erreur de
+  copier-coller, jamais contre une restauration volontaire en production).
+- **Test réel exécuté** (`server/test/sauvegardeRestauration.test.js`, 3 tests) :
+  cycle complet export → chiffrement → déchiffrement → restauration entre DEUX
+  bases PostgreSQL isolées (`embedded-postgres`), données entièrement fictives
+  (formation/session de test « SECU01 ») ; vérifié que le fichier chiffré ne
+  contient AUCUNE donnée ni SQL en clair ; vérifié que les données restaurées
+  sont identiques aux originales ; vérifié le refus de restaurer sur une cible
+  dangereuse ; vérifié le refus explicite si une variable manque. **Jamais exécuté
+  contre la production** — uniquement des bases éphémères créées pour le test.
+- Documentation mise à jour dans `PROJECT_HANDOFF.md` (§ Sauvegarde/restauration).
+
+### 4. Validation
+
+Backend **862/862** (+3), frontend **377/377** (inchangé), build OK,
+`git diff --check` propre. 1 commit local.
+
+### État : **PARTIEL**
+
+- Niveau 2 (export chiffré) : **opérationnel et testé en isolation** — reste à
+  planifier (QUI l'exécute, QUAND, où sont stockés les fichiers `.dump.enc`).
+- Niveau 1 (Railway natif) : **statut à reconfirmer par Lia** (dashboard, pas
+  d'API).
+
+### Opérations nécessitant Lia
+
+1. Vérifier dans le dashboard Railway (Postgres-Vlqb → Backups) si le plan a
+   changé depuis le 24/09/2026 ; sinon, décider d'un upgrade de plan ou de
+   s'appuyer uniquement sur le niveau 2.
+2. Décider QUI exécute `sauvegarder.sh` et à quelle fréquence : son propre poste
+   (tâche planifiée/cron) — gratuit, sous son contrôle direct — ou un petit
+   service Railway dédié (cron) — nécessite un déploiement, donc son accord
+   explicite avant toute création.
+3. Choisir où conserver les fichiers `.dump.enc` (hors Git, hors Drive partagé)
+   et pendant combien de temps.
+4. Définir et garder en lieu sûr la phrase de chiffrement (`VIGIE_BACKUP_PASSPHRASE`)
+   — sans elle, aucune sauvegarde n'est récupérable.
+
+Aucun push ni déploiement. Aucune installation de service payant. Aucune
+opération destructive.

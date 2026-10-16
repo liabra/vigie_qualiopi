@@ -8,3 +8,7 @@ docs/
 
 # Scripts de debug temporaires, jamais commités
 server/scripts/debug-*.js
+
+# Config MCP locale (contient des chemins machine + pointe vers un secret hors dépôt)
+.vscode/mcp.json
+server/sauvegardes/

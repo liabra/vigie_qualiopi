@@ -1844,6 +1844,31 @@ plateforme externe : suffisant.
   `/api/health`, les 13 migrations et les volumes ; reconnecter le Drive si le jeton a
   été révoqué entre-temps.
 
+#### SÉCU-01 (16/10/2026) — niveau 2 préparé et testé, niveau 1 à vérifier
+
+- **`pg_dump`/`pg_restore` 18.6 trouvés sur ce poste** (Postgres.app) : la note du
+  24/09/2026 (« client non installé ») n'est plus exacte sur ce poste-ci — à vérifier
+  sur le poste qui exécutera réellement les sauvegardes planifiées.
+- `server/scripts/sauvegarder.sh` / `restaurer.sh` : export chiffré AES-256 (clé
+  dans `VIGIE_BACKUP_PASSPHRASE`, jamais en argument de commande), suppression
+  immédiate du dump en clair, détection d'échec par code de sortie non nul + message
+  clair sur stderr (le signalement effectif dépend de ce qui planifie le script —
+  cron avec notification de mail, tâche planifiée Windows avec journal, etc.).
+  `restaurer.sh` refuse par sécurité une cible identique à `DATABASE_URL`/
+  `DATABASE_PUBLIC_URL` présentes dans l'environnement.
+- **Testé** (`server/test/sauvegardeRestauration.test.js`) : cycle complet
+  export → chiffrement → déchiffrement → restauration entre deux bases
+  PostgreSQL isolées (`embedded-postgres`), données entièrement fictives,
+  intégrité vérifiée ligne par ligne après restauration. Jamais exécuté contre
+  la production.
+- **Niveau 1 (Railway natif)** : toujours non vérifié via l'API/MCP (la liste des
+  backups n'est exposée que dans le dashboard) — Lia doit reconfirmer dans
+  Postgres-Vlqb → Backups si le plan a changé depuis le 24/09/2026.
+- **Reste à faire, décision de Lia** : choisir QUI exécute `sauvegarder.sh` et
+  QUAND (son poste en tâche planifiée, ou un petit service Railway dédié — un
+  déploiement, donc son accord explicite) ; définir la durée de conservation des
+  fichiers `.dump.enc` et leur lieu de stockage (hors Git, hors Drive partagé).
+
 ### Données hors PostgreSQL (Google Drive)
 
 PostgreSQL ne stocke que des **références** : `preuve_fichiers.drive_file_id/drive_url/
@@ -1860,7 +1885,7 @@ ancienne peut pointer vers des fichiers depuis supprimés ou déplacés.
 | # | Dette | Classement |
 | --- | --- | --- |
 | 1 | Config as Code `railway.json` coupée le **01/12/2026** | **RÉSOLUE** — IaC `.railway/railway.ts` appliquée, `railway.json` retiré |
-| 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | ASSUMÉE / DOCUMENTÉE — pas disponible sur le plan actuel ; stratégie externe chiffrée à définir |
+| 2 | Aucune sauvegarde Railway (« No Backups », réservé au plan Pro) | PARTIELLEMENT RÉSOLUE (16/10/2026, SÉCU-01) — niveau 1 (Railway) toujours à vérifier/activer par Lia dans le dashboard ; niveau 2 (export chiffré externe) préparé et testé en restauration isolée (`server/scripts/sauvegarder.sh`/`restaurer.sh`), mais **pas encore planifié en automatique** — voir `VIGIE_AGENT_LOG.md` (SÉCU-01) |
 | 3 | SIGTERM n'atteint pas Node via la chaîne `npm start` en production | **RÉSOLUE** — `startCommand: "node server/src/index.js"`, arrêt propre observé en production |
 | 4 | `NODE_ENV=production` fourni implicitement par Railpack (un changement de builder désactiverait `Secure` et l'exigence de SESSION_SECRET) | À TRAITER PLUS TARD (optionnel, risque faible analysé ; volontairement non activé en L13) |
 | 5 | devDependencies dans l'image prod (`RAILPACK_PRUNE_DEPS` non activé volontairement) ; `npm install` au lieu de `npm ci` | À TRAITER PLUS TARD (optionnel) |

@@ -192,6 +192,88 @@ test("droits : anonyme refusé ; contributeur autorisé en écriture", async () 
   assert.equal((await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, C())).statut, 201, "contributeur autorisé");
 });
 
+// ── DOC-9D2 lot B : questionnaire de positionnement (6 phases) ──
+
+test("migration 029 : tables de positionnement présentes", async () => {
+  for (const t of ["entretien_positionnement_evaluations", "entretien_positionnement_phases"]) {
+    assert.equal((await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t])).rowCount, 1, t);
+  }
+});
+
+test("positionnement : sauvegarde progressive, reprise, cohabite avec les réponses classiques", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+
+  // Les réponses classiques (rubriques 3-13) d'abord.
+  const r1 = ok(await api("PUT", `/api/entretiens/${e.id}/reponses`, { version: 1, reponses: [{ cle: "motif_venue", valeur: "Retour emploi" }] }, A()));
+  assert.equal(r1.entretien.version, 2);
+
+  // Puis le positionnement, sur le MÊME verrou de version (partagé).
+  const r2 = await api("PUT", `/api/entretiens/${e.id}/positionnement`, {
+    version: 2,
+    evaluations: [
+      { competence_code: "p1_c1", niveau: "autonome" },
+      { competence_code: "p2_c4", niveau: "avec_aide" },
+    ],
+    phases: [{ phase: 1, priorite: "forte", observations: "Bon démarrage" }],
+  }, A());
+  assert.equal(r2.statut, 200);
+  assert.equal(r2.corps.entretien.version, 3, "le même compteur de version avance");
+
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.reponses.length, 1, "les réponses classiques sont intactes");
+  assert.equal(relu.positionnement.evaluations.length, 2);
+  assert.deepEqual(relu.positionnement.evaluations.find((ev) => ev.competence_code === "p2_c4"), { phase: 2, competence_code: "p2_c4", niveau: "avec_aide" });
+  assert.equal(relu.positionnement.phases.length, 1);
+  assert.equal(relu.positionnement.phases[0].priorite, "forte");
+
+  // Reprise : un deuxième enregistrement remplace, n'empile pas.
+  const r3 = ok(await api("PUT", `/api/entretiens/${e.id}/positionnement`, {
+    version: 3,
+    evaluations: [{ competence_code: "p1_c1", niveau: "a_developper" }],
+    phases: [],
+  }, A()));
+  assert.equal(r3.entretien.version, 4);
+  const relu2 = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu2.positionnement.evaluations.length, 1);
+  assert.equal(relu2.positionnement.evaluations[0].niveau, "a_developper");
+  assert.equal(relu2.positionnement.phases.length, 0, "une phase omise est effacée, pas inventée");
+});
+
+test("positionnement : compétence inconnue, niveau invalide, phase hors 1-6 refusés (aucune invention)", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [{ competence_code: "p9_c1", niveau: "autonome" }], phases: [] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [{ competence_code: "p1_c1", niveau: "parfait" }], phases: [] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [], phases: [{ phase: 7, priorite: "forte" }] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [], phases: [{ phase: 1, priorite: "critique" }] }, A())).statut, 400);
+  // Aucune écriture partielle derrière ces refus.
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.positionnement.evaluations.length, 0);
+  assert.equal(relu.positionnement.phases.length, 0);
+});
+
+test("positionnement : conflit de version refusé (409), figé après validation", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  ok(await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [{ competence_code: "p1_c1", niveau: "autonome" }], phases: [] }, A()));
+
+  const conflit = await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [{ competence_code: "p1_c1", niveau: "a_developper" }], phases: [] }, A());
+  assert.equal(conflit.statut, 409);
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.positionnement.evaluations[0].niveau, "autonome", "aucun écrasement");
+
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 2, evaluations: [], phases: [] }, A())).statut, 409, "validé = lecture seule");
+});
+
+test("positionnement : droits — anonyme refusé", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [], phases: [] }, undefined)).statut, 401);
+});
+
 // ── Non-régression DOC-9B ────────────────────────────────────
 
 test("non-régression DOC-9B : POST /api/stagiaires et recherche toujours opérationnels", async () => {

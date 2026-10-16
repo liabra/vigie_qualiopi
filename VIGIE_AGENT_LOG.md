@@ -4559,3 +4559,73 @@ Backend **822/822**, frontend **365/365**, build OK, `git diff --check` propre.
 - Aucune génération Google Docs de la fiche finale (prévue étape F,
   ultérieure).
 - Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-9D2 lot B : questionnaire de positionnement (6 phases)
+
+### Source
+
+Le blocage Drive est resté : la rubrique 8 a été fournie par l'autrice en
+fichier local, `modeles-local/entree/FSE-IA_Rubrique_8_Positionnement_SOURCE.md`
+(transcription du modèle réel, aucune donnée de santé ni de jeune réel).
+Vérifié : 6 phases (45/60/57/42/52/14 h, total 270 h), **34 compétences**
+réparties 4/8/8/5/6/3, 3 niveaux (Autonome / Avec aide / À développer), une
+priorité (Forte/Moyenne/Faible) et une observation par phase. Aucun score,
+seuil ou résultat global dans la source — aucun n'a été inventé.
+
+### Décision de structure (pas forcé dans les 14 clés génériques)
+
+34 évaluations + 6 priorités + 6 observations ne tiennent pas dans
+`entretien_reponses` (clé/valeur/source à plat) sans perdre la distinction
+compétence/niveau vs priorité/observation. Migration 029 (additive) :
+`entretien_positionnement_evaluations` (1 ligne/compétence, code+niveau,
+UNIQUE par entretien) et `entretien_positionnement_phases` (1 ligne/phase au
+plus, priorité + observations). Référentiel des 34 codes **fermé** dans
+`positionnementEntretien.js` (serveur) — toute compétence hors liste refusée.
+
+### API et verrou de version
+
+`PUT /api/entretiens/:id/positionnement` (même contrat que `/reponses` :
+remplacement complet, verrou optimiste) partage le **même compteur
+`entretiens.version`** que `/reponses` — un seul conflit possible pour tout
+l'entretien, jamais deux systèmes de version désynchronisés. `GET
+/api/entretiens/:id` renvoie désormais aussi `positionnement.{evaluations,
+phases}`. Entretiens déjà enregistrés (rubriques 3-13) inchangés.
+
+### Frontend
+
+Écran 4 (`EntretienFormulaire.jsx`) : les 34 compétences sous forme de
+groupes de 3 boutons radio (aucune réponse par défaut), priorité (select) et
+observations (texte) par phase. Deux drapeaux de modification distincts
+(réponses classiques / positionnement) ; `allerA()` enregistre les deux s'ils
+sont modifiés, en chaînant la version renvoyée par le premier appel vers le
+second — jamais de conflit artificiel entre les deux écritures d'un même
+changement d'écran. Lecture seule après validation : tous les boutons radio,
+select et textarea de l'écran sont désactivés.
+
+### Tests
+
+Backend (+12) : `positionnementEntretien.test.js` (7, validation pure :
+référentiel 4/8/8/5/6/3, code→phase dérivé, niveaux/priorités fermés, pas de
+double) ; `entretiens.test.js` (+5 : migration 029, sauvegarde/reprise
+cohabitant avec les réponses classiques, refus compétence/niveau/phase
+invalides sans écriture partielle, conflit de version, droits). Frontend
+(+3, remplace l'ancien test de blocage) : 34×3 boutons radio affichés,
+sélection conservée en changeant d'écran + format exact envoyé au serveur,
+lecture seule après validation.
+
+### Validation
+
+Backend **834/834**, frontend **367/367**, build OK. `git diff --check`
+propre sur tout le code et les tests ; seul le fichier source fourni par
+l'autrice porte des sauts de ligne Markdown intentionnels (espaces finaux),
+laissé tel quel pour rester une transcription fidèle.
+
+### Limites
+
+- Les données saisies (34 évaluations + 6 priorités/observations) sont
+  structurées et prêtes à être réutilisées pour générer la rubrique 8 du
+  document final (étape F), mais cette génération n'est pas encore faite.
+- Rubrique 2 (handicap) toujours hors périmètre.
+- Aucun push ni déploiement.

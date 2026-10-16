@@ -12,6 +12,7 @@ import { getPool, query } from "../db.js";
 import { requireAuth, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
 import { validerReponses } from "../services/entretiens.js";
+import { validerEvaluations, validerPhases } from "../services/positionnementEntretien.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -51,7 +52,17 @@ router.get("/entretiens/:id", requireAuth, wrap(async (req, res) => {
     "SELECT cle, valeur, source FROM entretien_reponses WHERE entretien_id = $1 ORDER BY id",
     [id]
   );
-  res.json({ entretien, reponses });
+  // DOC-9D2 lot B : évaluations (34 compétences au plus) et phases
+  // (priorité/observations) du questionnaire de positionnement.
+  const { rows: evaluations } = await query(
+    "SELECT phase, competence_code, niveau FROM entretien_positionnement_evaluations WHERE entretien_id = $1 ORDER BY phase, competence_code",
+    [id]
+  );
+  const { rows: phases } = await query(
+    "SELECT phase, priorite, observations FROM entretien_positionnement_phases WHERE entretien_id = $1 ORDER BY phase",
+    [id]
+  );
+  res.json({ entretien, reponses, positionnement: { evaluations, phases } });
 }));
 
 // Enregistrer progressivement les réponses (remplacement complet, verrou
@@ -77,6 +88,52 @@ router.put("/entretiens/:id/reponses", requireRedacteur, wrap(async (req, res) =
       await cx.query(
         "INSERT INTO entretien_reponses (entretien_id, cle, valeur, source) VALUES ($1,$2,$3,$4)",
         [id, r.cle, r.valeur, r.source]
+      );
+    }
+    await cx.query("UPDATE entretiens SET version = version + 1, mis_a_jour_le = now() WHERE id = $1", [id]);
+    await cx.query("COMMIT");
+    const { rows: [maj] } = await query("SELECT * FROM entretiens WHERE id = $1", [id]);
+    res.json({ entretien: maj });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// DOC-9D2 lot B — Enregistrer progressivement le questionnaire de
+// positionnement (34 compétences au plus, par phase). Même contrat que
+// `/reponses` : remplacement complet, verrou optimiste PARTAGÉ sur
+// `entretiens.version` (un seul compteur de conflit pour tout l'entretien,
+// rubriques classiques et positionnement confondus), refusé si validé.
+router.put("/entretiens/:id/positionnement", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'entretien invalide." });
+  const version = req.body?.version;
+  if (!Number.isInteger(version) || version < 1) return res.status(400).json({ error: "Version attendue (entier positif)." });
+  const { evaluations, erreur: erreurEval } = validerEvaluations(req.body?.evaluations);
+  if (erreurEval) return res.status(400).json({ error: erreurEval });
+  const { phases, erreur: erreurPhases } = validerPhases(req.body?.phases);
+  if (erreurPhases) return res.status(400).json({ error: erreurPhases });
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [entretien] } = await cx.query("SELECT * FROM entretiens WHERE id = $1 FOR UPDATE", [id]);
+    if (!entretien) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Entretien introuvable." }); }
+    if (entretien.statut !== "brouillon") { await cx.query("ROLLBACK"); return res.status(409).json({ error: "Entretien déjà validé : lecture seule." }); }
+    if (entretien.version !== version) { await cx.query("ROLLBACK"); return res.status(409).json({ error: "L'entretien a été modifié entre-temps : rechargez-le." }); }
+    await cx.query("DELETE FROM entretien_positionnement_evaluations WHERE entretien_id = $1", [id]);
+    for (const e of evaluations) {
+      await cx.query(
+        "INSERT INTO entretien_positionnement_evaluations (entretien_id, phase, competence_code, niveau) VALUES ($1,$2,$3,$4)",
+        [id, e.phase, e.competence_code, e.niveau]
+      );
+    }
+    await cx.query("DELETE FROM entretien_positionnement_phases WHERE entretien_id = $1", [id]);
+    for (const p of phases) {
+      await cx.query(
+        "INSERT INTO entretien_positionnement_phases (entretien_id, phase, priorite, observations) VALUES ($1,$2,$3,$4)",
+        [id, p.phase, p.priorite, p.observations]
       );
     }
     await cx.query("UPDATE entretiens SET version = version + 1, mis_a_jour_le = now() WHERE id = $1", [id]);

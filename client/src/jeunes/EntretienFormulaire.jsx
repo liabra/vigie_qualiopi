@@ -5,6 +5,7 @@ import { Alert, Badge, Button, ConfirmDialog, Field, LoadingState, PageHeader } 
 import { useTitrePage } from "../pages/titre.js";
 import { nomComplet } from "./format.js";
 import { CHAMPS_ENTRETIEN, ECRANS_ENTRETIEN, champsDeLecran, libelleSource } from "./entretienFormat.js";
+import { NIVEAUX_COMPETENCE, PHASES_POSITIONNEMENT, PRIORITES_PHASE } from "./positionnementFormat.js";
 
 // DOC-9D2 lot A — Entretien guidé en 5 écrans, sauvegarde progressive.
 // Tout vit dans CE composant (un seul montage) : circuler entre les écrans
@@ -16,14 +17,18 @@ export function EntretienFormulaire() {
   const [jeune, setJeune] = useState(null);
   const [entretien, setEntretien] = useState(null);
   const [valeurs, setValeurs] = useState({});
+  const [evaluations, setEvaluations] = useState({}); // competence_code → niveau
+  const [phases, setPhases] = useState({}); // phase → { priorite, observations }
   const [etape, setEtape] = useState(0);
-  const [modifie, setModifie] = useState(false);
+  const [modifieReponses, setModifieReponses] = useState(false);
+  const [modifiePositionnement, setModifiePositionnement] = useState(false);
   const [enregistrement, setEnregistrement] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [conflit, setConflit] = useState(false);
   const [confirmerValidation, setConfirmerValidation] = useState(false);
   const [err, setErr] = useState(null);
   useTitrePage(jeune ? `Entretien — ${nomComplet(jeune)}` : "Entretien");
+  const modifie = modifieReponses || modifiePositionnement;
 
   const charger = useCallback(async () => {
     try {
@@ -36,7 +41,14 @@ export function EntretienFormulaire() {
       const v = {};
       for (const r of re.reponses) v[r.cle] = r.valeur;
       setValeurs(v);
-      setModifie(false);
+      const ev = {};
+      for (const e of re.positionnement?.evaluations || []) ev[e.competence_code] = e.niveau;
+      setEvaluations(ev);
+      const ph = {};
+      for (const p of re.positionnement?.phases || []) ph[p.phase] = { priorite: p.priorite || "", observations: p.observations || "" };
+      setPhases(ph);
+      setModifieReponses(false);
+      setModifiePositionnement(false);
       setConflit(false);
       setErr(null);
     } catch (e) { setErr(e.message); }
@@ -56,24 +68,68 @@ export function EntretienFormulaire() {
 
   function changerChamp(cle, valeur) {
     setValeurs((v) => ({ ...v, [cle]: valeur }));
-    setModifie(true);
+    setModifieReponses(true);
   }
 
-  // Enregistre la TOTALITÉ des réponses actuelles (remplacement complet, le
-  // contrat du backend) — jamais seulement l'écran courant : les écrans
-  // déjà remplis ne doivent jamais disparaître d'une sauvegarde à l'autre.
+  function changerEvaluation(code, niveau) {
+    setEvaluations((v) => ({ ...v, [code]: niveau }));
+    setModifiePositionnement(true);
+  }
+
+  function changerPhase(phase, champ, valeur) {
+    setPhases((v) => ({ ...v, [phase]: { ...(v[phase] || { priorite: "", observations: "" }), [champ]: valeur } }));
+    setModifiePositionnement(true);
+  }
+
+  // Enregistre la TOTALITÉ des réponses classiques actuelles (remplacement
+  // complet, le contrat du backend) — jamais seulement l'écran courant.
+  async function sauvegarderReponses(version) {
+    const reponses = Object.entries(valeurs)
+      .filter(([cle, valeur]) => CHAMPS_ENTRETIEN[cle] && valeur.trim().length > 0)
+      .map(([cle, valeur]) => ({ cle, valeur: valeur.trim() }));
+    const r = await api(`/api/entretiens/${entretienId}/reponses`, {
+      method: "PUT",
+      body: JSON.stringify({ version, reponses }),
+    });
+    setEntretien(r.entretien);
+    setModifieReponses(false);
+    return r.entretien;
+  }
+
+  // Idem pour le positionnement (34 compétences au plus + priorité/
+  // observations par phase) — même contrat de remplacement complet, sur le
+  // MÊME verrou de version que les réponses classiques.
+  async function sauvegarderPositionnement(version) {
+    const listeEvaluations = Object.entries(evaluations)
+      .filter(([, niveau]) => niveau)
+      .map(([competence_code, niveau]) => ({ competence_code, niveau }));
+    const listePhases = Object.entries(phases)
+      .filter(([, p]) => (p.priorite || "").trim() || (p.observations || "").trim())
+      .map(([phase, p]) => ({ phase: Number(phase), priorite: p.priorite || null, observations: p.observations?.trim() || null }));
+    const r = await api(`/api/entretiens/${entretienId}/positionnement`, {
+      method: "PUT",
+      body: JSON.stringify({ version, evaluations: listeEvaluations, phases: listePhases }),
+    });
+    setEntretien(r.entretien);
+    setModifiePositionnement(false);
+    return r.entretien;
+  }
+
+  // Enregistre tout ce qui a changé (réponses puis positionnement, dans
+  // cet ordre, en chaînant la version renvoyée) — jamais les deux écritures
+  // séparément exposées à l'utilisateur comme deux actions distinctes.
   async function enregistrer() {
+    if (!modifie) return true;
     setEnregistrement(true); setErreur(null);
     try {
-      const reponses = Object.entries(valeurs)
-        .filter(([cle, valeur]) => CHAMPS_ENTRETIEN[cle] && valeur.trim().length > 0)
-        .map(([cle, valeur]) => ({ cle, valeur: valeur.trim() }));
-      const r = await api(`/api/entretiens/${entretienId}/reponses`, {
-        method: "PUT",
-        body: JSON.stringify({ version: entretien.version, reponses }),
-      });
-      setEntretien(r.entretien);
-      setModifie(false);
+      let version = entretien.version;
+      if (modifieReponses) {
+        const e = await sauvegarderReponses(version);
+        version = e.version;
+      }
+      if (modifiePositionnement) {
+        await sauvegarderPositionnement(version);
+      }
       return true;
     } catch (e) {
       if (e.status === 409) { setConflit(true); return false; }
@@ -128,6 +184,8 @@ export function EntretienFormulaire() {
           {ECRANS_ENTRETIEN.map((e, i) => {
             const champs = champsDeLecran(e.id);
             const remplis = champs.filter((c) => (valeurs[c.cle] || "").trim().length > 0).length;
+            const totalCompetences = e.id === 4 ? PHASES_POSITIONNEMENT.reduce((n, p) => n + p.competences.length, 0) : 0;
+            const competencesRemplies = e.id === 4 ? Object.values(evaluations).filter(Boolean).length : 0;
             return (
               <li key={e.id}>
                 <button
@@ -139,6 +197,7 @@ export function EntretienFormulaire() {
                 >
                   {e.titre}
                   {champs.length > 0 && <span className="sess-secondaire"> {remplis}/{champs.length}</span>}
+                  {totalCompetences > 0 && <span className="sess-secondaire"> {competencesRemplies}/{totalCompetences}</span>}
                 </button>
               </li>
             );
@@ -151,6 +210,10 @@ export function EntretienFormulaire() {
         jeune={jeune}
         valeurs={valeurs}
         onChange={changerChamp}
+        evaluations={evaluations}
+        onChangeEvaluation={changerEvaluation}
+        phases={phases}
+        onChangePhase={changerPhase}
         lectureSeule={lectureSeule}
       />
 
@@ -180,7 +243,7 @@ export function EntretienFormulaire() {
   );
 }
 
-function EcranEntretien({ ecran, jeune, valeurs, onChange, lectureSeule }) {
+function EcranEntretien({ ecran, jeune, valeurs, onChange, evaluations, onChangeEvaluation, phases, onChangePhase, lectureSeule }) {
   if (ecran.id === 1) {
     return (
       <section aria-label={ecran.titre}>
@@ -198,12 +261,48 @@ function EcranEntretien({ ecran, jeune, valeurs, onChange, lectureSeule }) {
     return (
       <section aria-label={ecran.titre}>
         <h2>{ecran.titre}</h2>
-        <Alert ton="warning" titre="Questionnaire non disponible pour le moment">
-          Le questionnaire de positionnement (les six phases du parcours FSE-IA) doit être repris
-          exactement du modèle officiel. Il n'a pas pu être lu dans cet environnement
-          (accès Drive refusé pour ce fichier) : aucune question n'est inventée en attendant.
-          Cet écran sera complété dès que l'accès au modèle sera rétabli.
-        </Alert>
+        <p>Questionnaire de positionnement des six phases du parcours FSE-IA (34 compétences). Une réponse reste vide tant qu'aucun niveau n'est choisi.</p>
+        {PHASES_POSITIONNEMENT.map((p) => (
+          <fieldset key={p.phase} className="entretien-phase">
+            <legend>Phase {p.phase} — {p.titre} ({p.dureeHeures} h)</legend>
+            {p.competences.map((c) => (
+              <fieldset key={c.code} className="entretien-competence">
+                <legend>{c.libelle}</legend>
+                {NIVEAUX_COMPETENCE.map((n) => (
+                  <label key={n.valeur} className="ui-case">
+                    <input
+                      type="radio"
+                      name={c.code}
+                      value={n.valeur}
+                      checked={evaluations[c.code] === n.valeur}
+                      onChange={() => onChangeEvaluation(c.code, n.valeur)}
+                      disabled={lectureSeule}
+                    />
+                    <span>{n.libelle}</span>
+                  </label>
+                ))}
+              </fieldset>
+            ))}
+            <Field label={`Priorité pour ce parcours — Phase ${p.phase}`} facultatif>
+              <select
+                value={phases[p.phase]?.priorite || ""}
+                onChange={(e) => onChangePhase(p.phase, "priorite", e.target.value)}
+                disabled={lectureSeule}
+              >
+                <option value="">Non renseignée</option>
+                {PRIORITES_PHASE.map((pr) => <option key={pr.valeur} value={pr.valeur}>{pr.libelle}</option>)}
+              </select>
+            </Field>
+            <Field label={`Observations de l'accompagnateur — Phase ${p.phase}`} aide={libelleSource("accompagnateur")} facultatif>
+              <textarea
+                rows={2}
+                value={phases[p.phase]?.observations || ""}
+                onChange={(e) => onChangePhase(p.phase, "observations", e.target.value)}
+                disabled={lectureSeule}
+              />
+            </Field>
+          </fieldset>
+        ))}
       </section>
     );
   }

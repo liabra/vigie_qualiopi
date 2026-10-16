@@ -6,6 +6,9 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { attendre, bouton, champ, cliquer, demonter, monter, saisir, texte } from "./outils.jsx";
 
+// Les boutons d'étape portent un compteur (" 0/34") : recherche par préfixe.
+const etapeBouton = (libelle) => [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(libelle));
+
 beforeEach(() => {
   window.alert = () => { throw new Error("window.alert interdit"); };
   window.confirm = () => { throw new Error("window.confirm interdit"); };
@@ -62,16 +65,60 @@ test("entretien : saisie puis écran suivant enregistre, le retour en arrière g
   assert.equal(champ("Motif de la venue").value, "Souhaite un retour vers l'emploi.", "la saisie n'a pas été perdue en changeant d'écran");
 });
 
-test("entretien : l'écran de positionnement (rubrique 8) signale l'absence du questionnaire réel, sans champ", async () => {
+test("entretien : l'écran de positionnement affiche les 34 compétences réparties sur 6 phases", async () => {
   await monter("/jeunes/1/entretiens/5", "admin", {
     "GET /api/stagiaires/1": { stagiaire: JEUNE },
-    "GET /api/entretiens/5": { entretien: ENTRETIEN_BROUILLON, reponses: [] },
+    "GET /api/entretiens/5": { entretien: ENTRETIEN_BROUILLON, reponses: [], positionnement: { evaluations: [], phases: [] } },
   });
   await attendre(() => texte().includes("Accueil et identification"));
-  await cliquer(bouton("Positionnement pédagogique"));
-  await attendre(() => texte().includes("Questionnaire non disponible"));
-  assert.ok(texte().includes("accès Drive refusé"), "le blocage réel est signalé, rien n'est inventé");
-  assert.equal(document.querySelectorAll("textarea").length, 0, "aucun champ inventé pour cette rubrique");
+  await cliquer(etapeBouton("Positionnement pédagogique"));
+  await attendre(() => texte().includes("Phase 1"));
+  assert.equal(document.querySelectorAll('input[type="radio"]').length, 34 * 3, "34 compétences × 3 niveaux");
+  assert.ok(texte().includes("Phase 6"));
+  assert.ok(texte().includes("Priorité pour ce parcours — Phase 1"));
+  assert.ok(texte().includes("Observations de l'accompagnateur — Phase 1"));
+});
+
+test("entretien : un niveau choisi se conserve en changeant d'écran, puis s'enregistre au bon format", async () => {
+  const appels = await monter("/jeunes/1/entretiens/5", "admin", {
+    "GET /api/stagiaires/1": { stagiaire: JEUNE },
+    "GET /api/entretiens/5": { entretien: ENTRETIEN_BROUILLON, reponses: [], positionnement: { evaluations: [], phases: [] } },
+    "PUT /api/entretiens/5/positionnement": (corps) => [200, { entretien: { ...ENTRETIEN_BROUILLON, version: corps.version + 1 } }],
+  });
+  await attendre(() => texte().includes("Accueil et identification"));
+  await cliquer(etapeBouton("Positionnement pédagogique"));
+  await attendre(() => texte().includes("Phase 1"));
+
+  await cliquer(document.querySelector('input[name="p1_c1"][value="autonome"]'));
+  await saisir(champ("Priorité pour ce parcours — Phase 1"), "forte");
+
+  await cliquer(bouton("Suivant"));
+  await attendre(() => texte().includes("Projet et conclusion"));
+  assert.ok(appels.some((a) => a.methode === "PUT" && a.chemin === "/api/entretiens/5/positionnement"), "le positionnement a été enregistré");
+  const envoi = appels.find((a) => a.chemin === "/api/entretiens/5/positionnement");
+  assert.deepEqual(envoi.corps.evaluations, [{ competence_code: "p1_c1", niveau: "autonome" }]);
+  assert.deepEqual(envoi.corps.phases, [{ phase: 1, priorite: "forte", observations: null }]);
+
+  await cliquer(etapeBouton("Positionnement pédagogique"));
+  await attendre(() => texte().includes("Phase 1"));
+  assert.ok(document.querySelector('input[name="p1_c1"][value="autonome"]').checked, "le niveau choisi n'a pas été perdu");
+});
+
+test("entretien validé : les niveaux de compétence sont figés (radios désactivés)", async () => {
+  const valide = { ...ENTRETIEN_BROUILLON, statut: "valide", valide_le: "2026-10-16T12:00:00Z" };
+  await monter("/jeunes/1/entretiens/5", "admin", {
+    "GET /api/stagiaires/1": { stagiaire: JEUNE },
+    "GET /api/entretiens/5": {
+      entretien: valide, reponses: [],
+      positionnement: { evaluations: [{ phase: 1, competence_code: "p1_c1", niveau: "autonome" }], phases: [{ phase: 1, priorite: "forte", observations: null }] },
+    },
+  });
+  await attendre(() => texte().includes("Accueil et identification"));
+  await cliquer(etapeBouton("Positionnement pédagogique"));
+  await attendre(() => texte().includes("Phase 1"));
+  const radio = document.querySelector('input[name="p1_c1"][value="autonome"]');
+  assert.ok(radio.checked);
+  assert.ok(radio.disabled, "lecture seule après validation");
 });
 
 test("entretien : un conflit de version à l'enregistrement propose de recharger, sans rien perdre silencieusement", async () => {

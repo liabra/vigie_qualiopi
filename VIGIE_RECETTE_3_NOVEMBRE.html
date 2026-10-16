@@ -1,0 +1,137 @@
+<title>Recette Vigie</title>
+<meta name="description" content="Checklist de recette humaine avant la rentrée du 3 novembre 2026 — scénarios à tester par l'équipe A2C.">
+<style>
+  :root {
+    --fond: #f7f5f0; --surface: #ffffff; --texte: #2a2622; --texte-doux: #6b6358;
+    --bordure: #e2ddd2; --accent: #1f6f5c; --accent-doux: #e4f1ec;
+    --p0: #b3261e; --p0-fond: #fbe9e7; --p1: #9a6700; --p1-fond: #fdf3dc; --p2: #3a5a9b; --p2-fond: #e8edf7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --fond: #1b1917; --surface: #242220; --texte: #ece7de; --texte-doux: #a69f92;
+      --bordure: #3a3630; --accent: #5fc9ad; --accent-doux: #1f332c;
+      --p0: #ff8a80; --p0-fond: #3a1f1c; --p1: #ffcf6b; --p1-fond: #332a14; --p2: #9db6ea; --p2-fond: #1d2740;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --fond: #1b1917; --surface: #242220; --texte: #ece7de; --texte-doux: #a69f92;
+    --bordure: #3a3630; --accent: #5fc9ad; --accent-doux: #1f332c;
+    --p0: #ff8a80; --p0-fond: #3a1f1c; --p1: #ffcf6b; --p1-fond: #332a14; --p2: #9db6ea; --p2-fond: #1d2740;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.5 "IBM Plex Sans", system-ui, sans-serif; padding-inline: 16px; }
+  .page { max-width: 760px; margin: 0 auto; padding-block: 32px 64px; }
+  h1 { font: 700 30px/1.2 "Source Serif 4", Georgia, serif; margin: 0 0 6px; text-wrap: balance; }
+  .souslegende { color: var(--texte-doux); margin: 0 0 28px; max-width: 60ch; }
+  h2 { font: 600 17px/1.3 "Source Serif 4", Georgia, serif; margin: 36px 0 4px; }
+  .meta-section { color: var(--texte-doux); font-size: 13px; margin: 0 0 12px; }
+  .carte { background: var(--surface); border: 1px solid var(--bordure); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start; }
+  .carte input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex: none; }
+  .corps { flex: 1; min-width: 0; }
+  .titre-scenario { font-weight: 600; }
+  .detail { color: var(--texte-doux); font-size: 14px; margin-top: 2px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+  .qui { font-size: 12px; color: var(--texte-doux); margin-top: 6px; }
+  .qui b { color: var(--texte); }
+  .intervention { background: var(--accent-doux); border: 1px solid var(--accent); border-radius: 10px; padding: 16px 18px; margin: 10px 0; }
+  .intervention h3 { margin: 0 0 8px; font-size: 15px; }
+  .intervention ul { margin: 0; padding-left: 20px; }
+  .intervention li { margin-bottom: 6px; }
+  .p0 { background: var(--p0-fond); color: var(--p0); }
+  .p1 { background: var(--p1-fond); color: var(--p1); }
+  .progres { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; font-size: 13px; color: var(--texte-doux); }
+  .progres b { color: var(--texte); font-size: 15px; }
+  footer { margin-top: 40px; font-size: 12px; color: var(--texte-doux); border-top: 1px solid var(--bordure); padding-top: 14px; }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<div class="page">
+  <h1>Recette Vigie — avant le 3 novembre</h1>
+  <p class="souslegende">À cocher au fil des tests, avec des données entièrement fictives. Chaque scénario correspond à une fonction réellement utilisée en formation. Ne cochez que ce que vous avez vraiment testé — pas ce qui « devrait marcher ».</p>
+
+  <div class="progres"><span>Avancement</span><b id="compte">0 / 0</b></div>
+
+  <section id="liste"></section>
+
+  <h2>Opérations nécessitant Lia (pas l'équipe)</h2>
+  <div class="intervention">
+    <h3>À faire avant la rentrée, par elle uniquement</h3>
+    <ul>
+      <li><b>Sauvegarde PostgreSQL externe</b> — aucune sauvegarde automatique sur le plan Railway actuel. Décision + mise en place d'une sauvegarde chiffrée hors Railway.</li>
+      <li><b>Test réel de génération Google Docs</b> (OAuth de Vigie, environnement isolé) — jamais fait en conditions réelles ; nécessaire avant de faire confiance aux documents générés (fiche FSE-IA, attestations, etc.).</li>
+      <li><b>Décision « mineurs »</b> — consentement du représentant légal et durée de conservation pour les 14-17 ans, avant toute saisie réelle d'entretien.</li>
+      <li><b>Autorisation de déploiement</b> — toute mise en production (push, Railway) reste soumise à sa validation explicite.</li>
+    </ul>
+  </div>
+
+  <footer>Document de travail — à mettre à jour si un scénario révèle un problème. Voir <code>VIGIE_AGENT_LOG.md</code> pour le détail technique de l'audit du 16/10/2026.</footer>
+</div>
+
+<script>
+(function () {
+  var scenarios = [
+    { s: "1. Formation", t: "Créer une formation et une session de test", d: "Dates, lieu, durée. Vérifier que la session apparaît dans la liste." },
+    { s: "1. Formation", t: "Créer un groupe au sein de la session" },
+    { s: "2. Jeune", t: "Créer un jeune AVANT toute inscription (page « Jeunes »)", d: "Vérifier la détection de doublon si vous retapez le même nom." },
+    { s: "3. Entretien", t: "Commencer un entretien, remplir l'écran 1, enregistrer, FERMER la page" },
+    { s: "3. Entretien", t: "Revenir sur la fiche du jeune et reprendre le brouillon", d: "Les réponses déjà saisies doivent être là." },
+    { s: "3. Entretien", t: "Remplir les écrans 2, 3 et 5 (textes, cases à cocher, tableaux expériences/plan d'action)" },
+    { s: "4. Positionnement", t: "Remplir le questionnaire des 34 compétences (écran 4)", d: "Vérifier qu'aucun niveau n'est pré-coché par défaut." },
+    { s: "5. Validation", t: "Valider l'entretien", d: "Vérifier qu'on ne peut plus rien modifier après." },
+    { s: "6. Fiche FSE-IA", t: "Générer la fiche FSE-IA depuis l'entretien validé", badge: "p0-corrigé", p: "p0" },
+    { s: "6. Fiche FSE-IA", t: "Ouvrir le document généré, vérifier les 14 rubriques et l'absence de donnée médicale (rubrique 2 vide)" },
+    { s: "7. Inscription", t: "Inscrire CE MÊME jeune à la session de test", badge: "P0 corrigé le 16/10", p: "p0", d: "Le formulaire doit proposer « Inscrire cette personne » au lieu de créer un doublon." },
+    { s: "7. Inscription", t: "Vérifier qu'aucun second dossier n'a été créé pour ce jeune" },
+    { s: "8. Planning", t: "Créer des séances et consulter le planning de la session" },
+    { s: "9. Documents", t: "Générer une convocation pour un stagiaire" },
+    { s: "9. Documents", t: "Régénérer un document déjà généré et vérifier la confirmation explicite" },
+    { s: "10. Suivi", t: "Saisir une absence, vérifier le calcul d'assiduité" },
+    { s: "10. Suivi", t: "Saisir un résultat d'évaluation / une satisfaction" },
+    { s: "11. Droits", t: "Se connecter en contributeur : vérifier l'absence des actions réservées admin" },
+    { s: "11. Droits", t: "Se connecter en admin : vérifier l'accès complet" },
+    { s: "12. Fiche FSE-IA — dossier", t: "Vérifier que la fiche générée se trouve dans le dossier « Entretiens FSE-IA » sur Drive, pas à la racine", badge: "P1 corrigé le 16/10", p: "p1" },
+  ];
+  var liste = document.getElementById("liste");
+  var dernierS = null;
+  scenarios.forEach(function (sc, i) {
+    if (sc.s !== dernierS) {
+      var h = document.createElement("h2");
+      h.textContent = sc.s;
+      liste.appendChild(h);
+      dernierS = sc.s;
+    }
+    var carte = document.createElement("label");
+    carte.className = "carte";
+    carte.innerHTML = '<input type="checkbox" data-i="' + i + '">' +
+      '<span class="corps"><span class="titre-scenario">' + sc.t + '</span>' +
+      (sc.badge ? '<span class="badge ' + sc.p + '">' + sc.badge + '</span>' : '') +
+      (sc.d ? '<div class="detail">' + sc.d + '</div>' : '') + '</span>';
+    liste.appendChild(carte);
+  });
+
+  var cases = liste.querySelectorAll('input[type="checkbox"]');
+  var compte = document.getElementById("compte");
+  function maj() {
+    var n = 0;
+    cases.forEach(function (c) { if (c.checked) n++; });
+    compte.textContent = n + " / " + cases.length;
+  }
+  try {
+    var sauvegarde = JSON.parse(localStorage.getItem("vigie-recette") || "{}");
+    cases.forEach(function (c) { if (sauvegarde[c.dataset.i]) c.checked = true; });
+  } catch (e) {}
+  cases.forEach(function (c) {
+    c.addEventListener("change", function () {
+      try {
+        var sauvegarde = JSON.parse(localStorage.getItem("vigie-recette") || "{}");
+        sauvegarde[c.dataset.i] = c.checked;
+        localStorage.setItem("vigie-recette", JSON.stringify(sauvegarde));
+      } catch (e) {}
+      maj();
+    });
+  });
+  maj();
+})();
+</script>

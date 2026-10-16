@@ -274,6 +274,72 @@ test("positionnement : droits — anonyme refusé", async () => {
   assert.equal((await api("PUT", `/api/entretiens/${e.id}/positionnement`, { version: 1, evaluations: [], phases: [] }, undefined)).statut, 401);
 });
 
+// ── DOC-9D3 lot B/C : champs étendus (choix, lignes), cohabitation ──
+
+test("migration 030 : tables de choix et de lignes répétables présentes", async () => {
+  for (const t of ["entretien_choix", "entretien_experiences", "entretien_plan_action"]) {
+    assert.equal((await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t])).rowCount, 1, t);
+  }
+});
+
+test("choix et lignes : sauvegarde, reprise, cohabitent avec réponses et positionnement", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+
+  let v = 1;
+  const r1 = ok(await api("PUT", `/api/entretiens/${e.id}/reponses`, { version: v, reponses: [{ cle: "resume_demande", valeur: "Trouver un métier" }] }, A())); v = r1.entretien.version;
+  const r2 = ok(await api("PUT", `/api/entretiens/${e.id}/choix`, { version: v, choix: [{ groupe: "loisirs", code: "sport" }, { groupe: "objectifs_souhaites", code: "emploi" }] }, A())); v = r2.entretien.version;
+  const r3 = ok(await api("PUT", `/api/entretiens/${e.id}/lignes`, {
+    version: v, bloc: "experiences", lignes: [{ ordre: 1, structure: "Stage découverte", missions: "Accueil" }],
+  }, A())); v = r3.entretien.version;
+  const r4 = ok(await api("PUT", `/api/entretiens/${e.id}/lignes`, {
+    version: v, bloc: "plan_action", lignes: [{ ordre: 1, objectif: "Reprendre confiance", phase: 1, etat: "a_faire" }],
+  }, A())); v = r4.entretien.version;
+  assert.equal(v, 5, "4 écritures successives, un seul compteur de version");
+
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu.reponses.find((r) => r.cle === "resume_demande").valeur, "Trouver un métier");
+  assert.deepEqual(relu.choix.map((c) => `${c.groupe}:${c.code}`).sort(), ["loisirs:sport", "objectifs_souhaites:emploi"]);
+  assert.equal(relu.lignes.experiences.length, 1);
+  assert.equal(relu.lignes.experiences[0].structure, "Stage découverte");
+  assert.equal(relu.lignes.plan_action.length, 1);
+  assert.equal(relu.lignes.plan_action[0].etat, "a_faire");
+
+  // Modifier le bloc « expériences » NE touche PAS le bloc « plan_action ».
+  const r5 = ok(await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: v, bloc: "experiences", lignes: [] }, A()));
+  const relu2 = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.equal(relu2.lignes.experiences.length, 0, "expériences vidées");
+  assert.equal(relu2.lignes.plan_action.length, 1, "plan d'action intact");
+  assert.equal(relu2.choix.length, 2, "les choix restent intacts");
+  assert.equal(r5.entretien.version, 6);
+});
+
+test("choix/lignes : option inconnue, ligne vide, conflit de version refusés sans écriture partielle", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [{ groupe: "loisirs", code: "escalade" }] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: 1, bloc: "experiences", lignes: [{ ordre: 1 }] }, A())).statut, 400, "ligne vide refusée");
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: 1, bloc: "inconnu", lignes: [] }, A())).statut, 400);
+
+  ok(await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [{ groupe: "loisirs", code: "sport" }] }, A()));
+  const conflit = await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [{ groupe: "loisirs", code: "lecture" }] }, A());
+  assert.equal(conflit.statut, 409);
+  const relu = ok(await api("GET", `/api/entretiens/${e.id}`, undefined, A()));
+  assert.deepEqual(relu.choix.map((c) => c.code), ["sport"], "aucun écrasement");
+});
+
+test("choix/lignes : figés après validation, droits — anonyme refusé", async () => {
+  const st = await creerStagiaire();
+  const e = ok(await api("POST", `/api/stagiaires/${st.id}/entretiens`, undefined, A())).entretien;
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [] }, undefined)).statut, 401);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: 1, bloc: "experiences", lignes: [] }, undefined)).statut, 401);
+
+  ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/choix`, { version: 1, choix: [] }, A())).statut, 409);
+  assert.equal((await api("PUT", `/api/entretiens/${e.id}/lignes`, { version: 1, bloc: "plan_action", lignes: [] }, A())).statut, 409);
+});
+
 // ── Non-régression DOC-9B ────────────────────────────────────
 
 test("non-régression DOC-9B : POST /api/stagiaires et recherche toujours opérationnels", async () => {

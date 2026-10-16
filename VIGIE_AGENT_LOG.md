@@ -4629,3 +4629,92 @@ laissé tel quel pour rester une transcription fidèle.
   document final (étape F), mais cette génération n'est pas encore faite.
 - Rubrique 2 (handicap) toujours hors périmètre.
 - Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-9D3 : vérification et complétion du formulaire FSE-IA
+
+### Lot A — Audit de couverture
+
+Comparé chaque question de `modeles-local/entree/
+FSE-IA_Audit_questions_hors_positionnement.md` (relevé du modèle réel, hors
+rubrique 8) aux 14 clés génériques existantes. Constat : les 14 clés
+couvraient une SYNTHÈSE libre par thème, jamais les cases à cocher, les
+sélections fermées, les échelles ni les tableaux répétables listés dans le
+modèle réel — exactement l'écart que la consigne demandait de vérifier.
+
+### Lot B — Complété (additif, migration 030)
+
+- **Réutilise `entretien_reponses`** (zéro migration) pour 3 nouveaux
+  TYPES de champs, en plus du texte libre : `SELECTS_ENTRETIEN` (7 listes
+  fermées), `ECHELLES_ENTRETIEN` (confiance en soi, 0-10), `DATES_ENTRETIEN`
+  (date de naissance, date d'entrée en accompagnement) — `validerReponse()`
+  dispatché par type, toujours une liste fermée, jamais un texte libre à la
+  place d'une case/sélection.
+- **`entretien_choix`** (nouvelle table) : 8 groupes de cases à cocher
+  fermés (`entretienChoix.js`) — objectifs souhaités, savoir-faire, loisirs,
+  mobilité, freins, ressources/points d'appui, valeurs au travail, phases à
+  prioriser.
+- **`entretien_experiences`** et **`entretien_plan_action`** (nouvelles
+  tables) : tableaux répétables (`entretienLignes.js`), aucun nombre de
+  lignes imposé (le modèle réel en prévoit 5 pour le plan d'action, jamais
+  forcé en base).
+- Toutes ces écritures (`PUT /entretiens/:id/choix`, `PUT /entretiens/:id/
+  lignes`) partagent le MÊME verrou optimiste `entretiens.version` que
+  `/reponses` et `/positionnement` — un seul système de conflit pour tout
+  l'entretien. Le questionnaire des six phases (DOC-9D2 lot B) n'a pas été
+  touché.
+- Frontend : `entretienFormat.js` réorganisé en `CHAMPS_SIMPLES` (type
+  texte/select/échelle/date, un seul rendu générique), `GROUPES_CHOIX`,
+  `BLOCS_LIGNES` — l'écran 4 (positionnement) reste inchangé, les écrans 1/2/
+  3/5 rendent désormais ces nouveaux champs/groupes/tableaux automatiquement.
+
+### Lot C — Vérification de bout en bout
+
+Entretien fictif saisi sur TOUS les types de champs (texte, sélection,
+échelle, date, cases à cocher, positionnement, tableau répétable),
+enregistré, repris après rechargement simulé, modifié, validé — puis relu
+intégralement en lecture seule (tous les contrôles désactivés, y compris en
+revenant sur un écran déjà quitté).
+
+### Tests
+
+Backend (+20) : `entretienChampsEtendus.test.js` (8, validation pure :
+sélection fermée, échelle 0-10, date ISO, 8 groupes de choix, tableaux
+répétables, aucune donnée médicale) ; `entretiens.test.js` (+3 : migration
+030, cohabitation choix/lignes/réponses/positionnement, option/ligne/
+conflit refusés sans écriture partielle, droits). Frontend (+6,
+`entretienChampsEtendus.test.jsx`) : sélection/échelle/date, cases à cocher
+avec reprise après rechargement, tableau expériences (ajout/suppression,
+aucun nombre imposé), tableau plan d'action (colonnes select), lot C
+complet de bout en bout.
+
+### Validation
+
+Backend **846/846**, frontend **373/373**, build OK. `git diff --check`
+propre sur tout le code et les tests.
+
+### Tableau de couverture final (hors rubrique 8, déjà couverte)
+
+| Rubrique | Statut | Détail |
+|---|---|---|
+| 1 — Identification/accueil | ✅ couvert | identité de base (`stagiaires`) + référent, date de naissance, tranche d'âge, date d'entrée, session envisagée, origine du contact, financeur d'origine |
+| 2 — Handicap | ⛔ exclu volontairement | validation métier/confidentialité préalable requise, non traité ici |
+| 3 — Motif/attentes | ✅ couvert | 2 questions distinctes + objectifs souhaités (12 cases) |
+| 4 — Parcours scolaire | ✅ couvert | établissement/classe/diplômes + décrochage (sélection + explication) + expériences (tableau répétable) |
+| 5 — Compétences/qualités | ✅ couvert | savoir-faire (15 cases) + 3 questions distinctes |
+| 6 — Centres d'intérêt/motivation | ✅ couvert | loisirs (13 cases) + confiance en soi (échelle 0-10) + 2 questions distinctes |
+| 7 — Environnement/mobilité/freins | ✅ couvert | logement (sélection), mobilité/freins/ressources (3 groupes de cases, 27 options au total) |
+| 8 — Positionnement (6 phases) | ✅ couvert (DOC-9D2 lot B) | 34 compétences, priorités, observations |
+| 9 — Projet professionnel | ✅ couvert | sélection + 6 questions distinctes + valeurs au travail (12 cases) |
+| 10 — Plan d'action | ✅ couvert | tableau répétable (objectif/phase/action/échéance/état), aucun nombre imposé |
+| 11 — Synthèse accompagnateur | ✅ couvert | 7 questions distinctes + phases à prioriser (6 cases) |
+| 12 — Suivi pendant la formation | ⛔ hors périmètre (volontaire) | module Accompagnement, non dupliqué |
+| 13 — Parole du jeune | ✅ couvert | 3 questions distinctes, verbatim |
+| 14 — Signatures | ⛔ hors périmètre (volontaire) | signatures manuelles, jamais préremplies |
+
+### Limites
+
+Toutes les réponses sont désormais structurées et récupérables (vérifié en
+lot C), prêtes pour une future génération Google Docs (étape F, non
+commencée). Aucun push ni déploiement.

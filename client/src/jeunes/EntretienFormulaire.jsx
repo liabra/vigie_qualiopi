@@ -4,10 +4,15 @@ import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Field, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { nomComplet } from "./format.js";
-import { CHAMPS_ENTRETIEN, ECRANS_ENTRETIEN, champsDeLecran, libelleSource } from "./entretienFormat.js";
+import {
+  ECRANS_ENTRETIEN, CHAMPS_SIMPLES, BLOCS_LIGNES,
+  champsSimplesDeLecran, groupesChoixDeLecran, blocsLignesDeLecran, libelleSource,
+} from "./entretienFormat.js";
 import { NIVEAUX_COMPETENCE, PHASES_POSITIONNEMENT, PRIORITES_PHASE } from "./positionnementFormat.js";
 
-// DOC-9D2 lot A — Entretien guidé en 5 écrans, sauvegarde progressive.
+const cleChoix = (groupe, code) => `${groupe}::${code}`;
+
+// DOC-9D2/DOC-9D3 — Entretien guidé en 5 écrans, sauvegarde progressive.
 // Tout vit dans CE composant (un seul montage) : circuler entre les écrans
 // ne perd jamais une réponse déjà saisie, qu'elle soit enregistrée ou non.
 // Un entretien `valide` est intégralement en lecture seule.
@@ -16,19 +21,23 @@ export function EntretienFormulaire() {
   const navigate = useNavigate();
   const [jeune, setJeune] = useState(null);
   const [entretien, setEntretien] = useState(null);
-  const [valeurs, setValeurs] = useState({});
+  const [valeurs, setValeurs] = useState({}); // cle (texte/select/echelle/date) → valeur
   const [evaluations, setEvaluations] = useState({}); // competence_code → niveau
   const [phases, setPhases] = useState({}); // phase → { priorite, observations }
+  const [choix, setChoix] = useState({}); // "groupe::code" → true
+  const [lignes, setLignes] = useState({ experiences: [], plan_action: [] });
   const [etape, setEtape] = useState(0);
   const [modifieReponses, setModifieReponses] = useState(false);
   const [modifiePositionnement, setModifiePositionnement] = useState(false);
+  const [modifieChoix, setModifieChoix] = useState(false);
+  const [modifieLignes, setModifieLignes] = useState({ experiences: false, plan_action: false });
   const [enregistrement, setEnregistrement] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [conflit, setConflit] = useState(false);
   const [confirmerValidation, setConfirmerValidation] = useState(false);
   const [err, setErr] = useState(null);
   useTitrePage(jeune ? `Entretien — ${nomComplet(jeune)}` : "Entretien");
-  const modifie = modifieReponses || modifiePositionnement;
+  const modifie = modifieReponses || modifiePositionnement || modifieChoix || modifieLignes.experiences || modifieLignes.plan_action;
 
   const charger = useCallback(async () => {
     try {
@@ -47,8 +56,17 @@ export function EntretienFormulaire() {
       const ph = {};
       for (const p of re.positionnement?.phases || []) ph[p.phase] = { priorite: p.priorite || "", observations: p.observations || "" };
       setPhases(ph);
+      const ch = {};
+      for (const c of re.choix || []) ch[cleChoix(c.groupe, c.code)] = true;
+      setChoix(ch);
+      setLignes({
+        experiences: (re.lignes?.experiences || []).map((l) => ({ structure: l.structure || "", duree: l.duree || "", missions: l.missions || "", retenue: l.retenue || "" })),
+        plan_action: (re.lignes?.plan_action || []).map((l) => ({ objectif: l.objectif || "", phase: l.phase ? String(l.phase) : "", action: l.action || "", echeance: l.echeance || "", etat: l.etat || "" })),
+      });
       setModifieReponses(false);
       setModifiePositionnement(false);
+      setModifieChoix(false);
+      setModifieLignes({ experiences: false, plan_action: false });
       setConflit(false);
       setErr(null);
     } catch (e) { setErr(e.message); }
@@ -81,24 +99,44 @@ export function EntretienFormulaire() {
     setModifiePositionnement(true);
   }
 
-  // Enregistre la TOTALITÉ des réponses classiques actuelles (remplacement
-  // complet, le contrat du backend) — jamais seulement l'écran courant.
+  function basculerChoix(groupe, code) {
+    setChoix((v) => {
+      const cle = cleChoix(groupe, code);
+      const copie = { ...v };
+      if (copie[cle]) delete copie[cle]; else copie[cle] = true;
+      return copie;
+    });
+    setModifieChoix(true);
+  }
+
+  function ajouterLigne(bloc) {
+    setLignes((v) => ({ ...v, [bloc]: [...v[bloc], Object.fromEntries(BLOCS_LIGNES[bloc].colonnes.map((c) => [c.cle, ""]))] }));
+    setModifieLignes((v) => ({ ...v, [bloc]: true }));
+  }
+
+  function changerLigne(bloc, index, champ, valeur) {
+    setLignes((v) => ({ ...v, [bloc]: v[bloc].map((l, i) => (i === index ? { ...l, [champ]: valeur } : l)) }));
+    setModifieLignes((v) => ({ ...v, [bloc]: true }));
+  }
+
+  function supprimerLigne(bloc, index) {
+    setLignes((v) => ({ ...v, [bloc]: v[bloc].filter((_, i) => i !== index) }));
+    setModifieLignes((v) => ({ ...v, [bloc]: true }));
+  }
+
+  // Enregistre la TOTALITÉ des réponses « simples » actuelles (texte,
+  // sélection, échelle, date — remplacement complet, le contrat du
+  // backend) — jamais seulement l'écran courant.
   async function sauvegarderReponses(version) {
     const reponses = Object.entries(valeurs)
-      .filter(([cle, valeur]) => CHAMPS_ENTRETIEN[cle] && valeur.trim().length > 0)
-      .map(([cle, valeur]) => ({ cle, valeur: valeur.trim() }));
-    const r = await api(`/api/entretiens/${entretienId}/reponses`, {
-      method: "PUT",
-      body: JSON.stringify({ version, reponses }),
-    });
+      .filter(([cle, valeur]) => CHAMPS_SIMPLES[cle] && String(valeur).trim().length > 0)
+      .map(([cle, valeur]) => ({ cle, valeur: String(valeur).trim() }));
+    const r = await api(`/api/entretiens/${entretienId}/reponses`, { method: "PUT", body: JSON.stringify({ version, reponses }) });
     setEntretien(r.entretien);
     setModifieReponses(false);
     return r.entretien;
   }
 
-  // Idem pour le positionnement (34 compétences au plus + priorité/
-  // observations par phase) — même contrat de remplacement complet, sur le
-  // MÊME verrou de version que les réponses classiques.
   async function sauvegarderPositionnement(version) {
     const listeEvaluations = Object.entries(evaluations)
       .filter(([, niveau]) => niveau)
@@ -106,30 +144,46 @@ export function EntretienFormulaire() {
     const listePhases = Object.entries(phases)
       .filter(([, p]) => (p.priorite || "").trim() || (p.observations || "").trim())
       .map(([phase, p]) => ({ phase: Number(phase), priorite: p.priorite || null, observations: p.observations?.trim() || null }));
-    const r = await api(`/api/entretiens/${entretienId}/positionnement`, {
-      method: "PUT",
-      body: JSON.stringify({ version, evaluations: listeEvaluations, phases: listePhases }),
-    });
+    const r = await api(`/api/entretiens/${entretienId}/positionnement`, { method: "PUT", body: JSON.stringify({ version, evaluations: listeEvaluations, phases: listePhases }) });
     setEntretien(r.entretien);
     setModifiePositionnement(false);
     return r.entretien;
   }
 
-  // Enregistre tout ce qui a changé (réponses puis positionnement, dans
-  // cet ordre, en chaînant la version renvoyée) — jamais les deux écritures
-  // séparément exposées à l'utilisateur comme deux actions distinctes.
+  async function sauvegarderChoix(version) {
+    const liste = Object.keys(choix).map((cle) => { const [groupe, code] = cle.split("::"); return { groupe, code }; });
+    const r = await api(`/api/entretiens/${entretienId}/choix`, { method: "PUT", body: JSON.stringify({ version, choix: liste }) });
+    setEntretien(r.entretien);
+    setModifieChoix(false);
+    return r.entretien;
+  }
+
+  // Le TABLEAU de lignes à l'écran DEVIENT l'ordre envoyé : pas d'identifiant
+  // stable par ligne, seulement une position — conforme à « ne pas forcer
+  // un nombre de lignes », la liste peut être vide, partielle ou complète.
+  async function sauvegarderLignes(bloc, version) {
+    const brutes = lignes[bloc]
+      .map((l, i) => ({ ordre: i + 1, ...l }))
+      .filter((l) => BLOCS_LIGNES[bloc].colonnes.some((c) => String(l[c.cle] || "").trim().length > 0));
+    const r = await api(`/api/entretiens/${entretienId}/lignes`, { method: "PUT", body: JSON.stringify({ version, bloc, lignes: brutes }) });
+    setEntretien(r.entretien);
+    setModifieLignes((v) => ({ ...v, [bloc]: false }));
+    return r.entretien;
+  }
+
+  // Enregistre tout ce qui a changé, dans un ordre fixe, en chaînant la
+  // version renvoyée par chaque appel — jamais les écritures séparément
+  // exposées à l'utilisateur comme des actions distinctes.
   async function enregistrer() {
     if (!modifie) return true;
     setEnregistrement(true); setErreur(null);
     try {
       let version = entretien.version;
-      if (modifieReponses) {
-        const e = await sauvegarderReponses(version);
-        version = e.version;
-      }
-      if (modifiePositionnement) {
-        await sauvegarderPositionnement(version);
-      }
+      if (modifieReponses) version = (await sauvegarderReponses(version)).version;
+      if (modifiePositionnement) version = (await sauvegarderPositionnement(version)).version;
+      if (modifieChoix) version = (await sauvegarderChoix(version)).version;
+      if (modifieLignes.experiences) version = (await sauvegarderLignes("experiences", version)).version;
+      if (modifieLignes.plan_action) version = (await sauvegarderLignes("plan_action", version)).version;
       return true;
     } catch (e) {
       if (e.status === 409) { setConflit(true); return false; }
@@ -149,7 +203,6 @@ export function EntretienFormulaire() {
       const r = await api(`/api/entretiens/${entretienId}/valider`, { method: "POST" });
       setEntretien(r.entretien);
       setConfirmerValidation(false);
-      setModifie(false);
     } catch (e) {
       setConfirmerValidation(false);
       setErreur(e.message);
@@ -182,8 +235,6 @@ export function EntretienFormulaire() {
       <nav aria-label="Écrans de l'entretien" className="entretien-etapes">
         <ol>
           {ECRANS_ENTRETIEN.map((e, i) => {
-            const champs = champsDeLecran(e.id);
-            const remplis = champs.filter((c) => (valeurs[c.cle] || "").trim().length > 0).length;
             const totalCompetences = e.id === 4 ? PHASES_POSITIONNEMENT.reduce((n, p) => n + p.competences.length, 0) : 0;
             const competencesRemplies = e.id === 4 ? Object.values(evaluations).filter(Boolean).length : 0;
             return (
@@ -196,7 +247,6 @@ export function EntretienFormulaire() {
                   disabled={enregistrement}
                 >
                   {e.titre}
-                  {champs.length > 0 && <span className="sess-secondaire"> {remplis}/{champs.length}</span>}
                   {totalCompetences > 0 && <span className="sess-secondaire"> {competencesRemplies}/{totalCompetences}</span>}
                 </button>
               </li>
@@ -208,12 +258,11 @@ export function EntretienFormulaire() {
       <EcranEntretien
         ecran={ECRANS_ENTRETIEN[etape]}
         jeune={jeune}
-        valeurs={valeurs}
-        onChange={changerChamp}
-        evaluations={evaluations}
-        onChangeEvaluation={changerEvaluation}
-        phases={phases}
-        onChangePhase={changerPhase}
+        valeurs={valeurs} onChange={changerChamp}
+        evaluations={evaluations} onChangeEvaluation={changerEvaluation}
+        phases={phases} onChangePhase={changerPhase}
+        choix={choix} onToggleChoix={basculerChoix}
+        lignes={lignes} onAjouterLigne={ajouterLigne} onChangerLigne={changerLigne} onSupprimerLigne={supprimerLigne}
         lectureSeule={lectureSeule}
       />
 
@@ -243,20 +292,88 @@ export function EntretienFormulaire() {
   );
 }
 
-function EcranEntretien({ ecran, jeune, valeurs, onChange, evaluations, onChangeEvaluation, phases, onChangePhase, lectureSeule }) {
-  if (ecran.id === 1) {
+function ChampSimple({ champ, valeur, onChange, lectureSeule }) {
+  if (champ.type === "select") {
     return (
-      <section aria-label={ecran.titre}>
-        <h2>{ecran.titre}</h2>
-        <p>Ces informations proviennent déjà du dossier du jeune et ne se ressaisissent pas ici.</p>
-        <dl className="jeunes-identite">
-          <div><dt>Nom</dt><dd>{nomComplet(jeune)}</dd></div>
-          <div><dt>E-mail</dt><dd>{jeune.email || "—"}</dd></div>
-          <div><dt>Téléphone</dt><dd>{jeune.telephone || "—"}</dd></div>
-        </dl>
-      </section>
+      <Field label={champ.libelle} aide={libelleSource(champ.source)} facultatif>
+        <select value={valeur || ""} onChange={(e) => onChange(champ.cle, e.target.value)} disabled={lectureSeule}>
+          <option value="">Non renseigné</option>
+          {champ.options.map((o) => <option key={o.valeur} value={o.valeur}>{o.libelle}</option>)}
+        </select>
+      </Field>
     );
   }
+  if (champ.type === "echelle") {
+    return (
+      <Field label={champ.libelle} aide={libelleSource(champ.source)} facultatif>
+        <input type="number" min={champ.min} max={champ.max} step={1} value={valeur || ""} onChange={(e) => onChange(champ.cle, e.target.value)} disabled={lectureSeule} />
+      </Field>
+    );
+  }
+  if (champ.type === "date") {
+    return (
+      <Field label={champ.libelle} aide={libelleSource(champ.source)} facultatif>
+        <input type="date" value={valeur || ""} onChange={(e) => onChange(champ.cle, e.target.value)} disabled={lectureSeule} />
+      </Field>
+    );
+  }
+  return (
+    <Field label={champ.libelle} aide={libelleSource(champ.source)} facultatif>
+      <textarea rows={3} value={valeur || ""} onChange={(e) => onChange(champ.cle, e.target.value)} disabled={lectureSeule} />
+    </Field>
+  );
+}
+
+function GroupeChoixCases({ groupe, choix, onToggle, lectureSeule }) {
+  return (
+    <fieldset className="entretien-choix">
+      <legend>{groupe.libelle} <span className="sess-secondaire">({libelleSource(groupe.source)})</span></legend>
+      {groupe.options.map((o) => (
+        <label key={o.code} className="ui-case">
+          <input
+            type="checkbox"
+            checked={!!choix[cleChoix(groupe.groupe, o.code)]}
+            onChange={() => onToggle(groupe.groupe, o.code)}
+            disabled={lectureSeule}
+          />
+          <span>{o.libelle}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+function TableauRepetable({ bloc, lignes, onAjouter, onChanger, onSupprimer, lectureSeule }) {
+  return (
+    <fieldset className="entretien-tableau">
+      <legend>{bloc.libelle} <span className="sess-secondaire">({libelleSource(bloc.source)})</span></legend>
+      {lignes.length === 0 && <p className="sess-secondaire">Aucune ligne pour le moment.</p>}
+      {lignes.map((ligne, i) => (
+        <div key={i} className="entretien-tableau__ligne">
+          {bloc.colonnes.map((c) => (
+            <Field key={c.cle} label={c.libelle} facultatif>
+              {c.type === "select" ? (
+                <select value={ligne[c.cle] || ""} onChange={(e) => onChanger(bloc.bloc, i, c.cle, e.target.value)} disabled={lectureSeule}>
+                  <option value="">Non renseigné</option>
+                  {c.options.map((o) => <option key={o.valeur} value={o.valeur}>{o.libelle}</option>)}
+                </select>
+              ) : (
+                <textarea rows={2} value={ligne[c.cle] || ""} onChange={(e) => onChanger(bloc.bloc, i, c.cle, e.target.value)} disabled={lectureSeule} />
+              )}
+            </Field>
+          ))}
+          {!lectureSeule && <Button compact variante="danger" onClick={() => onSupprimer(bloc.bloc, i)}>Supprimer cette ligne</Button>}
+        </div>
+      ))}
+      {!lectureSeule && <Button compact onClick={() => onAjouter(bloc.bloc)}>+ Ajouter une ligne</Button>}
+    </fieldset>
+  );
+}
+
+function EcranEntretien({
+  ecran, jeune, valeurs, onChange, evaluations, onChangeEvaluation, phases, onChangePhase,
+  choix, onToggleChoix, lignes, onAjouterLigne, onChangerLigne, onSupprimerLigne, lectureSeule,
+}) {
   if (ecran.id === 4) {
     return (
       <section aria-label={ecran.titre}>
@@ -306,19 +423,31 @@ function EcranEntretien({ ecran, jeune, valeurs, onChange, evaluations, onChange
       </section>
     );
   }
-  const champs = champsDeLecran(ecran.id);
+
+  const champs = champsSimplesDeLecran(ecran.id);
+  const groupes = groupesChoixDeLecran(ecran.id);
+  const blocs = blocsLignesDeLecran(ecran.id);
   return (
     <section aria-label={ecran.titre}>
       <h2>{ecran.titre}</h2>
-      {champs.map((c) => (
-        <Field key={c.cle} label={c.libelle} aide={libelleSource(c.source)} facultatif>
-          <textarea
-            rows={3}
-            value={valeurs[c.cle] || ""}
-            onChange={(e) => onChange(c.cle, e.target.value)}
-            disabled={lectureSeule}
-          />
-        </Field>
+      {ecran.id === 1 && (
+        <>
+          <p>Identité déjà connue du dossier du jeune, ne se ressaisit pas ici.</p>
+          <dl className="jeunes-identite">
+            <div><dt>Nom</dt><dd>{nomComplet(jeune)}</dd></div>
+            <div><dt>E-mail</dt><dd>{jeune.email || "—"}</dd></div>
+            <div><dt>Téléphone</dt><dd>{jeune.telephone || "—"}</dd></div>
+          </dl>
+        </>
+      )}
+      {champs.map((c) => <ChampSimple key={c.cle} champ={c} valeur={valeurs[c.cle]} onChange={onChange} lectureSeule={lectureSeule} />)}
+      {groupes.map((g) => <GroupeChoixCases key={g.groupe} groupe={g} choix={choix} onToggle={onToggleChoix} lectureSeule={lectureSeule} />)}
+      {blocs.map((b) => (
+        <TableauRepetable
+          key={b.bloc} bloc={b} lignes={lignes[b.bloc] || []}
+          onAjouter={onAjouterLigne} onChanger={onChangerLigne} onSupprimer={onSupprimerLigne}
+          lectureSeule={lectureSeule}
+        />
       ))}
     </section>
   );

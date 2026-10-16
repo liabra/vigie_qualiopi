@@ -53,7 +53,7 @@ test("entretien : saisie puis écran suivant enregistre, le retour en arrière g
   await cliquer(bouton("Suivant"));
   await attendre(() => texte().includes("Attentes, parcours et compétences"));
 
-  await saisir(champ("Motif de la venue"), "Souhaite un retour vers l'emploi.");
+  await saisir(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?"), "Souhaite un retour vers l'emploi.");
   await cliquer(bouton("Suivant"));
   await attendre(() => texte().includes("Motivation et environnement"));
   assert.ok(appels.some((a) => a.methode === "PUT" && a.chemin === "/api/entretiens/5/reponses"), "la réponse saisie a été enregistrée");
@@ -62,7 +62,7 @@ test("entretien : saisie puis écran suivant enregistre, le retour en arrière g
 
   await cliquer(bouton("Précédent"));
   await attendre(() => texte().includes("Attentes, parcours et compétences"));
-  assert.equal(champ("Motif de la venue").value, "Souhaite un retour vers l'emploi.", "la saisie n'a pas été perdue en changeant d'écran");
+  assert.equal(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?").value, "Souhaite un retour vers l'emploi.", "la saisie n'a pas été perdue en changeant d'écran");
 });
 
 test("entretien : l'écran de positionnement affiche les 34 compétences réparties sur 6 phases", async () => {
@@ -148,7 +148,7 @@ test("entretien validé : lecture seule, aucun champ modifiable, aucun bouton d'
   assert.ok(texte().includes("Validé"));
   await cliquer(bouton("Suivant"));
   await attendre(() => texte().includes("Attentes, parcours et compétences"));
-  assert.equal(champ("Motif de la venue").value, "Retour à l'emploi.");
-  assert.ok(champ("Motif de la venue").disabled, "champ désactivé en lecture seule");
+  assert.equal(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?").value, "Retour à l'emploi.");
+  assert.ok(champ("Pourquoi viens-tu nous rencontrer aujourd'hui ?").disabled, "champ désactivé en lecture seule");
   assert.ok(!bouton("Enregistrer le brouillon"), "aucune action d'écriture proposée sur un entretien validé");
 });

@@ -13,6 +13,8 @@ import { requireAuth, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
 import { validerReponses } from "../services/entretiens.js";
 import { validerEvaluations, validerPhases } from "../services/positionnementEntretien.js";
+import { validerChoixListe } from "../services/entretienChoix.js";
+import { validerLignes, BLOCS_LIGNES } from "../services/entretienLignes.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -62,7 +64,24 @@ router.get("/entretiens/:id", requireAuth, wrap(async (req, res) => {
     "SELECT phase, priorite, observations FROM entretien_positionnement_phases WHERE entretien_id = $1 ORDER BY phase",
     [id]
   );
-  res.json({ entretien, reponses, positionnement: { evaluations, phases } });
+  // DOC-9D3 lot B : groupes de cases cochées + tableaux répétables
+  // (expériences, plan d'action).
+  const { rows: choix } = await query(
+    "SELECT groupe, code FROM entretien_choix WHERE entretien_id = $1 ORDER BY groupe, code",
+    [id]
+  );
+  const { rows: experiences } = await query(
+    "SELECT ordre, structure, duree, missions, retenue FROM entretien_experiences WHERE entretien_id = $1 ORDER BY ordre",
+    [id]
+  );
+  const { rows: planAction } = await query(
+    "SELECT ordre, objectif, phase, action, echeance, etat FROM entretien_plan_action WHERE entretien_id = $1 ORDER BY ordre",
+    [id]
+  );
+  res.json({
+    entretien, reponses, positionnement: { evaluations, phases },
+    choix, lignes: { experiences, plan_action: planAction },
+  });
 }));
 
 // Enregistrer progressivement les réponses (remplacement complet, verrou
@@ -135,6 +154,84 @@ router.put("/entretiens/:id/positionnement", requireRedacteur, wrap(async (req, 
         "INSERT INTO entretien_positionnement_phases (entretien_id, phase, priorite, observations) VALUES ($1,$2,$3,$4)",
         [id, p.phase, p.priorite, p.observations]
       );
+    }
+    await cx.query("UPDATE entretiens SET version = version + 1, mis_a_jour_le = now() WHERE id = $1", [id]);
+    await cx.query("COMMIT");
+    const { rows: [maj] } = await query("SELECT * FROM entretiens WHERE id = $1", [id]);
+    res.json({ entretien: maj });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// DOC-9D3 lot B — Enregistrer progressivement les cases cochées (groupes
+// fermés, ex. objectifs souhaités, loisirs...). Même contrat de
+// remplacement complet, même verrou PARTAGÉ sur `entretiens.version`.
+router.put("/entretiens/:id/choix", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'entretien invalide." });
+  const version = req.body?.version;
+  if (!Number.isInteger(version) || version < 1) return res.status(400).json({ error: "Version attendue (entier positif)." });
+  const { choix, erreur } = validerChoixListe(req.body?.choix);
+  if (erreur) return res.status(400).json({ error: erreur });
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [entretien] } = await cx.query("SELECT * FROM entretiens WHERE id = $1 FOR UPDATE", [id]);
+    if (!entretien) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Entretien introuvable." }); }
+    if (entretien.statut !== "brouillon") { await cx.query("ROLLBACK"); return res.status(409).json({ error: "Entretien déjà validé : lecture seule." }); }
+    if (entretien.version !== version) { await cx.query("ROLLBACK"); return res.status(409).json({ error: "L'entretien a été modifié entre-temps : rechargez-le." }); }
+    await cx.query("DELETE FROM entretien_choix WHERE entretien_id = $1", [id]);
+    for (const c of choix) {
+      await cx.query("INSERT INTO entretien_choix (entretien_id, groupe, code) VALUES ($1,$2,$3)", [id, c.groupe, c.code]);
+    }
+    await cx.query("UPDATE entretiens SET version = version + 1, mis_a_jour_le = now() WHERE id = $1", [id]);
+    await cx.query("COMMIT");
+    const { rows: [maj] } = await query("SELECT * FROM entretiens WHERE id = $1", [id]);
+    res.json({ entretien: maj });
+  } catch (e) {
+    await cx.query("ROLLBACK");
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// DOC-9D3 lot B — Enregistrer progressivement un tableau répétable
+// (`bloc` : "experiences" ou "plan_action"). Remplace UNIQUEMENT le bloc
+// ciblé (l'autre tableau et toutes les autres données restent intacts),
+// même verrou PARTAGÉ sur `entretiens.version`.
+router.put("/entretiens/:id/lignes", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'entretien invalide." });
+  const bloc = typeof req.body?.bloc === "string" ? req.body.bloc.trim() : "";
+  if (!BLOCS_LIGNES.includes(bloc)) return res.status(400).json({ error: "Tableau inconnu." });
+  const version = req.body?.version;
+  if (!Number.isInteger(version) || version < 1) return res.status(400).json({ error: "Version attendue (entier positif)." });
+  const { lignes, erreur } = validerLignes(bloc, req.body?.lignes);
+  if (erreur) return res.status(400).json({ error: erreur });
+
+  const table = bloc === "experiences" ? "entretien_experiences" : "entretien_plan_action";
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [entretien] } = await cx.query("SELECT * FROM entretiens WHERE id = $1 FOR UPDATE", [id]);
+    if (!entretien) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Entretien introuvable." }); }
+    if (entretien.statut !== "brouillon") { await cx.query("ROLLBACK"); return res.status(409).json({ error: "Entretien déjà validé : lecture seule." }); }
+    if (entretien.version !== version) { await cx.query("ROLLBACK"); return res.status(409).json({ error: "L'entretien a été modifié entre-temps : rechargez-le." }); }
+    await cx.query(`DELETE FROM ${table} WHERE entretien_id = $1`, [id]);
+    for (const l of lignes) {
+      if (bloc === "experiences") {
+        await cx.query(
+          "INSERT INTO entretien_experiences (entretien_id, ordre, structure, duree, missions, retenue) VALUES ($1,$2,$3,$4,$5,$6)",
+          [id, l.ordre, l.structure, l.duree, l.missions, l.retenue]
+        );
+      } else {
+        await cx.query(
+          "INSERT INTO entretien_plan_action (entretien_id, ordre, objectif, phase, action, echeance, etat) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+          [id, l.ordre, l.objectif, l.phase, l.action, l.echeance, l.etat]
+        );
+      }
     }
     await cx.query("UPDATE entretiens SET version = version + 1, mis_a_jour_le = now() WHERE id = $1", [id]);
     await cx.query("COMMIT");

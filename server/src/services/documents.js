@@ -81,7 +81,7 @@ async function lireModele(clients, modele, jeton, cache) {
 // Retrouve un sous-dossier par son nom, ou le crée. Le dossier créé est
 // « créé par l'application », donc accessible avec le seul scope
 // drive.file pour la suite.
-async function dossier(drive, nom, parentId, jeton) {
+export async function dossier(drive, nom, parentId, jeton) {
   const propre = nomSain(nom);
   const { data } = await appelGoogle(
     "drive.files.list",

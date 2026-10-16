@@ -345,19 +345,18 @@ test("choix/lignes : figés après validation, droits — anonyme refusé", asyn
 // ── DOC-9E : génération de la fiche FSE-IA ───────────────────
 
 function driveSimule({ echoueA = null } = {}) {
-  let n = 0;
+  let nDossier = 0;
+  let nDoc = 0;
   const requetes = [];
   const supprimes = [];
+  const dossiersCrees = [];
+  const parentsDesFiches = [];
   return {
-    requetes, supprimes,
+    requetes, supprimes, dossiersCrees, parentsDesFiches,
     factory: () => ({
       row: { scopes: DRIVE_FILE, expiry: Date.now() + 60_000, access_token: "x" },
       docs: {
         documents: {
-          create: async ({ requestBody }) => {
-            if (echoueA === "create") throw Object.assign(new Error("Panne Google"), { response: { status: 500 } });
-            return { data: { documentId: "doc-" + ++n } };
-          },
           batchUpdate: async ({ documentId, requestBody }) => {
             if (echoueA === "batchUpdate") throw Object.assign(new Error("Panne Google"), { response: { status: 500 } });
             requetes.push({ documentId, requests: requestBody.requests });
@@ -367,6 +366,16 @@ function driveSimule({ echoueA = null } = {}) {
       },
       drive: {
         files: {
+          list: async () => ({ data: { files: [] } }), // aucun dossier existant : toujours créé
+          create: async ({ requestBody }) => {
+            if (requestBody.mimeType === "application/vnd.google-apps.folder") {
+              dossiersCrees.push(requestBody.name);
+              return { data: { id: "dossier-" + ++nDossier } };
+            }
+            if (echoueA === "create") throw Object.assign(new Error("Panne Google"), { response: { status: 500 } });
+            parentsDesFiches.push(requestBody.parents);
+            return { data: { id: "doc-" + ++nDoc } };
+          },
           get: async ({ fileId }) => ({ data: { id: fileId, name: "Fiche", webViewLink: "https://drive/" + fileId } }),
           update: async ({ fileId, requestBody }) => { if (requestBody.trashed) supprimes.push(fileId); return { data: {} }; },
         },
@@ -392,11 +401,15 @@ test("fiche : générée une première fois, puis la régénération est bloqué
   ok(await api("PUT", `/api/entretiens/${e.id}/reponses`, { version: 1, reponses: [{ cle: "parole_fierte", valeur: "D'avoir osé venir." }] }, A()));
   ok(await api("POST", `/api/entretiens/${e.id}/valider`, undefined, A()));
 
-  const { factory, requetes, supprimes } = driveSimule();
+  const { factory, requetes, supprimes, dossiersCrees, parentsDesFiches } = driveSimule();
   setDriveFactory(factory);
 
   const r1 = await api("POST", `/api/entretiens/${e.id}/fiche`, {}, A());
   assert.equal(r1.statut, 200);
+  // Rangée dans le dossier habituel des documents générés, jamais à la
+  // racine brute du compte Drive (introuvable sinon pour l'équipe).
+  assert.deepEqual(dossiersCrees, ["A2C Qualiopi", "Entretiens FSE-IA"]);
+  assert.deepEqual(parentsDesFiches[0], ["dossier-2"]);
   const premierId = r1.corps.fiche.id;
   assert.ok(premierId);
   assert.equal(r1.corps.entretien.fiche_drive_file_id, premierId);

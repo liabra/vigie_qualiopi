@@ -269,3 +269,45 @@ test("session inexistante : page propre dans la coque", async () => {
   await attendre(() => texte().includes("Cette session n'existe pas ou n'existe plus."));
   assert.equal(titre(), "Session introuvable");
 });
+
+// DOC-10E — Inscrire un jeune déjà créé (ex. pour son entretien initial)
+// doit réutiliser son dossier, jamais créer un doublon.
+test("ajout de stagiaire : vérification des doublons AVANT création, inscription d'une personne existante sans doublon", async () => {
+  const appels = await monter("/sessions/1/stagiaires", "admin", {
+    "GET /api/stagiaires?q=Lefebvre": { stagiaires: [{ id: 77, civilite: null, nom: "Lefebvre", prenom: "Noah", email: null }], total: 1 },
+    "POST /api/sessions/1/stagiaires": [201, { inscription: { id: 999 } }],
+  });
+  await attendre(() => texte().includes("Martin Alice"));
+  await cliquer(bouton("Ajouter un stagiaire"));
+  await attendre(() => dialogue()?.textContent.includes("Ajouter un stagiaire"));
+  await saisir(champ("Nom"), "Lefebvre");
+  await saisir(champ("Prénom"), "Noah");
+  await cliquer(bouton("Vérifier les doublons"));
+  await attendre(() => texte().includes("Des dossiers correspondent déjà"));
+  assert.ok(texte().includes("Noah Lefebvre"));
+
+  await cliquer(bouton("Inscrire cette personne"));
+  await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/sessions/1/stagiaires"));
+  const envoi = appels.find((a) => a.methode === "POST" && a.chemin === "/api/sessions/1/stagiaires").corps;
+  assert.equal(envoi.stagiaire_id, 77, "le dossier existant est réutilisé");
+  assert.ok(!("nom" in envoi) && !("prenom" in envoi), "aucune identité renvoyée : le dossier existant fait foi");
+});
+
+test("ajout de stagiaire : aucun doublon trouvé → création directe au second clic", async () => {
+  const appels = await monter("/sessions/1/stagiaires", "admin", {
+    "GET /api/stagiaires?q=Durand": { stagiaires: [], total: 0 },
+    "POST /api/sessions/1/stagiaires": [201, { inscription: { id: 1000 } }],
+  });
+  await attendre(() => texte().includes("Martin Alice"));
+  await cliquer(bouton("Ajouter un stagiaire"));
+  await attendre(() => dialogue()?.textContent.includes("Ajouter un stagiaire"));
+  await saisir(champ("Nom"), "Durand");
+  await saisir(champ("Prénom"), "Élodie");
+  await cliquer(bouton("Vérifier les doublons"));
+  await attendre(() => bouton("Ajouter le stagiaire"));
+  await cliquer(bouton("Ajouter le stagiaire"));
+  await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/sessions/1/stagiaires"));
+  const envoi = appels.find((a) => a.methode === "POST").corps;
+  assert.equal(envoi.nom, "Durand");
+  assert.equal(envoi.stagiaire_id, undefined);
+});

@@ -236,6 +236,10 @@ function DrawerGroupe({ ouvert, sessionId, onFermer, onFait }) {
 }
 
 // ── Ajouter un stagiaire ─────────────────────────────────────
+// DOC-10E — Avant de créer, on vérifie si cette personne existe déjà
+// (ex. un jeune déjà créé pour son entretien initial, avant toute session) :
+// l'inscrire réutilise SON dossier (`stagiaire_id`), jamais un doublon.
+// Même principe que la vérification de doublons de la page « Jeunes ».
 function DrawerAjout({ ouvert, sessionId, groupes, prescripteurs, onFermer, onFait }) {
   const actifs = (prescripteurs || []).filter((p) => p.actif);
   // Même valeur par défaut qu'avant UX-2 (Pôle emploi) si elle est proposée.
@@ -245,42 +249,72 @@ function DrawerAjout({ ouvert, sessionId, groupes, prescripteurs, onFermer, onFa
   const [erreurs, setErreurs] = useState({});
   const [erreur, setErreur] = useState(null);
   const [enCours, setEnCours] = useState(false);
-  useEffect(() => { if (ouvert) { setV(vide); setErreurs({}); setErreur(null); } }, [ouvert]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [correspondances, setCorrespondances] = useState(null); // null = pas encore vérifié
+  useEffect(() => { if (ouvert) { setV(vide); setErreurs({}); setErreur(null); setCorrespondances(null); } }, [ouvert]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function valider(e) {
+  // Une identité modifiée après vérification redemande une vérification :
+  // on ne doit jamais inscrire quelqu'un sur la base d'un nom déjà changé.
+  const champIdentite = (cle) => (e) => { setV({ ...v, [cle]: e.target.value }); setCorrespondances(null); };
+
+  async function inscrire(stagiaireId) {
+    setEnCours(true); setErreur(null);
+    try {
+      await api(`/api/sessions/${sessionId}/stagiaires`, {
+        method: "POST",
+        body: JSON.stringify({
+          stagiaire_id: stagiaireId || undefined,
+          ...(stagiaireId ? {} : { nom: v.nom.trim(), prenom: v.prenom.trim(), email: v.email || null, civilite: v.civilite || null }),
+          groupe_id: v.groupe_id || null, prescripteur: v.prescripteur, dossier_complet: v.dossier_complet,
+        }),
+      });
+      await onFait(`${v.prenom.trim()} ${v.nom.trim()}`);
+    } catch (err) { setErreur(err.message); } finally { setEnCours(false); }
+  }
+
+  async function verifier(e) {
     e.preventDefault();
     const trouvees = {};
     if (!v.nom.trim()) trouvees.nom = "Le nom est obligatoire.";
     if (!v.prenom.trim()) trouvees.prenom = "Le prénom est obligatoire.";
     setErreurs(trouvees);
     if (Object.keys(trouvees).length) return;
+    // Des correspondances sont affichées : le choix se fait par les boutons
+    // dédiés ci-dessous, jamais par une re-soumission du formulaire (Entrée).
+    if (correspondances?.length > 0) return;
+    if (correspondances !== null) return inscrire(null); // vérifié, aucun doublon : création directe.
     setEnCours(true); setErreur(null);
     try {
-      await api(`/api/sessions/${sessionId}/stagiaires`, {
-        method: "POST",
-        body: JSON.stringify({ ...v, civilite: v.civilite || null, groupe_id: v.groupe_id || null }),
-      });
-      await onFait(`${v.prenom.trim()} ${v.nom.trim()}`);
+      const q = v.email.trim() || v.nom.trim();
+      const r = await api(`/api/stagiaires?q=${encodeURIComponent(q)}`);
+      setCorrespondances(r.stagiaires || []);
     } catch (err) { setErreur(err.message); } finally { setEnCours(false); }
   }
+
+  const enVerification = correspondances === null;
 
   return (
     <Drawer ouvert={ouvert} onFermer={onFermer} fermable={!enCours} titre="Ajouter un stagiaire"
       description="La fiche complète (contact, financement, adaptation) se complète ensuite dans son dossier."
-      pied={<><Button onClick={onFermer} disabled={enCours}>Annuler</Button>
-        <Button variante="primary" type="submit" form="form-ajout-stagiaire" disabled={enCours}>{enCours ? "Ajout…" : "Ajouter le stagiaire"}</Button></>}>
-      <form id="form-ajout-stagiaire" onSubmit={valider} noValidate className="ui-form">
+      pied={
+        enVerification || correspondances.length === 0
+          ? <><Button onClick={onFermer} disabled={enCours}>Annuler</Button>
+              <Button variante="primary" type="submit" form="form-ajout-stagiaire" disabled={enCours}>
+                {enCours ? (enVerification ? "Vérification…" : "Ajout…") : (enVerification ? "Vérifier les doublons" : "Ajouter le stagiaire")}
+              </Button></>
+          : <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
+      }>
+      <form id="form-ajout-stagiaire" onSubmit={verifier} noValidate className="ui-form">
         {erreur && <Alert ton="error" titre="Le stagiaire n'a pas été ajouté.">{erreur}</Alert>}
         <FormSection titre="Identité">
           <Field label="Civilité" facultatif>
-            <select value={v.civilite} onChange={(e) => setV({ ...v, civilite: e.target.value })}>
+            <select value={v.civilite} onChange={champIdentite("civilite")}>
               <option value="">Non renseignée</option>
               {CIVILITES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
-          <Field label="Courriel" facultatif><input type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
-          <Field label="Nom" erreur={erreurs.nom}><input value={v.nom} onChange={(e) => setV({ ...v, nom: e.target.value })} required /></Field>
-          <Field label="Prénom" erreur={erreurs.prenom}><input value={v.prenom} onChange={(e) => setV({ ...v, prenom: e.target.value })} required /></Field>
+          <Field label="Courriel" facultatif><input type="email" value={v.email} onChange={champIdentite("email")} /></Field>
+          <Field label="Nom" erreur={erreurs.nom}><input value={v.nom} onChange={champIdentite("nom")} required /></Field>
+          <Field label="Prénom" erreur={erreurs.prenom}><input value={v.prenom} onChange={champIdentite("prenom")} required /></Field>
         </FormSection>
         <FormSection titre="Inscription">
           <Field label="Groupe" facultatif>
@@ -298,6 +332,21 @@ function DrawerAjout({ ouvert, sessionId, groupes, prescripteurs, onFermer, onFa
           <Checkbox label="Dossier complet" checked={v.dossier_complet} onChange={(e) => setV({ ...v, dossier_complet: e.target.checked })} />
         </FormSection>
       </form>
+
+      {correspondances?.length > 0 && (
+        <Alert ton="warning" titre="Des dossiers correspondent déjà à cette identité">
+          <p>Un jeune déjà créé (par exemple pour son entretien initial) doit être inscrit avec SON dossier, jamais un nouveau.</p>
+          <ul>
+            {correspondances.map((c) => (
+              <li key={c.id} className="jeunes-correspondance">
+                <span>{c.civilite ? `${c.civilite} ` : ""}{c.prenom} {c.nom}{c.email ? ` — ${c.email}` : ""}</span>
+                <Button compact variante="primary" onClick={() => inscrire(c.id)} disabled={enCours}>Inscrire cette personne</Button>
+              </li>
+            ))}
+          </ul>
+          <Button compact onClick={() => inscrire(null)} disabled={enCours}>{enCours ? "Ajout…" : "Créer un nouveau dossier quand même"}</Button>
+        </Alert>
+      )}
     </Drawer>
   );
 }

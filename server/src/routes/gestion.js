@@ -632,6 +632,23 @@ router.get("/stagiaires", requireAuth, wrap(async (req, res) => {
   res.json({ stagiaires: rows, total: compte.total });
 }));
 
+// DOC-9D2 — Fiche d'un jeune (identité + compteurs d'entretiens), même
+// projection sécurisée que la liste : jamais l'entreprise, le financeur, la
+// situation de handicap ni les besoins d'adaptation.
+router.get("/stagiaires/:id", requireAuth, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de jeune invalide." });
+  const { rows: [stagiaire] } = await query(
+    `SELECT s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.sans_suite_le,
+      (SELECT count(*)::int FROM inscriptions i WHERE i.stagiaire_id = s.id) AS nb_inscriptions,
+      (SELECT count(*)::int FROM entretiens e WHERE e.stagiaire_id = s.id) AS nb_entretiens
+     FROM stagiaires s WHERE s.id = $1`,
+    [id]
+  );
+  if (!stagiaire) return res.status(404).json({ error: "Jeune introuvable." });
+  res.json({ stagiaire });
+}));
+
 // DOC-9B — Créer une personne SANS inscription (préparation à l'entretien
 // initial FSE-IA). Limité à l'identité et au contact. Les correspondances
 // possibles (même email OU même nom+prénom) sont remontées pour vérification

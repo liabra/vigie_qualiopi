@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
@@ -111,7 +112,7 @@ export function JeunesPage({ admin }) {
                   return (
                     <tr key={j.id} className={j.sans_suite_le ? "sess-table__ligne--estompee" : undefined}>
                       <td data-label="Jeune" className="sess-table__principal">
-                        {nomComplet(j)}
+                        <Link to={`/jeunes/${j.id}`}>{nomComplet(j)}</Link>
                         {j.email && <span className="sess-secondaire">{j.email}</span>}
                       </td>
                       <td data-label="État"><Badge ton={etatB.ton}>{etatB.libelle}</Badge></td>

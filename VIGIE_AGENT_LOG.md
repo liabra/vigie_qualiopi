@@ -4489,3 +4489,73 @@ backend, 359/359 frontend). `git diff --check` propre.
 
 Toutes ces propositions nécessitent une validation A2C avant toute création
 de fichier Drive ou enregistrement de modèle. Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — DOC-9D2 lot A : interface d'entretien guidé
+
+### Audit préalable
+
+- Relu `DOC-9A-architecture-entretien-initial-fse-ia.md` : architecture déjà
+  validée (14 rubriques ↔ 5 écrans), `entretiens`/`entretien_reponses`
+  (migration 026) et l'API brouillon/reprise/validation (`entretiens.js`,
+  `routes/entretiens.js`) **déjà entièrement implémentées** côté backend —
+  rien à refaire. `CLES_ENTRETIEN` couvre 14 clés génériques pour les
+  rubriques 3,4,5,6,7,9,10,11,13 (jamais 2, 8, 12, 14 — volontairement).
+- **Modèle Google Docs réel** (`1UFNfiGHItkI8w8jsTGd2_07SvkQMbY8Y8j7cZbezVt0`)
+  **inaccessible** avec le connecteur Drive disponible dans cet environnement
+  (« Requested entity was not found » sur metadata, contenu et téléchargement) —
+  fichier non partagé avec l'identité connectée, ou droits insuffisants. Je
+  n'ai PAS pu vérifier la correspondance exacte entre les 14 clés génériques
+  et les rubriques réelles du document, ni lire la rubrique 8 (six phases).
+  **Aucune question n'a été inventée pour la combler.**
+
+### Lot A livré
+
+- `GET /api/stagiaires/:id` (nouvelle route, projection sécurisée identique
+  à la liste) : fiche d'un jeune pour l'écran dédié.
+- `client/src/jeunes/JeuneFiche.jsx` : identité, liste des entretiens
+  (brouillon « Reprendre », validé « Consulter » en lecture seule),
+  « Commencer un entretien » (POST, ouvre directement le formulaire).
+- `client/src/jeunes/EntretienFormulaire.jsx` : formulaire unique à 5 écrans
+  (Accueil/identification, Attentes-parcours-compétences, Motivation-
+  environnement, Positionnement pédagogique, Projet-conclusion). Tout vit
+  dans un seul composant monté une fois : circuler entre écrans ne perd
+  JAMAIS une réponse déjà saisie. Sauvegarde progressive (remplacement
+  complet des réponses à chaque changement d'écran, verrou optimiste par
+  `version`), garde `beforeunload` si des modifications ne sont pas
+  enregistrées, bannière de conflit de version (jamais d'écrasement
+  silencieux), bascule en lecture seule intégrale après validation.
+  Écran « Positionnement pédagogique » : bandeau explicite indiquant que le
+  questionnaire réel n'a pas pu être lu, **aucun champ affiché** — jamais de
+  question inventée.
+- Écran handicap (rubrique 2) **volontairement absent** de cette interface,
+  conformément à la consigne (hors saisie ordinaire, validation métier
+  préalable requise, jamais de champ libre générique).
+- `client/src/jeunes/entretienFormat.js` : miroir d'affichage de
+  `CLES_ENTRETIEN` côté client (libellés, écrans, source jeune/accompagnateur) —
+  la validation réelle reste exclusivement côté serveur.
+
+### Tests
+
+Backend (+1, `stagiairesHorsSession.test.js`) : fiche sécurisée, 404, 400,
+401. Frontend (+6, `entretienFormulaire.test.jsx`) : identité + démarrage
+d'entretien ; reprise/consultation d'entretiens existants ; saisie → écran
+suivant enregistre → retour arrière conserve la saisie ; écran positionnement
+sans champ inventé ; conflit de version bloque sans perte silencieuse ;
+entretien validé entièrement en lecture seule.
+
+### Validation
+
+Backend **822/822**, frontend **365/365**, build OK, `git diff --check` propre.
+
+### Limites / blocages
+
+- **Accès au modèle Drive réel toujours bloqué** pour ce fichier précis —
+  à lever avant le lot B (rubrique 8) et avant toute vérification fine de
+  la granularité des 14 clés génériques vs les rubriques détaillées.
+- Rubrique 2 (handicap) : conception et validation métier non traitées ici
+  (hors périmètre explicite du lot A).
+- Aucune génération Google Docs de la fiche finale (prévue étape F,
+  ultérieure).
+- Aucun push ni déploiement.

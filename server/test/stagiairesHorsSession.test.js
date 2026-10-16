@@ -207,3 +207,19 @@ test("non-régression : POST /sessions/:id/stagiaires crée toujours stagiaire +
   const { rows: [{ n }] } = await pool.query("SELECT count(*)::int AS n FROM inscriptions WHERE session_id = $1", [s.id]);
   assert.equal(n, 1);
 });
+
+// ── DOC-9D2 : fiche d'un jeune (GET /api/stagiaires/:id) ─────
+
+test("fiche d'un jeune : projection sécurisée, compteurs, 404 si inconnu, droits", async () => {
+  const cree = ok(await api("POST", "/api/stagiaires", { nom: "Lefebvre", prenom: "Noah" }, A())).stagiaire;
+  const r = await api("GET", `/api/stagiaires/${cree.id}`, undefined, A());
+  assert.equal(r.statut, 200);
+  assert.equal(r.corps.stagiaire.nom, "Lefebvre");
+  assert.equal(r.corps.stagiaire.nb_entretiens, 0);
+  assert.equal(r.corps.stagiaire.nb_inscriptions, 0);
+  assert.ok(!("situation_handicap" in r.corps.stagiaire) && !("besoins_adaptation" in r.corps.stagiaire));
+
+  assert.equal((await api("GET", "/api/stagiaires/999999", undefined, A())).statut, 404);
+  assert.equal((await api("GET", "/api/stagiaires/abc", undefined, A())).statut, 400);
+  assert.equal((await api("GET", `/api/stagiaires/${cree.id}`, undefined)).statut, 401, "anonyme refusé");
+});

@@ -4817,3 +4817,123 @@ propre.
    un document par entretien).
 
 Aucun push ni déploiement.
+
+---
+
+## 2026-10-16 — Audit de préparation à la rentrée du 3 novembre 2026
+
+### Méthode
+
+Revue de la couverture de test réelle (backend 859, frontend 377, tous
+exécutés) + lecture ciblée du code pour chaque étape du parcours A2C, de
+`PROJECT_HANDOFF.md` (dette consolidée, sauvegardes) et du modèle de permissions
+Google Drive. Rien n'est déclaré « vérifié » sans un test exécuté ou une
+lecture de code concluante — les points simulés sont nommés comme tels.
+
+### P0 corrigé : doublon de jeune à l'inscription en session
+
+Le backend (`POST /api/sessions/:id/stagiaires`) savait déjà réutiliser un
+`stagiaire_id` existant, mais **aucun écran ne l'exposait** : le formulaire
+« Ajouter un stagiaire » d'une session créait TOUJOURS une nouvelle personne.
+Un jeune créé via l'entretien initial (DOC-9C, hors session) aurait donc été
+**dupliqué** à sa première inscription — son entretien restant orphelin,
+invisible depuis la session. Corrigé (`OngletStagiaires.jsx`) avec la MÊME
+vérification en deux temps que la page « Jeunes » : chercher avant de créer,
+proposer d'inscrire le dossier existant. 2 tests ajoutés.
+
+### P1 corrigé : fiche FSE-IA à la racine brute du Drive
+
+La fiche générée (DOC-9E) était créée à la racine du compte Drive connecté,
+hors de l'arborescence `<racine>/<formation>/…` où rangent tous les autres
+documents — introuvable pour l'équipe en pratique. Corrigée : rangée dans
+`<racine configurée>/Entretiens FSE-IA/`. 1 assertion ajoutée.
+
+### Vérification DOC-9E (ciblée)
+
+- 14 rubriques identifiables, rubrique 2 jamais rendue (ni données ni fausse
+  mention) : testé (`ficheEntretien.test.js`).
+- Rattachement entretien ↔ jeune : la route est scopée par `entretien_id`,
+  `stagiaire_id` vient de la ligne entretien elle-même, jamais d'un paramètre
+  utilisateur — aucun chemin de code ne permet de mélanger deux jeunes.
+- Écrasement/suppression accidentelle : impossible sans `remplacer: true`
+  explicite (409 sinon) ; l'ancien fichier est mis à la **corbeille** (jamais
+  supprimé définitivement : 30 jours de filet Drive), et seulement après le
+  succès du nouveau — testé.
+- Permissions Drive : aucun code (ici ou ailleurs dans Vigie) ne définit de
+  partage explicite sur les fichiers créés — ils héritent du réglage PRIVÉ par
+  défaut du compte Drive connecté, exactement comme tous les autres documents
+  déjà en production. Aucune exposition nouvelle introduite par DOC-9E.
+- Tableaux/cases à cocher : rendus en texte structuré lisible (pas en tableau
+  Google natif — limite déjà documentée en DOC-9E), vérifié par les tests
+  existants.
+
+### Audit technique
+
+- Migrations 026→031 : ordre, idempotence et montée incrémentale **testés**
+  (`transversal.test.js`, `qualite.test.js`), verts.
+- Variables d'environnement nécessaires en production : `DATABASE_URL`,
+  `SESSION_SECRET`, `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `ADMIN_EMAILS`,
+  `CONTRIBUTEUR_EMAILS`, `DRIVE_ACCOUNT_EMAIL`, `ORGANISME_NOM`,
+  `DRIVE_RACINE`/`DRIVE_RACINE_ID` (`checkConfig()` échoue tôt et clairement
+  si `DATABASE_URL`/`SESSION_SECRET` manquent en production).
+- Erreurs d'authentification Google (jeton expiré, Drive déconnecté, lecture
+  seule) : gérées et testées de façon homogène (503/400) sur toutes les
+  routes de génération, y compris la nouvelle fiche FSE-IA.
+- **Sauvegarde PostgreSQL** : AUCUNE sauvegarde automatique sur le plan
+  Railway actuel (« No Backups », déjà constaté et documenté le 24/09/2026
+  dans `PROJECT_HANDOFF.md`, stratégie `pg_dump` externe chiffrée **non
+  mise en œuvre**). Risque préexistant, non introduit par ce chantier,
+  mais non résolu — à traiter avant la rentrée (décision + action A2C,
+  hors de ce que je peux faire seul : accès Railway/stockage chiffré).
+- Non-régression : Convocation, Attestation, Livret FSE-IA, génération
+  multi-document (DOC-10D) — tous dans la suite verte, aucune régression.
+
+### Classement des problèmes restants
+
+**P0 — aucun restant** (le seul trouvé est corrigé ci-dessus).
+
+**P1 — restants, nécessitant une décision humaine, pas une correction automatique** :
+- Sauvegarde PostgreSQL externe non mise en œuvre (ci-dessus).
+- Mineurs (14-17 ans, explicitement dans le public visé par les tranches
+  d'âge du formulaire) : aucun consentement du représentant légal, aucune
+  règle de conservation spécifique — DOC-9A avait déjà signalé ce point
+  comme « à valider », toujours non tranché. Ne bloque pas techniquement
+  l'usage, mais aucune donnée réelle de mineur ne devrait être saisie avant
+  cette décision.
+- Test réel de génération Google Docs (DOC-9E et modèles DOC-10D) : jamais
+  fait avec l'OAuth réel de Vigie dans cet environnement — à faire par
+  l'autrice avant toute mise en production réelle.
+- Modèles vides (Emploi du temps, Convention, Livret d'accueil, Certificat) :
+  toujours à rédiger par A2C (DOC-10D), non bloquant pour le 3 novembre si
+  ces documents ne sont pas requis dès la première session.
+
+**P2 — amélioration, après la rentrée** :
+- Dette technique déjà listée dans `PROJECT_HANDOFF.md` (Vite 5,
+  `@googleapis/drive` 8, `NODE_ENV` implicite, etc.) — inchangée, non
+  reprise ici en détail.
+- Rendu des tableaux de la fiche FSE-IA en texte structuré plutôt qu'en
+  tableau Google natif.
+- Bilan de session / Indicateurs de résultats : formule officielle non
+  définie (déjà documenté DOC-10C/10D).
+
+### Validation
+
+Backend **859/859**, frontend **377/377**, build OK, `git diff --check`
+propre. 2 commits locaux (P0 inscription, P1 fiche). Aucun push ni
+déploiement.
+
+### Avis motivé : **GO sous conditions**
+
+La V1 est fonctionnellement complète et testée pour le parcours principal
+(formation → session → inscription → entretien → positionnement → fiche →
+planning → suivi/assiduité/résultats), et le seul P0 trouvé est corrigé.
+Conditions avant la rentrée :
+1. **Décider et mettre en œuvre une sauvegarde PostgreSQL externe** (le
+   risque « No Backups » est documenté depuis le 24/09/2026 et reste
+   entier) — à faire par l'autrice, hors de ce que je peux exécuter seul.
+2. **Statuer sur les mineurs** avant toute saisie réelle (consentement,
+   conservation) — décision A2C, pas une correction de code.
+3. **Faire le test réel de génération Google Docs** (OAuth Vigie) sur
+   l'entretien et sur un modèle DOC-10D, en environnement isolé — je ne
+   peux pas le faire moi-même ici.
+Sous ces trois conditions, GO pour une recette de préproduction.

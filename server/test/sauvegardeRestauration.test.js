@@ -353,3 +353,69 @@ test("restauration : une altération du SEUL en-tête (sel/IV/TAG) est détecté
     /authenticité invalide/
   );
 });
+
+// DOC « SÉCU-02 bis — complément » : vérification de la prise en charge
+// par Google Drive, simulée (jamais le vrai Drive A2C dans ces tests).
+// L'attribut étendu `com.google.drivefs.item-id` est celui que Google
+// Drive pour ordinateur pose réellement sur un fichier qu'il synchronise
+// (vérifié en lisant un fichier déjà synchronisé sur ce poste) — simulé
+// ici avec `xattr -w` pour ne dépendre d'aucun compte Google réel.
+test("sauvegarde : une copie Google Drive confirmée (attribut étendu présent) est signalée comme synchronisée", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "gdrive-ok");
+  // Chemin qui RESSEMBLE à un montage Google Drive pour ordinateur, sans
+  // toucher au vrai compte — seul le motif de chemin compte pour le script.
+  const copie = path.join(DOSSIER_SAUVEGARDE, "CloudStorage", "GoogleDrive-test@exemple.fr", "Sauvegardes_Vigie_Privees");
+  await fs.mkdir(dossier, { recursive: true });
+  await fs.mkdir(copie, { recursive: true });
+
+  const promesseSauvegarde = run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+      VIGIE_BACKUP_COPIE_DIR: copie,
+      VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES: "6",
+    }),
+  });
+
+  // Pose l'attribut dès que le fichier copié apparaît (polling léger côté
+  // test), pour simuler Drive qui le prend en charge en cours de route.
+  for (let i = 0; i < 30; i++) {
+    const fichiers = (await fs.readdir(copie).catch(() => [])).filter((f) => f.endsWith(".dump.enc"));
+    if (fichiers.length) {
+      await run("xattr", ["-w", "com.google.drivefs.item-id", "faux-identifiant-de-test", path.join(copie, fichiers[0])]).catch(() => {});
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  const { stdout } = await promesseSauvegarde;
+  assert.match(stdout, /Google Drive a pris le fichier en charge/);
+  const statut = await fs.readFile(path.join(dossier, ".dernier-statut"), "utf8");
+  assert.match(statut, /ok-sync/);
+});
+
+test("sauvegarde : une copie Google Drive jamais prise en charge déclenche un avertissement distinct, sans faire échouer la sauvegarde locale", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "gdrive-echec");
+  const copie = path.join(DOSSIER_SAUVEGARDE, "CloudStorage", "GoogleDrive-test2@exemple.fr", "Sauvegardes_Vigie_Privees");
+  await fs.mkdir(dossier, { recursive: true });
+  await fs.mkdir(copie, { recursive: true });
+
+  const { stdout } = await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+      VIGIE_BACKUP_COPIE_DIR: copie,
+      VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES: "2",
+    }),
+  });
+  // Jamais confirmé (aucun xattr posé) : avertissement, mais la sauvegarde
+  // locale reste présentée comme réussie (elle l'est réellement).
+  assert.match(stdout, /Sauvegarde réussie et vérifiée/);
+  const statut = await fs.readFile(path.join(dossier, ".dernier-statut"), "utf8");
+  assert.match(statut, /échec : synchronisation Google Drive non confirmée/);
+  assert.match(statut, /ok : vigie-/, "la sauvegarde locale est quand même consignée comme réussie");
+});

@@ -33,7 +33,17 @@
 #                                 dossier iCloud PERSONNEL — jamais un
 #                                 Drive partagé avec l'équipe) qui reçoit
 #                                 une copie du fichier déjà chiffré. Jamais
-#                                 purgé par ce script.
+#                                 purgé par ce script. Pour Google Drive
+#                                 pour ordinateur, pointer vers un chemin
+#                                 sous ~/Library/CloudStorage/GoogleDrive-
+#                                 <compte>/Mon Drive/<dossier privé> —
+#                                 jamais un dossier partagé avec l'équipe.
+#    VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES  pour un VIGIE_BACKUP_COPIE_DIR sous
+#                                 Google Drive uniquement : délai d'attente
+#                                 de la confirmation de prise en charge par
+#                                 Drive (défaut 60s). N'échoue jamais la
+#                                 sauvegarde elle-même, seulement un
+#                                 avertissement distinct si dépassé.
 #
 #  Intégrité ET authenticité : voir _chiffrement.sh (Encrypt-then-MAC).
 #  En complément, l'archive pg_dump est relue avec `pg_restore --list`
@@ -152,12 +162,49 @@ if ! vigie_dechiffrer_verifie "$FICHIER_CHIFFRE" "$DUMP_VERIF" redacter \
   exit 1
 fi
 
+# Copie secondaire (hors-Mac) — JAMAIS requise pour que la sauvegarde
+# locale soit considérée réussie (son échec n'interrompt pas le script),
+# mais signalée distinctement dans .dernier-statut pour la surveillance
+# (demandé : « alerte en cas d'échec de sauvegarde OU de synchronisation »).
 if [ -n "${VIGIE_BACKUP_COPIE_DIR:-}" ]; then
   mkdir -p "$VIGIE_BACKUP_COPIE_DIR" 2>/dev/null || true
-  if cp "$FICHIER_CHIFFRE" "$VIGIE_BACKUP_COPIE_DIR/" 2>/dev/null; then
-    echo "Sauvegarde : copie hors-Mac déposée dans $VIGIE_BACKUP_COPIE_DIR."
-  else
+  CIBLE_COPIE="$VIGIE_BACKUP_COPIE_DIR/$(basename "$FICHIER_CHIFFRE")"
+  if ! cp "$FICHIER_CHIFFRE" "$CIBLE_COPIE" 2>/dev/null; then
+    consigner_echec "copie hors-Mac impossible ($VIGIE_BACKUP_COPIE_DIR)"
     echo "AVERTISSEMENT sauvegarde : copie hors-Mac vers $VIGIE_BACKUP_COPIE_DIR impossible — la sauvegarde locale reste valide." >&2
+  elif [ "$(wc -c < "$CIBLE_COPIE" | tr -d ' ')" != "$(wc -c < "$FICHIER_CHIFFRE" | tr -d ' ')" ]; then
+    consigner_echec "copie hors-Mac tronquée ($VIGIE_BACKUP_COPIE_DIR)"
+    echo "AVERTISSEMENT sauvegarde : la copie hors-Mac n'a pas la même taille que l'original — la sauvegarde locale reste valide." >&2
+  else
+    echo "Sauvegarde : copie hors-Mac déposée dans $VIGIE_BACKUP_COPIE_DIR."
+    # Signal spécifique à Google Drive pour ordinateur : cet attribut étendu
+    # n'apparaît QUE lorsque Drive a effectivement pris le fichier en charge
+    # (identifiant distant attribué) — une simple présence locale du fichier
+    # ne suffit PAS à prouver l'envoi dans le cloud, exactement ce qui était
+    # demandé. Vérification bornée dans le temps, jamais bloquante pour le
+    # reste du script.
+    case "$CIBLE_COPIE" in
+      */CloudStorage/GoogleDrive-*)
+        DELAI="${VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES:-60}"
+        ATTENTE=0
+        ENVOYE=0
+        while [ "$ATTENTE" -lt "$DELAI" ]; do
+          if xattr -p com.google.drivefs.item-id "$CIBLE_COPIE" >/dev/null 2>&1; then
+            ENVOYE=1
+            break
+          fi
+          sleep 2
+          ATTENTE=$((ATTENTE + 2))
+        done
+        if [ "$ENVOYE" -eq 1 ]; then
+          printf '%s ok-sync : %s pris en charge par Google Drive après %ss\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(basename "$CIBLE_COPIE")" "$ATTENTE" >> "$FICHIER_STATUT"
+          echo "Sauvegarde : Google Drive a pris le fichier en charge (identifiant distant attribué)."
+        else
+          consigner_echec "synchronisation Google Drive non confirmée après ${DELAI}s ($(basename "$CIBLE_COPIE"))"
+          echo "AVERTISSEMENT sauvegarde : Google Drive n'a pas confirmé la prise en charge du fichier après ${DELAI}s — vérifier manuellement (icône Drive, ou drive.google.com). La sauvegarde locale reste valide." >&2
+        fi
+        ;;
+    esac
   fi
 fi
 

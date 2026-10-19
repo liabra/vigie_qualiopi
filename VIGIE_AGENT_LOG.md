@@ -5296,3 +5296,153 @@ vers la production.
 
 Aucun push ni déploiement. Aucune installation de service payant. Aucun
 accès à la production effectué dans ce chantier.
+
+---
+
+## 2026-10-20 — SÉCU-02 bis (complément) : copie chiffrée vers le Drive A2C
+
+### 1. Diagnostic (demandé)
+
+**Google Drive pour ordinateur est déjà installé et actif** sur ce Mac
+(`/Applications/Google Drive.app`, processus en cours). Comptes
+actuellement connectés : `lia.atake@gmail.com` et
+`lia.balagnaranin@gmail.com`. **Le compte officiel `actions.a2c@gmail.com`
+n'est PAS connecté** — étape manuelle nécessaire avant toute activation
+(voir procédure ci-dessous). Aucun nouvel accès Google configuré par moi,
+comme demandé.
+
+### 2. Copie automatique vers Drive (préparé)
+
+Réutilise le mécanisme déjà existant `VIGIE_BACKUP_COPIE_DIR` (SÉCU-02) —
+aucun nouveau code de copie nécessaire : un chemin sous
+`~/Library/CloudStorage/GoogleDrive-actions.a2c@gmail.com/Mon Drive/
+Sauvegardes_Vigie_Privées` fonctionne dès que le compte est connecté et le
+dossier créé. **Seul le fichier déjà chiffré et authentifié est copié** —
+jamais un dump en clair (le dump en clair n'existe que dans un fichier
+temporaire `chmod 600`, supprimé avant même que la copie secondaire
+n'intervienne).
+
+### 3. Vérification réelle de l'envoi dans le cloud (demandé — « une
+simple copie locale ne suffit pas »)
+
+Trouvé en inspectant un fichier déjà synchronisé sur ce Mac (compte
+personnel, aucune donnée A2C) : Google Drive pour ordinateur pose un
+attribut étendu `com.google.drivefs.item-id` sur chaque fichier qu'il a
+effectivement pris en charge (identifiant distant attribué). `brctl`
+(utilisé par iCloud) ne s'applique PAS à Google Drive (« Client zone not
+found ») — ce n'était donc pas la bonne piste.
+
+Ajouté dans `sauvegarder.sh` : après la copie, si la cible est sous
+`CloudStorage/GoogleDrive-*`, attente bornée (`VIGIE_BACKUP_SYNC_TIMEOUT_
+SECONDES`, défaut 60 s) de cet attribut. Si présent : ligne `ok-sync` dans
+`.dernier-statut`. Si absent au bout du délai : avertissement explicite +
+ligne `échec : synchronisation...` dans `.dernier-statut` — **sans jamais
+faire échouer la sauvegarde locale elle-même**, qui reste valide
+indépendamment du cloud.
+
+**Limite honnête** : cet attribut confirme que Drive a COMMENCÉ à traiter
+le fichier (identifiant distant attribué), pas une confirmation
+cryptographique que les octets sont intégralement sur les serveurs
+Google — aucune API publique locale ne donne cette garantie absolue sans
+utiliser l'API Google Drive elle-même (jeton OAuth, donc un nouvel accès —
+non fait, conformément à la consigne). Vérification manuelle ponctuelle
+recommandée (icône Drive dans le Finder, ou drive.google.com).
+
+### 4. Chiffrement authentifié — finalisé (confirmé, SÉCU-02 bis)
+
+Toujours Encrypt-then-MAC (`_chiffrement.sh`), TAG vérifié avant toute
+tentative de déchiffrement — inchangé, re-testé avec le nouveau chemin de
+copie Drive sans régression.
+
+### 5. Secrets — confirmé hors synchronisation
+
+Les secrets restent EXCLUSIVEMENT dans le Trousseau macOS (lu par
+`security find-generic-password`, jamais écrit dans un fichier). Le
+dossier `VIGIE_BACKUP_COPIE_DIR` ne reçoit que le fichier `.dump.enc` déjà
+chiffré — jamais un secret, jamais le dump en clair.
+
+### 6. Alerte en cas d'échec (demandé)
+
+Deux lignes DISTINCTES dans `.dernier-statut` (sauvegarde locale vs
+synchronisation Drive) + le message d'avertissement correspondant sur
+stderr (capturé par le journal launchd, `StandardErrorPath`). **Pas de
+notification push/e-mail configurée** — cela demanderait un nouveau
+service (même gratuit) et n'a pas été demandé ; Lia surveille via le
+fichier d'état ou les journaux. Une notification locale macOS
+(`osascript`) pourrait être ajoutée plus tard sans aucun service externe,
+si souhaité.
+
+### 7. Rétention — confirmé
+
+Le garde-fou ajouté en SÉCU-02 bis (ne purge jamais s'il ne resterait
+aucun fichier) s'applique uniquement au dossier PRINCIPAL ; `VIGIE_BACKUP_
+COPIE_DIR` (donc la copie Drive) n'est JAMAIS purgé par ce script, quelle
+que soit la rétention configurée.
+
+### 8. Limite documentée (demandé)
+
+**Ce stockage secondaire n'est PAS une sauvegarde totalement
+indépendante du compte A2C** : les sauvegardes chiffrées et d'autres
+documents A2C (modèles, preuves générées) vivent sur le MÊME compte
+Google (`actions.a2c@gmail.com`). Une compromission ou une perte de ce
+compte affecterait potentiellement les deux à la fois. Le contenu reste
+illisible sans la phrase de chiffrement (Trousseau, jamais sur ce compte),
+donc une compromission SEULE du compte Google ne suffit pas à lire les
+sauvegardes — mais une suppression ou une perte d'accès à ce compte
+toucherait les deux. Une véritable indépendance demanderait un compte ou
+un fournisseur distinct — non mis en place ici (non demandé, nécessiterait
+un nouvel accès).
+
+### Tests réellement exécutés
+
++2 tests (12 au total dans `sauvegardeRestauration.test.js`) : confirmation
+de synchronisation simulée (attribut posé en cours d'exécution, jamais le
+vrai compte Drive A2C) ; absence de confirmation après le délai imparti,
+avec avertissement distinct et succès local préservé.
+
+### Validation
+
+Backend **871/871** (+2), `git diff --check` propre. 1 commit local.
+
+### État : toujours **préparé, non activé** — launchd non chargé, aucune
+sauvegarde réelle lancée, aucun nouvel accès Google configuré.
+
+### Étapes manuelles, dans l'ordre
+
+**Étape 0 (nouvelle) — Connecter le compte A2C à Google Drive pour
+ordinateur** : ouvrir l'app Google Drive → Préférences → Ajouter un compte
+→ se connecter avec `actions.a2c@gmail.com` → créer manuellement, dans
+« Mon Drive », un dossier `Sauvegardes_Vigie_Privées` (jamais partagé avec
+l'équipe) → noter le chemin exact sous `~/Library/CloudStorage/
+GoogleDrive-actions.a2c@gmail.com/Mon Drive/Sauvegardes_Vigie_Privées`.
+
+**Étape A — Secrets dans le Trousseau** (inchangée depuis SÉCU-02 bis) :
+```
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-database-url" \
+  -w 'URL_PUBLIQUE_RAILWAY_ICI' -T /usr/bin/security -U
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-passphrase" \
+  -w "$(openssl rand -base64 32)" -T /usr/bin/security -U
+```
+Noter la phrase de chiffrement dans un gestionnaire de mots de passe.
+
+**Étape B — Charger l'automatisation** (décommenter `VIGIE_BACKUP_COPIE_
+DIR` dans le plist copié, avec le chemin exact noté à l'étape 0) :
+```
+sed "s#REMPLACER_PAR_VOTRE_UTILISATEUR#$USER#g" server/scripts/com.a2c.vigie.sauvegarde.plist > ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+# Puis éditer ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist pour
+# décommenter le bloc VIGIE_BACKUP_COPIE_DIR / VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES.
+launchctl load ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+launchctl list | grep vigie
+```
+
+**Étape C — Première sauvegarde réelle : SUR TA CONFIRMATION EXPLICITE
+UNIQUEMENT.**
+```
+bash server/scripts/sauvegarder.sh
+cat ~/vigie-sauvegardes/.dernier-statut
+ls "~/Library/CloudStorage/GoogleDrive-actions.a2c@gmail.com/Mon Drive/Sauvegardes_Vigie_Privées"
+```
+
+Aucun push ni déploiement. Aucune installation de service payant. Aucun
+nouvel accès Google configuré. Aucun accès à la production effectué dans
+ce chantier.

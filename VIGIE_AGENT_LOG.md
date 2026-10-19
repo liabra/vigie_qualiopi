@@ -5015,3 +5015,145 @@ Backend **862/862** (+3), frontend **377/377** (inchangé), build OK,
 
 Aucun push ni déploiement. Aucune installation de service payant. Aucune
 opération destructive.
+
+---
+
+## 2026-10-19 — SÉCU-02 : mise en service des sauvegardes (durci, préparé, non activé)
+
+### 1. Diagnostic confirmé
+
+- Dashboard Railway confirmé par Lia : « No Backups », forfait actuel conservé
+  (décision explicite). Niveau 1 (Railway natif) **abandonné**, tout repose sur
+  le niveau 2 (export chiffré externe).
+- Mac toujours allumé (confirmé) ⇒ **launchd** choisi plutôt qu'un service
+  Railway dédié (aurait nécessité un déploiement payant).
+
+### 2. Audit de `sauvegarder.sh`/`restaurer.sh` (demandé) — 4 lacunes corrigées
+
+- **Dérivation de clé** : PBKDF2 sans itération explicite (défaut OpenSSL
+  10 000, faible) → **`-iter 600000`** (recommandation OWASP pour PBKDF2-SHA256).
+  AES-256-GCM (chiffrement authentifié) envisagé mais **indisponible via la
+  commande `openssl enc` sur cette installation** (« AEAD ciphers not
+  supported ») : resté en AES-256-CBC, limite assumée et documentée —
+  compensée par la vérification d'intégrité ci-dessous (le risque réel ici est
+  la corruption accidentelle, pas un attaquant actif sur un fichier local).
+- **Intégrité** : aucune vérification auparavant au-delà d'un contrôle de
+  taille. Ajouté : `pg_restore --list` sur l'archive juste après `pg_dump`,
+  PUIS un aller-retour chiffrement/déchiffrement complet relu à nouveau par
+  `pg_restore --list` — **avant** de déclarer la sauvegarde réussie. Un fichier
+  qui ne repasse pas ce test est supprimé, jamais laissé comme une fausse
+  sauvegarde.
+- **Fuite de secret dans les journaux** : un message d'erreur `pg_dump`/
+  `openssl` pouvait théoriquement contenir le mot de passe de l'URL. Ajouté :
+  tout ce que ces commandes écrivent est filtré (le mot de passe, s'il
+  apparaît, est remplacé par `[SECRET MASQUÉ]`) avant d'atteindre stdout/
+  stderr — donc avant d'atteindre un journal launchd. Dump en clair toujours
+  en `mktemp` + `chmod 600` + suppression garantie par `trap ... EXIT`.
+- **Gestion d'erreur** : déjà correcte (code de sortie non nul, message
+  clair) — conservée, enrichie d'un fichier d'état `.dernier-statut`
+  (horodatage + ok/échec, jamais de secret) pour la surveillance.
+
+### 3. Trousseau macOS (demandé)
+
+Les deux scripts lisent `VIGIE_BACKUP_DATABASE_URL`/`VIGIE_BACKUP_PASSPHRASE`
+depuis l'environnement, et **à défaut** depuis le Trousseau macOS (`security
+find-generic-password`) — aucun secret n'a donc besoin de vivre dans le plist
+launchd ni dans un fichier sur disque. `VIGIE_BACKUP_NO_KEYCHAIN=1` permet de
+désactiver ce repli (utilisé systématiquement dans les tests automatisés, pour
+qu'ils ne lisent jamais un vrai secret si le Trousseau de la machine de test en
+contient un).
+
+### 4. Rétention et copie hors-Mac (demandé)
+
+- `VIGIE_BACKUP_RETENTION_JOURS` (défaut 30, 0 = jamais) : purge les
+  `.dump.enc` plus anciens APRÈS un nouveau succès — jamais avant, jamais si
+  le nouveau a échoué.
+- `VIGIE_BACKUP_COPIE_DIR` (optionnel) : copie le fichier déjà chiffré vers un
+  second emplacement — à utiliser avec un dossier **personnel** (iCloud Drive
+  personnel, disque externe…), **jamais** le Drive partagé avec l'équipe A2C.
+
+### 5. Automatisation launchd (préparée, PAS chargée)
+
+`server/scripts/com.a2c.vigie.sauvegarde.plist` : tous les jours à 3h10,
+journaux séparés succès/erreurs, aucun secret dans le fichier, aucune
+relance automatique en boucle en cas d'échec (reste visible plutôt que
+masqué par des tentatives répétées). Comportement en veille : macOS exécute
+la tâche manquée au réveil si l'heure programmée est passée pendant le
+sommeil ; comme le Mac reste allumé, ce cas ne devrait pas se présenter.
+Validé avec `plutil -lint` (syntaxe correcte). **Pas chargé** — voir la
+procédure ci-dessous.
+
+### 6. Emplacement sécurisé local (préparé)
+
+`~/vigie-sauvegardes/` et `~/vigie-sauvegardes/logs/` créés, permissions
+`700` (lecture/écriture pour Lia uniquement). Hors du dépôt Git, hors de
+tout dossier synchronisé partagé.
+
+### 7. Tests réellement exécutés
+
+`server/test/sauvegardeRestauration.test.js` (8 tests, tous sur des bases
+PostgreSQL éphémères et des données fictives — **jamais la production**) :
+cycle complet export/chiffrement/déchiffrement/restauration avec
+vérification d'intégrité ; **aucun mot de passe ne fuit dans la sortie
+même en cas d'échec pg_dump** (vérifié avec un mot de passe factice
+reconnaissable) ; rétention (purge et non-purge) ; copie hors-Mac
+octet-pour-octet ; un fichier chiffré corrompu après coup est détecté et
+refusé par `restaurer.sh`, jamais restauré silencieusement.
+
+### Validation
+
+Backend **867/867** (+5), frontend inchangé (377/377), build OK,
+`git diff --check` propre. 1 commit local.
+
+### Coût
+
+**Zéro** — OpenSSL et launchd sont déjà sur macOS, aucun service tiers
+installé ou appelé.
+
+### État : **PRÉPARÉ, NON ACTIVÉ** (sur confirmation de Lia)
+
+Tout ce qui pouvait être préparé et testé sans toucher la production est
+fait. Reste des opérations qui exigent Lia, dans cet ordre :
+
+**Étape A — Stocker les secrets dans le Trousseau (terminal, chez elle)**
+```
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-database-url" -w 'URL_PUBLIQUE_RAILWAY_ICI' -U
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-passphrase" -w "$(openssl rand -base64 32)" -U
+```
+(`DATABASE_PUBLIC_URL` se trouve dans Railway → service `Postgres-Vlqb` →
+Variables. La phrase de chiffrement générée ci-dessus n'est stockée qu'au
+Trousseau : **la noter aussi dans un gestionnaire de mots de passe** — sans
+elle, aucune sauvegarde existante ne redevient lisible, même avec le
+Trousseau d'un autre Mac.)
+
+Vérification SANS afficher les secrets :
+```
+security find-generic-password -a "$USER" -s "vigie-sauvegarde-database-url" -w | wc -c
+security find-generic-password -a "$USER" -s "vigie-sauvegarde-passphrase" -w | wc -c
+```
+(doit renvoyer un nombre > 0 dans les deux cas).
+
+**Étape B — Charger l'automatisation**
+```
+sed "s#REMPLACER_PAR_VOTRE_UTILISATEUR#$USER#g" server/scripts/com.a2c.vigie.sauvegarde.plist > ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+launchctl load ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+launchctl list | grep vigie
+```
+
+**Étape C — Première sauvegarde réelle : SUR CONFIRMATION EXPLICITE SEULEMENT**
+Je n'ai pas exécuté `sauvegarder.sh` contre la production. Une fois les
+étapes A/B faites, dis-moi d'y aller et je lance (ou tu lances toi-même) :
+```
+bash server/scripts/sauvegarder.sh
+cat ~/vigie-sauvegardes/.dernier-statut
+```
+Sinon, la tâche s'exécutera automatiquement à 3h10 après le chargement.
+
+**Étape D — Restauration isolée avec de vraies données (optionnel,
+recommandé)** : une fois une vraie sauvegarde obtenue, un test de
+restauration vers une base PostgreSQL locale jetable (Postgres.app, déjà
+installé) confirmerait l'intégrité sur de vraies données — jamais vers la
+production. Je peux préparer les commandes exactes si tu le souhaites.
+
+Aucun push ni déploiement. Aucune installation de service payant. Aucun
+accès à la production effectué dans ce chantier.

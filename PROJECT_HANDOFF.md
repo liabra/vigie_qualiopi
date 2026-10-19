@@ -1869,6 +1869,35 @@ plateforme externe : suffisant.
   déploiement, donc son accord explicite) ; définir la durée de conservation des
   fichiers `.dump.enc` et leur lieu de stockage (hors Git, hors Drive partagé).
 
+#### SÉCU-02 (19/10/2026) — forfait Railway conservé, niveau 2 durci, launchd préparé
+
+- **Décision prise** : forfait Railway actuel conservé (confirmé « No
+  Backups » dans le dashboard) ; Mac de Lia allumé en permanence ⇒
+  automatisation par **launchd** (natif macOS, zéro coût), pas de service
+  Railway dédié.
+- Scripts durcis : PBKDF2 porté à 600 000 itérations (AES-256-GCM
+  envisagé, indisponible sur `openssl enc` de ce poste) ; double
+  vérification d'intégrité (`pg_restore --list` avant ET après le
+  chiffrement) avant de déclarer un succès ; tout message d'erreur externe
+  (pg_dump/openssl) est filtré pour retirer un éventuel mot de passe avant
+  d'atteindre stdout/stderr ; secrets lus depuis le **Trousseau macOS** en
+  repli si absents de l'environnement (`vigie-sauvegarde-database-url`,
+  `vigie-sauvegarde-passphrase`) ; rétention configurable
+  (`VIGIE_BACKUP_RETENTION_JOURS`) ; copie optionnelle vers un second
+  emplacement personnel non partagé (`VIGIE_BACKUP_COPIE_DIR`).
+- `server/scripts/com.a2c.vigie.sauvegarde.plist` : lanceur launchd
+  quotidien (3h10), préparé et validé (`plutil -lint`), **non chargé**.
+- `~/vigie-sauvegardes/` (+ `logs/`) créé sur ce poste, permissions `700`,
+  hors dépôt.
+- **Testé** (+5 tests, 8 au total dans `sauvegardeRestauration.test.js`) :
+  aucune fuite de mot de passe dans les journaux même en cas d'échec,
+  rétention (purge et non-purge), copie secondaire identique octet pour
+  octet, détection d'un fichier chiffré corrompu — toujours sur bases
+  éphémères, données fictives.
+- **État : préparé, non activé.** Procédure pas à pas (Trousseau, chargement
+  launchd, première sauvegarde réelle sur confirmation explicite) dans
+  `VIGIE_AGENT_LOG.md` (SÉCU-02).
+
 ### Données hors PostgreSQL (Google Drive)
 
 PostgreSQL ne stocke que des **références** : `preuve_fichiers.drive_file_id/drive_url/

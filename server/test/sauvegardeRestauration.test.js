@@ -95,9 +95,14 @@ after(async () => {
 });
 
 const SCRIPTS = path.join(import.meta.dirname, "..", "scripts");
+// `VIGIE_BACKUP_NO_KEYCHAIN` est FORCÉ sur tous les appels de test : jamais
+// de repli silencieux vers un vrai item du Trousseau macOS de la machine
+// qui exécute les tests (qui pourrait contenir de VRAIS secrets de
+// production une fois SÉCU-02 mis en service) — l'isolation du test ne
+// doit jamais dépendre de ce qui est, ou n'est pas, configuré par ailleurs.
 const envAvecOutils = (base) => {
   const dossierOutils = path.dirname(pgDump);
-  return { ...process.env, ...base, PATH: `${dossierOutils}:${process.env.PATH}` };
+  return { ...process.env, ...base, PATH: `${dossierOutils}:${process.env.PATH}`, VIGIE_BACKUP_NO_KEYCHAIN: "1" };
 };
 
 test("sauvegarde + restauration : les données fictives sont intactes après le cycle complet, chiffré", async (t) => {
@@ -110,10 +115,12 @@ test("sauvegarde + restauration : les données fictives sont intactes après le 
       VIGIE_BACKUP_DIR: DOSSIER_SAUVEGARDE,
     }),
   });
-  assert.match(sortieSauvegarde, /Sauvegarde réussie/);
+  assert.match(sortieSauvegarde, /Sauvegarde réussie et vérifiée/);
 
-  const fichiers = await fs.readdir(DOSSIER_SAUVEGARDE);
+  const tousLesFichiers = await fs.readdir(DOSSIER_SAUVEGARDE);
+  const fichiers = tousLesFichiers.filter((f) => f.endsWith(".dump.enc"));
   assert.equal(fichiers.length, 1, "un seul fichier chiffré produit");
+  assert.ok(tousLesFichiers.includes(".dernier-statut"), "un fichier d'état est écrit pour la surveillance");
   const fichierChiffre = path.join(DOSSIER_SAUVEGARDE, fichiers[0]);
   assert.match(fichiers[0], /^vigie-\d{8}-\d{6}\.dump\.enc$/);
 
@@ -158,12 +165,134 @@ test("sauvegarde : variables manquantes refusées explicitement, jamais un secre
   if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
   await assert.rejects(
     run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], { env: envAvecOutils({ VIGIE_BACKUP_DATABASE_URL: "" }) }),
-    /VIGIE_BACKUP_DATABASE_URL manquante/
+    /VIGIE_BACKUP_DATABASE_URL absente/
   );
   await assert.rejects(
     run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
       env: envAvecOutils({ VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`, VIGIE_BACKUP_PASSPHRASE: "" }),
     }),
-    /VIGIE_BACKUP_PASSPHRASE manquante/
+    /VIGIE_BACKUP_PASSPHRASE absente/
+  );
+});
+
+test("sauvegarde : le mot de passe de l'URL n'apparaît JAMAIS dans la sortie, même en cas d'échec pg_dump", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "echec-redaction");
+  await fs.mkdir(dossier, { recursive: true });
+  // Port fermé + mot de passe reconnaissable dans l'URL : pg_dump échoue et
+  // peut inclure la chaîne de connexion dans son message d'erreur.
+  const motDePasseSecret = "MotDePasseVisibleSiNonMasque123";
+  let erreur;
+  try {
+    await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+      env: envAvecOutils({
+        VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:${motDePasseSecret}@127.0.0.1:9/inexistante`,
+        VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+        VIGIE_BACKUP_DIR: dossier,
+      }),
+    });
+    assert.fail("pg_dump devait échouer (port fermé)");
+  } catch (e) { erreur = e; }
+  const sortieCombinee = (erreur.stdout || "") + (erreur.stderr || "") + (erreur.message || "");
+  assert.ok(!sortieCombinee.includes(motDePasseSecret), "le mot de passe ne doit jamais apparaître dans la sortie/les journaux");
+  assert.ok(sortieCombinee.includes("[SECRET MASQUÉ]") || !sortieCombinee.toLowerCase().includes("motdepasse"), "le message d'erreur reste informatif, juste sans le secret");
+});
+
+test("sauvegarde : rétention — un ancien fichier chiffré est purgé après un nouveau succès, un récent est conservé", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "retention");
+  await fs.mkdir(dossier, { recursive: true });
+  const ancien = path.join(dossier, "vigie-20200101-000000.dump.enc");
+  await fs.writeFile(ancien, "contenu factice ancien");
+  const vieilleDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+  await fs.utimes(ancien, vieilleDate, vieilleDate);
+
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+      VIGIE_BACKUP_RETENTION_JOURS: "30",
+    }),
+  });
+
+  const fichiers = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+  assert.ok(!fichiers.includes("vigie-20200101-000000.dump.enc"), "le fichier vieux de plus de 30 jours est purgé");
+  assert.equal(fichiers.length, 1, "le nouveau fichier reste présent");
+});
+
+test("sauvegarde : rétention désactivée (0) — l'ancien fichier n'est jamais purgé", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "retention-desactivee");
+  await fs.mkdir(dossier, { recursive: true });
+  const ancien = path.join(dossier, "vigie-20200101-000000.dump.enc");
+  await fs.writeFile(ancien, "contenu factice ancien");
+  const vieilleDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+  await fs.utimes(ancien, vieilleDate, vieilleDate);
+
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+      VIGIE_BACKUP_RETENTION_JOURS: "0",
+    }),
+  });
+
+  const fichiers = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+  assert.ok(fichiers.includes("vigie-20200101-000000.dump.enc"), "rétention à 0 : rien n'est jamais purgé");
+});
+
+test("sauvegarde : copie hors-Mac déposée dans VIGIE_BACKUP_COPIE_DIR sans affecter la sauvegarde locale", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "principale-copie");
+  const copie = path.join(DOSSIER_SAUVEGARDE, "copie-hors-mac");
+  await fs.mkdir(dossier, { recursive: true });
+
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+      VIGIE_BACKUP_COPIE_DIR: copie,
+    }),
+  });
+
+  const principale = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+  const secondaire = (await fs.readdir(copie)).filter((f) => f.endsWith(".dump.enc"));
+  assert.equal(principale.length, 1);
+  assert.equal(secondaire.length, 1, "la copie hors-Mac existe");
+  assert.equal(principale[0], secondaire[0], "même nom de fichier dans les deux emplacements");
+  const contenuPrincipal = await fs.readFile(path.join(dossier, principale[0]));
+  const contenuSecondaire = await fs.readFile(path.join(copie, secondaire[0]));
+  assert.deepEqual(contenuPrincipal, contenuSecondaire, "la copie est identique, octet pour octet");
+});
+
+test("sauvegarde : un fichier chiffré corrompu après coup est détecté par restaurer.sh, jamais restauré silencieusement", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "corruption");
+  await fs.mkdir(dossier, { recursive: true });
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+    }),
+  });
+  const [nomFichier] = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+  const fichier = path.join(dossier, nomFichier);
+  // Corruption délibérée : quelques octets au milieu du fichier chiffré.
+  const buffer = await fs.readFile(fichier);
+  const milieu = Math.floor(buffer.length / 2);
+  for (let i = 0; i < 16 && milieu + i < buffer.length; i++) buffer[milieu + i] = 0;
+  await fs.writeFile(fichier, buffer);
+
+  await assert.rejects(
+    run("bash", [path.join(SCRIPTS, "restaurer.sh"), fichier], {
+      env: envAvecOutils({
+        VIGIE_RESTORE_TARGET_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_CIBLE}/vq_cible`,
+        VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      }),
+    })
   );
 });

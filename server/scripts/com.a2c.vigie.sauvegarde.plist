@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  SÉCU-02 — Lanceur macOS (launchd) pour la sauvegarde quotidienne de
+  Vigie Qualiopi. PRÉPARÉ ICI, PAS CHARGÉ : aucune sauvegarde ne
+  s'exécute avant que ce fichier soit copié et chargé manuellement
+  (voir la procédure dans VIGIE_AGENT_LOG.md, SÉCU-02).
+
+  Aucun secret dans ce fichier : le script lit VIGIE_BACKUP_DATABASE_URL
+  et VIGIE_BACKUP_PASSPHRASE depuis le Trousseau macOS (voir la
+  procédure « security add-generic-password »).
+
+  Comportement en veille : launchd exécute les tâches manquées dès le
+  réveil du Mac si l'heure programmée est passée pendant le sommeil
+  (StartCalendarInterval) ; si le Mac est éteint à l'heure prévue, la
+  tâche s'exécute à la prochaine ouverture de session. Aucune tâche
+  n'est perdue si le Mac reste allumé en permanence (cas confirmé ici).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.a2c.vigie.sauvegarde</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/Documents/projets/vigie-qualiopi/server/scripts/sauvegarder.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VIGIE_BACKUP_DIR</key>
+    <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/vigie-sauvegardes</string>
+    <key>VIGIE_BACKUP_RETENTION_JOURS</key>
+    <string>30</string>
+    <!-- Optionnel : second emplacement chiffré (jamais le Drive partagé A2C). -->
+    <!-- <key>VIGIE_BACKUP_COPIE_DIR</key>
+    <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/Library/Mobile Documents/com~apple~CloudDocs/VigieSauvegardesPrivees</string> -->
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/Applications/Postgres.app/Contents/Versions/18/bin</string>
+  </dict>
+
+  <!-- Tous les jours à 03h10 : heure creuse, après la fin probable de
+       toute saisie de la journée. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>10</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/vigie-sauvegardes/logs/sauvegarde.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/vigie-sauvegardes/logs/sauvegarde-erreurs.log</string>
+
+  <!-- Ne relance pas automatiquement en cas d'échec (pas de StartInterval,
+       pas de RunAtLoad) : un échec reste visible dans les journaux et
+       dans .dernier-statut jusqu'au lendemain, plutôt que de masquer le
+       problème par des tentatives répétées. -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

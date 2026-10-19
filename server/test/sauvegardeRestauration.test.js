@@ -296,3 +296,60 @@ test("sauvegarde : un fichier chiffré corrompu après coup est détecté par re
     })
   );
 });
+
+test("restauration : phrase de chiffrement incorrecte détectée AVANT tout déchiffrement (authenticité)", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "mauvaise-phrase");
+  await fs.mkdir(dossier, { recursive: true });
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+    }),
+  });
+  const [nomFichier] = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+
+  let erreur;
+  try {
+    await run("bash", [path.join(SCRIPTS, "restaurer.sh"), path.join(dossier, nomFichier)], {
+      env: envAvecOutils({
+        VIGIE_RESTORE_TARGET_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_CIBLE}/vq_cible`,
+        VIGIE_BACKUP_PASSPHRASE: "une-tout-autre-phrase-incorrecte",
+      }),
+    });
+    assert.fail("la restauration devait être refusée");
+  } catch (e) { erreur = e; }
+  const sortie = (erreur.stdout || "") + (erreur.stderr || "");
+  assert.match(sortie, /authenticité invalide/);
+  assert.ok(!sortie.includes("pg_restore vers la base cible"), "aucune tentative d'écriture sur la cible après un échec d'authenticité");
+});
+
+test("restauration : une altération du SEUL en-tête (sel/IV/TAG) est détectée, pas seulement le corps chiffré", async (t) => {
+  if (!disponible) return t.skip("pg_dump/pg_restore/openssl indisponibles sur cette machine — test ignoré.");
+  const dossier = path.join(DOSSIER_SAUVEGARDE, "corruption-entete");
+  await fs.mkdir(dossier, { recursive: true });
+  await run("bash", [path.join(SCRIPTS, "sauvegarder.sh")], {
+    env: envAvecOutils({
+      VIGIE_BACKUP_DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_SOURCE}/vq`,
+      VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      VIGIE_BACKUP_DIR: dossier,
+    }),
+  });
+  const [nomFichier] = (await fs.readdir(dossier)).filter((f) => f.endsWith(".dump.enc"));
+  const fichier = path.join(dossier, nomFichier);
+  const buffer = await fs.readFile(fichier);
+  // Altère un octet du TAG stocké (octets 32-63 de l'en-tête).
+  buffer[40] = buffer[40] ^ 0xff;
+  await fs.writeFile(fichier, buffer);
+
+  await assert.rejects(
+    run("bash", [path.join(SCRIPTS, "restaurer.sh"), fichier], {
+      env: envAvecOutils({
+        VIGIE_RESTORE_TARGET_URL: `postgresql://postgres:postgres@127.0.0.1:${PORT_CIBLE}/vq_cible`,
+        VIGIE_BACKUP_PASSPHRASE: PASSPHRASE,
+      }),
+    }),
+    /authenticité invalide/
+  );
+});

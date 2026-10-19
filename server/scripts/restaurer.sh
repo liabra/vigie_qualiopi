@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-#  SÉCU-01/SÉCU-02 — Restauration d'une sauvegarde chiffrée, vers une base
-#  CIBLE EXPLICITE — jamais la production par défaut.
+#  SÉCU-01/02 — Restauration d'une sauvegarde chiffrée et AUTHENTIFIÉE
+#  (voir _chiffrement.sh), vers une base CIBLE EXPLICITE — jamais la
+#  production par défaut.
 #
 #  Garde-fou : refuse de restaurer si la cible est IDENTIQUE à
 #  DATABASE_URL ou DATABASE_PUBLIC_URL présentes dans l'environnement
 #  (protection contre un copier-coller malheureux, pas contre une
 #  volonté délibérée de restaurer en production — qui reste possible,
 #  mais jamais par défaut ni par erreur).
+#
+#  L'authenticité du fichier (HMAC) est vérifiée AVANT toute tentative de
+#  déchiffrement : une phrase de chiffrement incorrecte ou un fichier
+#  altéré sont refusés immédiatement, jamais partiellement déchiffrés.
 #
 #  Jamais de secret affiché NI JOURNALISÉ (même logique de masquage que
 #  sauvegarder.sh). La phrase de chiffrement peut venir du Trousseau
@@ -22,6 +27,7 @@
 #    VIGIE_BACKUP_PASSPHRASE    même phrase que la sauvegarde (ou Trousseau).
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_chiffrement.sh"
 
 SERVICE_TROUSSEAU_PASSPHRASE="vigie-sauvegarde-passphrase"
 
@@ -37,6 +43,7 @@ fi
 if [ -z "${VIGIE_BACKUP_PASSPHRASE:-}" ] && [ -z "${VIGIE_BACKUP_NO_KEYCHAIN:-}" ] && command -v security >/dev/null 2>&1; then
   VIGIE_BACKUP_PASSPHRASE="$(security find-generic-password -a "$USER" -s "$SERVICE_TROUSSEAU_PASSPHRASE" -w 2>/dev/null || true)"
 fi
+export VIGIE_BACKUP_PASSPHRASE
 if [ -z "${VIGIE_BACKUP_PASSPHRASE:-}" ]; then
   echo "ERREUR restauration : VIGIE_BACKUP_PASSPHRASE absente (variable d'environnement ou Trousseau macOS)." >&2
   exit 1
@@ -65,10 +72,9 @@ DUMP_CLAIR=$(mktemp -t "vigie-restore-XXXXXX.dump")
 chmod 600 "$DUMP_CLAIR"
 trap 'rm -f "$DUMP_CLAIR"' EXIT
 
-echo "Restauration : déchiffrement…"
-if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:VIGIE_BACKUP_PASSPHRASE \
-     -in "$FICHIER_CHIFFRE" -out "$DUMP_CLAIR" 2> >(redacter >&2); then
-  echo "ERREUR restauration : déchiffrement échoué (phrase de chiffrement incorrecte ou fichier corrompu)." >&2
+echo "Restauration : vérification de l'authenticité puis déchiffrement…"
+if ! vigie_dechiffrer_verifie "$FICHIER_CHIFFRE" "$DUMP_CLAIR" redacter; then
+  echo "ERREUR restauration : voir le message ci-dessus — rien n'a été tenté sur la base cible." >&2
   exit 1
 fi
 

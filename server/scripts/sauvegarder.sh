@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
-#  SÉCU-01/SÉCU-02 — Sauvegarde PostgreSQL externe, chiffrée, hors Railway.
+#  SÉCU-01/02 — Sauvegarde PostgreSQL externe, chiffrée et AUTHENTIFIÉE
+#  (Encrypt-then-MAC, voir _chiffrement.sh), hors Railway.
 #
 #  Niveau 2 de la stratégie de sauvegarde (le niveau 1, natif Railway,
 #  dépend du plan et se configure dans le dashboard — voir
@@ -26,16 +27,18 @@
 #                                 jamais suivi par Git — voir .gitignore).
 #    VIGIE_BACKUP_RETENTION_JOURS  purge des .dump.enc plus anciens que N
 #                                 jours APRÈS un succès (défaut : 30 ;
-#                                 0 = ne jamais purger).
+#                                 0 = ne jamais purger). Ne purge JAMAIS
+#                                 s'il ne resterait aucun fichier après.
 #    VIGIE_BACKUP_COPIE_DIR      second emplacement (ex. disque externe,
 #                                 dossier iCloud PERSONNEL — jamais un
 #                                 Drive partagé avec l'équipe) qui reçoit
-#                                 une copie du fichier déjà chiffré.
+#                                 une copie du fichier déjà chiffré. Jamais
+#                                 purgé par ce script.
 #
-#  Intégrité : le dump est relu avec `pg_restore --list` juste après
-#  l'export (archive lisible) ET après un aller-retour chiffrement/
-#  déchiffrement complet (le fichier final est bien ce qu'il prétend
-#  être) — AVANT de déclarer la sauvegarde réussie.
+#  Intégrité ET authenticité : voir _chiffrement.sh (Encrypt-then-MAC).
+#  En complément, l'archive pg_dump est relue avec `pg_restore --list`
+#  juste après l'export ET après un aller-retour chiffrement/déchiffrement
+#  complet — AVANT de déclarer la sauvegarde réussie.
 #
 #  Sortie : un fichier chiffré $DOSSIER/vigie-AAAAMMJJ-HHMMSS.dump.enc,
 #  et un fichier d'état $DOSSIER/.dernier-statut (horodatage + ok/échec,
@@ -43,6 +46,18 @@
 #  Échec : code de sortie non nul + message clair sur stderr.
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_chiffrement.sh"
+
+# Dossier et fichier d'état déterminés EN PREMIER (ne dépendent d'aucun
+# secret) : TOUT échec, y compris un secret manquant ou illisible depuis
+# le Trousseau, est consigné au même endroit pour la surveillance —
+# jamais seulement dans un journal séparé que personne ne regarde.
+DOSSIER="${VIGIE_BACKUP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/sauvegardes}"
+RETENTION_JOURS="${VIGIE_BACKUP_RETENTION_JOURS:-30}"
+mkdir -p "$DOSSIER"
+chmod 700 "$DOSSIER" 2>/dev/null || true
+FICHIER_STATUT="$DOSSIER/.dernier-statut"
+consigner_echec() { printf '%s échec : %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$FICHIER_STATUT"; }
 
 SERVICE_TROUSSEAU_URL="vigie-sauvegarde-database-url"
 SERVICE_TROUSSEAU_PASSPHRASE="vigie-sauvegarde-passphrase"
@@ -59,21 +74,18 @@ fi
 if [ -z "${VIGIE_BACKUP_PASSPHRASE:-}" ] && [ -z "${VIGIE_BACKUP_NO_KEYCHAIN:-}" ] && command -v security >/dev/null 2>&1; then
   VIGIE_BACKUP_PASSPHRASE="$(depuis_trousseau "$SERVICE_TROUSSEAU_PASSPHRASE")"
 fi
+export VIGIE_BACKUP_PASSPHRASE
 
 if [ -z "${VIGIE_BACKUP_DATABASE_URL:-}" ]; then
+  consigner_echec "VIGIE_BACKUP_DATABASE_URL absente (environnement/Trousseau)"
   echo "ERREUR sauvegarde : VIGIE_BACKUP_DATABASE_URL absente (variable d'environnement ou Trousseau macOS)." >&2
   exit 1
 fi
 if [ -z "${VIGIE_BACKUP_PASSPHRASE:-}" ]; then
+  consigner_echec "VIGIE_BACKUP_PASSPHRASE absente (environnement/Trousseau)"
   echo "ERREUR sauvegarde : VIGIE_BACKUP_PASSPHRASE absente (variable d'environnement ou Trousseau macOS)." >&2
   exit 1
 fi
-
-DOSSIER="${VIGIE_BACKUP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/sauvegardes}"
-RETENTION_JOURS="${VIGIE_BACKUP_RETENTION_JOURS:-30}"
-mkdir -p "$DOSSIER"
-chmod 700 "$DOSSIER" 2>/dev/null || true
-FICHIER_STATUT="$DOSSIER/.dernier-statut"
 
 # Extrait le mot de passe de l'URL (s'il y en a un) pour le retirer de
 # TOUT ce que les commandes externes pourraient écrire — jamais affiché
@@ -88,7 +100,6 @@ redacter() {
     cat
   fi
 }
-consigner_echec() { printf '%s échec : %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$FICHIER_STATUT"; }
 
 DUMP_CLAIR=$(mktemp -t "vigie-dump-XXXXXX.dump")
 chmod 600 "$DUMP_CLAIR"
@@ -97,8 +108,8 @@ chmod 600 "$DUMP_VERIF"
 HORODATAGE=$(date +%Y%m%d-%H%M%S)
 FICHIER_CHIFFRE="$DOSSIER/vigie-$HORODATAGE.dump.enc"
 
-# Les deux dumps en clair ne doivent JAMAIS survivre à ce script, succès
-# ou échec — y compris sur un arrêt par signal (INT/TERM/HUP), seul un
+# Les dumps en clair ne doivent JAMAIS survivre à ce script, succès ou
+# échec — y compris sur un arrêt par signal (INT/TERM/HUP), seul un
 # SIGKILL y échapperait.
 trap 'rm -f "$DUMP_CLAIR" "$DUMP_VERIF"' EXIT
 
@@ -123,9 +134,8 @@ if ! pg_restore --list "$DUMP_CLAIR" > /dev/null 2> >(redacter >&2); then
   exit 1
 fi
 
-echo "Sauvegarde : chiffrement AES-256 (PBKDF2, 600000 itérations)…"
-if ! openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:VIGIE_BACKUP_PASSPHRASE \
-     -in "$DUMP_CLAIR" -out "$FICHIER_CHIFFRE" 2> >(redacter >&2); then
+echo "Sauvegarde : chiffrement authentifié (AES-256-CBC + HMAC-SHA256, PBKDF2 600000 itérations)…"
+if ! vigie_chiffrer_authentifie "$DUMP_CLAIR" "$FICHIER_CHIFFRE" redacter; then
   consigner_echec "chiffrement"
   rm -f "$FICHIER_CHIFFRE"
   echo "ERREUR sauvegarde : le chiffrement a échoué." >&2
@@ -133,13 +143,12 @@ if ! openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:VIGIE_BACKUP_
 fi
 chmod 600 "$FICHIER_CHIFFRE"
 
-echo "Sauvegarde : vérification de bout en bout (déchiffrement + relecture)…"
-if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:VIGIE_BACKUP_PASSPHRASE \
-     -in "$FICHIER_CHIFFRE" -out "$DUMP_VERIF" 2> >(redacter >&2) \
+echo "Sauvegarde : vérification de bout en bout (authenticité + déchiffrement + relecture)…"
+if ! vigie_dechiffrer_verifie "$FICHIER_CHIFFRE" "$DUMP_VERIF" redacter \
    || ! pg_restore --list "$DUMP_VERIF" > /dev/null 2> >(redacter >&2); then
   consigner_echec "vérification post-chiffrement"
   rm -f "$FICHIER_CHIFFRE"
-  echo "ERREUR sauvegarde : le fichier chiffré ne se déchiffre pas correctement — supprimé, jamais présenté comme réussi." >&2
+  echo "ERREUR sauvegarde : le fichier chiffré ne repasse pas la vérification — supprimé, jamais présenté comme réussi." >&2
   exit 1
 fi
 
@@ -152,8 +161,17 @@ if [ -n "${VIGIE_BACKUP_COPIE_DIR:-}" ]; then
   fi
 fi
 
+# Rétention : ne purge JAMAIS s'il ne resterait aucun fichier après coup —
+# la dernière sauvegarde valide (celle qu'on vient de produire et de
+# vérifier) n'est de toute façon jamais une candidate (elle vient d'être
+# créée, donc jamais « plus ancienne que N jours »), mais ce garde-fou
+# protège aussi contre une horloge ou une configuration inattendue.
 if [ "$RETENTION_JOURS" -gt 0 ] 2>/dev/null; then
-  find "$DOSSIER" -maxdepth 1 -name 'vigie-*.dump.enc' -mtime "+$RETENTION_JOURS" -delete 2>/dev/null || true
+  CANDIDATS=$(find "$DOSSIER" -maxdepth 1 -name 'vigie-*.dump.enc' -mtime "+$RETENTION_JOURS" 2>/dev/null | wc -l | tr -d ' ')
+  TOTAL=$(find "$DOSSIER" -maxdepth 1 -name 'vigie-*.dump.enc' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$CANDIDATS" -gt 0 ] && [ "$CANDIDATS" -lt "$TOTAL" ]; then
+    find "$DOSSIER" -maxdepth 1 -name 'vigie-*.dump.enc' -mtime "+$RETENTION_JOURS" -delete 2>/dev/null || true
+  fi
 fi
 
 TAILLE_CHIFFREE=$(wc -c < "$FICHIER_CHIFFRE" | tr -d ' ')

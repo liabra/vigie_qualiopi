@@ -5157,3 +5157,142 @@ production. Je peux préparer les commandes exactes si tu le souhaites.
 
 Aucun push ni déploiement. Aucune installation de service payant. Aucun
 accès à la production effectué dans ce chantier.
+
+---
+
+## 2026-10-19 — SÉCU-02 bis : chiffrement authentifié (encrypt-then-MAC) + vérifications finales
+
+### 1. Chiffrement authentifié — un vrai bug trouvé ET corrigé pendant l'audit
+
+AES-256-GCM (chiffrement authentifié natif) confirmé **indisponible** via
+`openssl enc` sur ce poste. Solution retenue avec les SEULS outils déjà
+présents (openssl, xxd) : **Encrypt-then-MAC**, clé de chiffrement et clé
+d'authentification **distinctes**, dérivées de la phrase de chiffrement
+avec deux sels indépendants.
+
+**Première implémentation, détectée fausse par ses propres tests** :
+`openssl kdf -kdfopt pass:env:VAR` a d'abord été utilisée pour dériver les
+clés — en écrivant le test « phrase de chiffrement incorrecte détectée »,
+ce test a révélé que `openssl kdf` **n'interprète PAS `env:VAR` comme une
+indirection** : il prend la chaîne littérale `"env:VAR"` comme mot de
+passe, donc TOUJOURS la même clé quelle que soit la vraie phrase. Vérifié
+en isolation :
+```
+openssl kdf ... -kdfopt pass:env:X ...   # résultat identique à
+openssl kdf ... -kdfopt "pass:env:X" ... # ... peu importe la valeur de $X
+```
+Cela aurait silencieusement chiffré CHAQUE sauvegarde avec une clé
+**constante et visible dans le code source** — une régression de sécurité
+plus grave que l'absence d'authentification elle-même. **Jamais exécuté
+contre la production** : trouvé et corrigé avant toute activation.
+
+**Correction** : `openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -pass
+env:VAR -S <sel> -P`, qui n'écrit rien et ne chiffre rien réellement — il
+affiche seulement la paire (clé, IV) que PBKDF2 aurait produite. Cette
+indirection `env:` EST correctement honorée par `enc` (vérifié en
+isolation avec deux phrases différentes ⇒ deux clés différentes). Format
+du fichier : `SALT_CHIFFREMENT(8o) + SALT_MAC(8o) + TAG(32o) + CHIFFRÉ`.
+Logique centralisée dans `server/scripts/_chiffrement.sh`, source unique
+partagée par `sauvegarder.sh`/`restaurer.sh` (jamais deux implémentations
+qui pourraient diverger).
+
+### 2. Détection avant toute restauration (demandé)
+
+Le TAG (HMAC-SHA256 du chiffré) est revérifié AVANT toute tentative de
+déchiffrement. Testé : une phrase de chiffrement incorrecte est refusée
+avec un message explicite, **sans aucune tentative d'écriture sur la base
+cible** (vérifié : le journal ne contient jamais « pg_restore vers la base
+cible » dans ce cas) ; une altération d'un seul octet du TAG stocké est
+détectée séparément d'une altération du corps chiffré (deux tests
+distincts). Une phrase incorrecte et une altération produisent le MÊME
+message (« authenticité invalide ») — volontairement, car on ne peut pas
+cryptographiquement distinguer les deux cas, et il ne faut pas chercher à
+le faire.
+
+### 3. Trousseau macOS dans le contexte launchd — vérifié empiriquement
+
+Un item de test **jetable** (`vigie-test-launchd-verification`, valeur non
+sensible, jamais une vraie donnée) a été ajouté avec `-T /usr/bin/security`
+(pré-autorisation explicite du binaire qui le lira), lu immédiatement par
+`security find-generic-password` **sans aucune invite graphique ni
+blocage**, puis supprimé. Confirmé : la lecture non interactive fonctionne
+dans cette session. La procédure d'ajout des VRAIS secrets (ci-dessous)
+utilise désormais systématiquement `-T /usr/bin/security`.
+**Limite honnête** : ceci vérifie le mécanisme `security`, pas un vrai
+déclenchement `launchd` sans session graphique attachée — à reconfirmer
+par Lia en consultant les journaux après le premier déclenchement
+automatique réel (3h10).
+
+### 4. Rétention — garde-fou supplémentaire
+
+Ajouté : la purge ne s'exécute QUE si elle laisserait au moins un fichier
+derrière elle (comparaison du nombre de candidats à la purge contre le
+nombre total de fichiers). La sauvegarde qui vient d'être créée n'est de
+toute façon jamais candidate (horodatage « maintenant »), donc ce garde-fou
+est une protection supplémentaire, pas la seule — raisonnement vérifié,
+non testé séparément (nécessiterait de manipuler l'horloge système).
+
+### 5. Copie hors-Mac — confirmé
+
+`VIGIE_BACKUP_COPIE_DIR` n'est jamais purgé par ce script (seul le dossier
+principal l'est) : une copie déposée là s'accumule, jamais supprimée
+automatiquement — comportement délibérément prudent. Toujours testé
+identique octet pour octet au fichier principal.
+
+### Tests réellement exécutés
+
+`server/test/sauvegardeRestauration.test.js` : **10 tests** (+2 sur la
+version précédente), toujours sur bases PostgreSQL éphémères et données
+fictives : le cycle complet fonctionne avec le nouveau format authentifié ;
+une phrase incorrecte est détectée avant toute restauration ; une
+altération du seul en-tête (sans toucher au corps chiffré) est détectée.
+
+### Validation
+
+Backend **869/869** (+2), build non concerné (aucun changement frontend),
+`git diff --check` propre. 1 commit local.
+
+### État : toujours **préparé, non activé** — launchd non chargé, aucune
+sauvegarde réelle lancée, comme demandé.
+
+### Manipulations manuelles, dans l'ordre, pour la première sauvegarde
+
+**Étape A — Secrets dans le Trousseau** (remplace la procédure SÉCU-02,
+ajoute `-T` pour éviter toute invite) :
+```
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-database-url" \
+  -w 'URL_PUBLIQUE_RAILWAY_ICI' -T /usr/bin/security -U
+security add-generic-password -a "$USER" -s "vigie-sauvegarde-passphrase" \
+  -w "$(openssl rand -base64 32)" -T /usr/bin/security -U
+```
+Noter la phrase de chiffrement générée dans un gestionnaire de mots de
+passe (sans elle, aucune sauvegarde n'est récupérable, même avec le
+Trousseau d'un autre Mac). Vérification sans afficher les secrets :
+```
+security find-generic-password -a "$USER" -s "vigie-sauvegarde-database-url" -w | wc -c
+security find-generic-password -a "$USER" -s "vigie-sauvegarde-passphrase" -w | wc -c
+```
+
+**Étape B — Charger l'automatisation** :
+```
+sed "s#REMPLACER_PAR_VOTRE_UTILISATEUR#$USER#g" server/scripts/com.a2c.vigie.sauvegarde.plist > ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+launchctl load ~/Library/LaunchAgents/com.a2c.vigie.sauvegarde.plist
+launchctl list | grep vigie
+```
+
+**Étape C — Première sauvegarde réelle : SUR TA CONFIRMATION EXPLICITE
+UNIQUEMENT.** Je n'ai rien exécuté contre la production. Une fois A/B
+faites, dis-moi d'y aller (ou lance toi-même) :
+```
+bash server/scripts/sauvegarder.sh
+cat ~/vigie-sauvegardes/.dernier-statut
+```
+Sinon, la tâche s'exécutera automatiquement à 3h10 après le chargement.
+
+**Étape D (optionnelle, recommandée)** — une fois une vraie sauvegarde
+obtenue, un test de restauration vers une base PostgreSQL locale jetable
+(Postgres.app) confirmerait l'intégrité sur de vraies données — jamais
+vers la production.
+
+Aucun push ni déploiement. Aucune installation de service payant. Aucun
+accès à la production effectué dans ce chantier.

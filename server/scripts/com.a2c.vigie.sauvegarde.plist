@@ -33,16 +33,14 @@
     <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/vigie-sauvegardes</string>
     <key>VIGIE_BACKUP_RETENTION_JOURS</key>
     <string>30</string>
-    <!-- Optionnel : copie chiffrée vers le Drive OFFICIEL A2C
-         (actions.a2c@gmail.com), dans un dossier PRIVÉ, jamais partagé
-         avec l'équipe — nécessite que ce compte soit déjà connecté dans
-         Google Drive pour ordinateur (vérifié non connecté le 20/10/2026,
-         à faire par Lia). Adapter le nom du dossier à celui réellement
-         créé sous Mon Drive. -->
-    <!-- <key>VIGIE_BACKUP_COPIE_DIR</key>
-    <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/Library/CloudStorage/GoogleDrive-actions.a2c@gmail.com/Mon Drive/Sauvegardes_Vigie_Privees</string> -->
-    <!-- <key>VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES</key>
-    <string>60</string> -->
+    <!-- Copie chiffrée vers le Drive OFFICIEL A2C (actions.a2c@gmail.com),
+         dossier PRIVÉ (jamais partagé avec l'équipe), confirmé existant
+         et accessible en écriture le 20/10/2026. Chemin exact vérifié,
+         accents inclus — ne pas « corriger » le nom. -->
+    <key>VIGIE_BACKUP_COPIE_DIR</key>
+    <string>/Users/REMPLACER_PAR_VOTRE_UTILISATEUR/Library/CloudStorage/GoogleDrive-actions.a2c@gmail.com/Mon Drive/Sauvegardes_Vigie_Privées</string>
+    <key>VIGIE_BACKUP_SYNC_TIMEOUT_SECONDES</key>
+    <string>60</string>
     <key>PATH</key>
     <string>/usr/local/bin:/usr/bin:/bin:/Applications/Postgres.app/Contents/Versions/18/bin</string>
   </dict>

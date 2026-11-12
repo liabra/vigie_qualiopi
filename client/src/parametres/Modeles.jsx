@@ -62,11 +62,14 @@ export const TYPES_DOCUMENT = {
   attestation: "Attestation",
   convocation: "Convocation",
   emargement: "Émargement",
-  fiche_session: "Fiche récapitulative de session",
+  fiche_recapitulative: "Fiche récapitulative",
   convention: "Convention",
   compte_rendu: "Compte rendu",
   evaluation: "Évaluation",
   bilan: "Bilan",
+  programme: "Programme",
+  scenario_pedagogique: "Scénario pédagogique",
+  questionnaire: "Questionnaire",
   autre: "Autre",
 };
 export const MODES_GENERATION = {

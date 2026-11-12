@@ -8,6 +8,7 @@ import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
 import { MARQUEURS } from "../services/marqueurs.js";
+import { CHAMPS_MODIFIABLES, MODES_GENERATION, TYPES_DOCUMENT, validerChamps, verifierCoherence } from "../services/modelesBibliotheque.js";
 import { etatJeton, getDrive } from "../services/google.js";
 import { analyserModeleDrive } from "../services/diagnosticModele.js";
 import { parseIdPositif } from "../services/ids.js";
@@ -1448,79 +1449,178 @@ export function extraireFileId(saisie) {
   return /^[A-Za-z0-9_-]{10,}$/.test(t) ? t : null;
 }
 
-router.get("/modeles", requireAuth, wrap(async (req, res) => {
-  const portee = req.query.portee;
-  const params = [];
-  let filtre = "m.actif";
-  if (portee && PORTEES.includes(portee)) { params.push(portee); filtre += ` AND m.portee = $${params.length}`; }
-  const { rows } = await query(
-    `SELECT m.*,
-            COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero) ORDER BY i.numero)
+// Bibliothèque de modèles : liste filtrable, création, modification, retrait et réactivation.
+// Règles métier dans services/modelesBibliotheque.js ; la portée et le fichier Drive sont
+// validés ici (fichier unique par couple fichier × portée).
+const COLONNES_MODELE = `m.*, COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero) ORDER BY i.numero)
                       FROM modele_indicateurs mi JOIN indicateurs i ON i.id = mi.indicateur_id
-                      WHERE mi.modele_id = m.id), '[]'::json) AS indicateurs
-     FROM modeles_documents m WHERE ${filtre} ORDER BY m.portee, m.nom`,
+                      WHERE mi.modele_id = m.id), '[]'::json) AS indicateurs`;
+
+// Rattache des indicateurs du référentiel actif à un modèle. Renvoie une erreur si l'un est inconnu.
+async function rattacherIndicateurs(cx, modeleId, numeros) {
+  const { rows: trouves } = await cx.query(
+    `SELECT i.id, i.numero FROM indicateurs i
+     JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+     WHERE i.numero = ANY($1::int[])`,
+    [numeros]
+  );
+  if (trouves.length !== numeros.length) {
+    const manquants = numeros.filter((n) => !trouves.some((t) => t.numero === n));
+    return { erreur: `Indicateur(s) inconnu(s) : ${manquants.join(", ")}.` };
+  }
+  for (const t of trouves) {
+    await cx.query("INSERT INTO modele_indicateurs (modele_id, indicateur_id) VALUES ($1,$2)", [modeleId, t.id]);
+  }
+  return { ok: true };
+}
+
+// Colonnes de modeles_documents correspondant aux champs validés (hors indicateurs et lien).
+const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation", "generation_multiple"];
+
+router.get("/modeles", requireAuth, wrap(async (req, res) => {
+  const filtres = [req.query.inactifs === "1" ? "NOT m.actif" : "m.actif"];
+  const params = [];
+  if (req.query.portee && PORTEES.includes(req.query.portee)) { params.push(req.query.portee); filtres.push(`m.portee = $${params.length}`); }
+  if (req.query.type_document && TYPES_DOCUMENT.includes(req.query.type_document)) { params.push(req.query.type_document); filtres.push(`m.type_document = $${params.length}`); }
+  if (req.query.mode_generation && MODES_GENERATION.includes(req.query.mode_generation)) { params.push(req.query.mode_generation); filtres.push(`m.mode_generation = $${params.length}`); }
+  const { rows } = await query(
+    `SELECT ${COLONNES_MODELE}
+     FROM modeles_documents m WHERE ${filtres.join(" AND ")} ORDER BY m.portee, m.nom`,
     params
   );
-  res.json({ modeles: rows, marqueurs: MARQUEURS, total: rows.length });
+  res.json({
+    modeles: rows, marqueurs: MARQUEURS, total: rows.length,
+    types_document: TYPES_DOCUMENT, modes_generation: MODES_GENERATION,
+  });
 }));
 
 router.post("/modeles", requireAdmin, wrap(async (req, res) => {
-  const { nom, lien, portee, description, indicateurs, drive_mime, generation_multiple } = req.body || {};
-  if (!nom?.trim()) return manque(res, "nom");
-  if (!PORTEES.includes(portee)) return res.status(400).json({ error: "Portée inconnue." });
-  const fileId = extraireFileId(lien);
+  const v = validerChamps(req.body, { complet: true });
+  if (v.erreur) return res.status(400).json({ error: v.erreur });
+  const fileId = extraireFileId(v.valeur.lien);
   if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
-  // DOC-10D : plusieurs documents indépendants pour une même session n'a de
-  // sens que pour une portée non liée à un stagiaire précis (chaque
-  // stagiaire a déjà SON document, régénérer le remplace délibérément).
-  if (generation_multiple === true && portee === "stagiaire") {
-    return res.status(400).json({ error: "Un modèle de portée « stagiaire » ne peut pas autoriser plusieurs documents par session." });
-  }
-  // Un numéro d'indicateur doit être un entier positif : une valeur
-  // illisible est refusée ici, jamais laissée à PostgreSQL (conversion 500).
-  const bruts = Array.isArray(indicateurs) ? indicateurs : [];
-  if (bruts.some((v) => !parseIdPositif(v))) {
-    return res.status(400).json({ error: "Indicateur(s) invalide(s) : numéro entier positif attendu." });
-  }
-  const numeros = bruts.map((v) => parseIdPositif(v));
-  if (!numeros.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
+  const modele = {
+    nom: v.valeur.nom, portee: v.valeur.portee, type_document: v.valeur.type_document,
+    mode_generation: v.valeur.mode_generation, condition_generation: v.valeur.condition_generation ?? null,
+    generation_multiple: v.valeur.generation_multiple === true, description: v.valeur.description ?? null,
+  };
+  const coherence = verifierCoherence(modele);
+  if (coherence.erreur) return res.status(400).json({ error: coherence.erreur });
 
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
-    const { rows: [modele] } = await cx.query(
-      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par, generation_multiple)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [nom.trim(), fileId, `https://drive.google.com/open?id=${fileId}`, drive_mime || null,
-       portee, description?.trim() || null, req.user.id, generation_multiple === true]
+    const { rows: [cree] } = await cx.query(
+      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par, generation_multiple,
+                                      type_document, mode_generation, condition_generation)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [modele.nom, fileId, `https://drive.google.com/open?id=${fileId}`, req.body.drive_mime || null,
+       modele.portee, modele.description, req.user.id, modele.generation_multiple,
+       modele.type_document, modele.mode_generation, modele.condition_generation]
     );
-    const { rows: trouves } = await cx.query(
-      `SELECT i.id, i.numero FROM indicateurs i
-       JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
-       WHERE i.numero = ANY($1::int[])`,
-      [numeros]
-    );
-    if (trouves.length !== numeros.length) {
+    const rattachement = await rattacherIndicateurs(cx, cree.id, v.valeur.indicateurs);
+    if (rattachement.erreur) {
       await cx.query("ROLLBACK");
-      const manquants = numeros.filter((n) => !trouves.some((t) => t.numero === n));
-      return res.status(400).json({ error: `Indicateur(s) inconnu(s) : ${manquants.join(", ")}.` });
-    }
-    for (const t of trouves) {
-      await cx.query("INSERT INTO modele_indicateurs (modele_id, indicateur_id) VALUES ($1,$2)", [modele.id, t.id]);
+      return res.status(400).json({ error: rattachement.erreur });
     }
     await cx.query("COMMIT");
-    res.status(201).json({ modele: { ...modele, indicateurs: trouves } });
+    const { rows: [complet] } = await query(`SELECT ${COLONNES_MODELE} FROM modeles_documents m WHERE m.id = $1`, [cree.id]);
+    res.status(201).json({ modele: complet });
   } catch (e) {
-    await cx.query("ROLLBACK");
+    await cx.query("ROLLBACK").catch(() => {});
     if (e.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré comme modèle pour cette portée." });
     throw e;
   } finally { cx.release(); }
 }));
 
+// Modification partielle. Une transmission absente reste inchangée ; une fusion complète est
+// vérifiée (cohérence du mode, de la condition et de la portée) avant toute écriture.
+router.patch("/modeles/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  const corps = req.body || {};
+  const inconnus = Object.keys(corps).filter((k) => !CHAMPS_MODIFIABLES.includes(k) && k !== "drive_mime");
+  if (inconnus.length) return res.status(400).json({ error: `Champ(s) non modifiable(s) : ${inconnus.join(", ")}.` });
+  const v = validerChamps(corps, { complet: false });
+  if (v.erreur) return res.status(400).json({ error: v.erreur });
+  if (!Object.keys(v.valeur).length) return res.status(400).json({ error: "Aucune modification transmise." });
+  let fileId = null;
+  if (v.valeur.lien !== undefined) {
+    fileId = extraireFileId(v.valeur.lien);
+    if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
+  }
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [actuel] } = await cx.query("SELECT * FROM modeles_documents WHERE id = $1 FOR UPDATE", [id]);
+    if (!actuel) {
+      await cx.query("ROLLBACK");
+      return res.status(404).json({ error: "Modèle introuvable." });
+    }
+    const fusion = { ...actuel };
+    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined) fusion[c] = v.valeur[c];
+    // Passer en mode non conditionnel retire la condition, sauf si elle est transmise explicitement.
+    if (v.valeur.mode_generation !== undefined && v.valeur.mode_generation !== "conditionnel" && v.valeur.condition_generation === undefined) {
+      fusion.condition_generation = null;
+    }
+    const coherence = verifierCoherence(fusion);
+    if (coherence.erreur) {
+      await cx.query("ROLLBACK");
+      return res.status(400).json({ error: coherence.erreur });
+    }
+    // Colonnes réellement modifiées : celles transmises, plus la condition effacée par le changement de mode.
+    const modifs = {};
+    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined) modifs[c] = fusion[c];
+    if (fusion.condition_generation !== actuel.condition_generation) modifs.condition_generation = fusion.condition_generation;
+    if (fileId) Object.assign(modifs, { drive_file_id: fileId, drive_url: `https://drive.google.com/open?id=${fileId}`, drive_mime: corps.drive_mime || null });
+    const colonnes = Object.keys(modifs);
+    if (colonnes.length) {
+      const affectation = colonnes.map((c, i) => `${c} = $${i + 2}`).join(", ");
+      await cx.query(`UPDATE modeles_documents SET ${affectation}, updated_at = now() WHERE id = $1`, [id, ...colonnes.map((c) => modifs[c])]);
+    }
+    if (v.valeur.indicateurs !== undefined) {
+      await cx.query("DELETE FROM modele_indicateurs WHERE modele_id = $1", [id]);
+      const rattachement = await rattacherIndicateurs(cx, id, v.valeur.indicateurs);
+      if (rattachement.erreur) {
+        await cx.query("ROLLBACK");
+        return res.status(400).json({ error: rattachement.erreur });
+      }
+    }
+    await cx.query("COMMIT");
+    const { rows: [complet] } = await query(`SELECT ${COLONNES_MODELE} FROM modeles_documents m WHERE m.id = $1`, [id]);
+    res.json({ ok: true, modele: complet });
+  } catch (e) {
+    await cx.query("ROLLBACK").catch(() => {});
+    if (e.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré comme modèle pour cette portée." });
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// Réactivation d'un modèle désactivé. Refusée si un autre modèle actif occupe le même couple fichier × portée.
+router.post("/modeles/:id/reactiver", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  try {
+    const { rows: [m] } = await query(
+      "UPDATE modeles_documents SET actif = true, updated_at = now() WHERE id = $1 AND NOT actif RETURNING id, nom, portee", [id]
+    );
+    if (m) return res.json({ ok: true, modele: m });
+    const { rowCount } = await query("SELECT 1 FROM modeles_documents WHERE id = $1", [id]);
+    if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
+    return res.status(409).json({ error: "Ce modèle est déjà actif.", code: "modele_deja_actif" });
+  } catch (e) {
+    if (e.code === "23505") {
+      return res.status(409).json({ error: "Un autre modèle actif existe déjà pour ce fichier et cette portée.", code: "modele_conflit" });
+    }
+    throw e;
+  }
+}));
+
 router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
-  const { rowCount } = await query("UPDATE modeles_documents SET actif = false WHERE id = $1", [id]);
+  const { rowCount } = await query("UPDATE modeles_documents SET actif = false, updated_at = now() WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
   res.json({ ok: true });
 }));

@@ -25,6 +25,7 @@ import { VeilleFiche } from "./veille/VeilleFiche.jsx";
 import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
 import { DocumentsListe } from "./documents/DocumentsListe.jsx";
 import { DocumentFiche } from "./documents/DocumentFiche.jsx";
+import { InventaireDrivePage } from "./parametres/InventaireDrive.jsx";
 import { ActionsListe } from "./qualite/ActionsListe.jsx";
 import { ActionFiche } from "./qualite/ActionFiche.jsx";
 import { SignalementsListe } from "./qualite/SignalementsListe.jsx";
@@ -211,6 +212,7 @@ export default function App() {
         <Route path="prescripteurs" element={admin(<PrescripteursPage />)} />
         <Route path="versions" element={admin(<VersionsPage onChange={auChangement} />)} />
         <Route path="parametres/google" element={admin(<GoogleDrivePage />)} />
+        <Route path="parametres/inventaire-drive" element={admin(<InventaireDrivePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />
       </Route>

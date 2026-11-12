@@ -170,7 +170,7 @@ test("PATCH : conflit de fichier et de portée renvoie 409", async () => {
   await api("POST", "/api/modeles", MODELE(10, { portee: "groupe" }), A());
   const conflit = await api("PATCH", `/api/modeles/${a.corps.modele.id}`, { lien: FICHIER(10) }, A());
   assert.equal(conflit.statut, 409);
-  assert.match(conflit.corps.error, /déjà enregistré/);
+  assert.match(conflit.corps.error, /actif existe déjà/);
 });
 
 test("désactivation, liste des inactifs, modification puis réactivation", async () => {
@@ -197,11 +197,14 @@ test("désactivation, liste des inactifs, modification puis réactivation", asyn
   assert.equal((await api("POST", `/api/modeles/${id}/reactiver`, undefined, C())).statut, 403);
 });
 
-test("un modèle désactivé garde son couple fichier × portée : pas de doublon à la création ni à la réactivation", async () => {
+test("plusieurs modèles désactivés peuvent partager un couple fichier × portée ; un seul reste actif", async () => {
   const ancien = await api("POST", "/api/modeles", MODELE(12, { portee: "formation" }), A());
   await api("DELETE", `/api/modeles/${ancien.corps.modele.id}`, undefined, A());
-  const doublon = await api("POST", "/api/modeles", MODELE(12, { portee: "formation" }), A());
-  assert.equal(doublon.statut, 409, "création refusée tant que l'ancien existe, même désactivé");
+  const nouveau = await api("POST", "/api/modeles", MODELE(12, { portee: "formation" }), A());
+  assert.equal(nouveau.statut, 201, "un autre modèle peut reprendre le couple tant que l'ancien est désactivé");
   const reactive = await api("POST", `/api/modeles/${ancien.corps.modele.id}/reactiver`, undefined, A());
-  assert.equal(reactive.statut, 200, "la réactivation ne crée jamais de doublon");
+  assert.equal(reactive.statut, 409, "réactivation refusée : un autre modèle actif occupe le couple");
+  assert.equal(reactive.corps.code, "modele_conflit");
+  await api("DELETE", `/api/modeles/${nouveau.corps.modele.id}`, undefined, A());
+  assert.equal((await api("POST", `/api/modeles/${ancien.corps.modele.id}/reactiver`, undefined, A())).statut, 200, "réactivation possible une fois l'autre désactivé");
 });

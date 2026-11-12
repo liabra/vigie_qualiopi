@@ -2,7 +2,10 @@
 // Le serveur reste juge : ces règles sont appliquées à la création et à la modification.
 
 export const PORTEES = ["formation", "session", "groupe", "stagiaire"];
-export const TYPES_DOCUMENT = ["attestation", "convocation", "emargement", "fiche_session", "convention", "compte_rendu", "evaluation", "bilan", "autre"];
+export const TYPES_DOCUMENT = [
+  "attestation", "convocation", "emargement", "fiche_recapitulative", "convention", "compte_rendu",
+  "evaluation", "bilan", "programme", "scenario_pedagogique", "questionnaire", "autre",
+];
 export const MODES_GENERATION = ["manuel", "automatique", "conditionnel"];
 
 const LONGUEUR_NOM = 200;

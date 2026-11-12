@@ -26,6 +26,10 @@ test("type de document obligatoire à la création et contrôlé en liste fermé
   for (const t of TYPES_DOCUMENT) assert.equal(validerChamps({ ...COMPLET, type_document: t }, { complet: true }).erreur, undefined, t);
 });
 
+test("typologie : 12 catégories exactement", () => {
+  assert.deepEqual(TYPES_DOCUMENT, ["attestation", "convocation", "emargement", "fiche_recapitulative", "convention", "compte_rendu", "evaluation", "bilan", "programme", "scenario_pedagogique", "questionnaire", "autre"]);
+});
+
 test("mode de génération obligatoire, trois valeurs seulement", () => {
   const sans = { ...COMPLET }; delete sans.mode_generation;
   assert.match(validerChamps(sans, { complet: true }).erreur, /Mode de génération obligatoire/);

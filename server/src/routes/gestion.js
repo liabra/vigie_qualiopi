@@ -1528,7 +1528,7 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
     res.status(201).json({ modele: complet });
   } catch (e) {
     await cx.query("ROLLBACK").catch(() => {});
-    if (e.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré comme modèle pour cette portée." });
+    if (e.code === "23505") return res.status(409).json({ error: "Un modèle actif existe déjà pour ce fichier et cette portée." });
     throw e;
   } finally { cx.release(); }
 }));
@@ -1592,7 +1592,7 @@ router.patch("/modeles/:id", requireAdmin, wrap(async (req, res) => {
     res.json({ ok: true, modele: complet });
   } catch (e) {
     await cx.query("ROLLBACK").catch(() => {});
-    if (e.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré comme modèle pour cette portée." });
+    if (e.code === "23505") return res.status(409).json({ error: "Un modèle actif existe déjà pour ce fichier et cette portée." });
     throw e;
   } finally { cx.release(); }
 }));

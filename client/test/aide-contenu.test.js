@@ -8,6 +8,8 @@ test("aideDe : contenu adapté à la route, préfixe le plus long gagnant", () =
   assert.equal(aideDe("/sessions/12").titre, "Détail d'une session");
   assert.equal(aideDe("/sessions/12/stagiaires").titre, "Détail d'une session");
   assert.equal(aideDe("/preuves").titre, "Preuves");
+  assert.equal(aideDe("/documents").titre, "Documents");
+  assert.equal(aideDe("/documents/42").titre, "Documents");
   assert.equal(aideDe("/veille").titre, "Veille");
   assert.equal(aideDe("/audits").titre, "Audits");
   assert.equal(aideDe("/indicateurs").titre, "Indicateurs");

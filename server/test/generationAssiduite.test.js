@@ -9,6 +9,7 @@ import { setPoolFactory } from "../src/db.js";
 import { genererDocuments } from "../src/services/documents.js";
 import { DRIVE_FILE } from "../src/services/google.js";
 import { MARQUEURS, RENDUS_HISTORIQUES } from "../src/services/marqueurs.js";
+import { repondreDocuments } from "./helpers/documentsMock.js";
 
 const DOC = "application/vnd.google-apps.document";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
@@ -56,6 +57,7 @@ function baseSimulee() {
     if (sql.startsWith("INSERT INTO documents_generes")) return { rows: [] };
     // Q4-1 : intervenants rattachés — aucun (cas historique, rendu inchangé).
     if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: [] };
+    const documents = repondreDocuments(sql, params); if (documents) return documents;
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = { query: executer, connect: async () => ({ query: executer, release: () => {} }) };

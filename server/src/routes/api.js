@@ -9,6 +9,13 @@ import { champsAudit } from "../services/audits.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
 import { preuveVisibleContributeur } from "../services/confidentialite.js";
+import {
+  attacherDocument, changerStatut, clauseDocumentsDePreuve, clauseFichiersVisibles, detacherDocument,
+  detacherTousLesDocuments, rattacherFichier, verrouillerGraphe,
+} from "../services/documentsPreuves.js";
+import { precontroleFichier } from "../services/controleDrive.js";
+import { requeteRechercheParNom } from "../services/driveRecherche.js";
+import { repondreErreurDocument } from "./documentsErreurs.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -270,8 +277,9 @@ router.get("/preuves", requireAuth, wrap(async (req, res) => {
                         'id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url,
                         'nom', f.drive_nom, 'mime', f.drive_mime, 'source', f.source)
                       ORDER BY f.ajoute_le, f.id)
-               FROM preuve_fichiers f WHERE f.preuve_id = p.id),
-              '[]'::json) AS fichiers
+               FROM preuve_fichiers f WHERE f.preuve_id = p.id${clauseFichiersVisibles(req.user.role === "admin", "f")}),
+              '[]'::json) AS fichiers,
+            ${clauseDocumentsDePreuve(req.user.role === "admin", "p")}
      FROM preuves_enrichies p
      JOIN indicateurs i ON i.id = p.indicateur_id
      JOIN criteres c ON c.id = i.critere_id
@@ -305,8 +313,9 @@ router.get("/preuves/:id", requireAuth, wrap(async (req, res) => {
                         'id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url,
                         'nom', f.drive_nom, 'mime', f.drive_mime, 'source', f.source)
                       ORDER BY f.ajoute_le, f.id)
-               FROM preuve_fichiers f WHERE f.preuve_id = p.id),
-              '[]'::json) AS fichiers
+               FROM preuve_fichiers f WHERE f.preuve_id = p.id${clauseFichiersVisibles(req.user.role === "admin", "f")}),
+              '[]'::json) AS fichiers,
+            ${clauseDocumentsDePreuve(req.user.role === "admin", "p")}
      FROM preuves_enrichies p
      JOIN indicateurs i ON i.id = p.indicateur_id
      JOIN criteres c ON c.id = i.critere_id
@@ -349,7 +358,7 @@ router.get("/sessions", requireAuth, wrap(async (req, res) => {
 const MODES = ["unique", "multiple", "par_stagiaire"];
 const lienDrive = (fileId) => `https://drive.google.com/file/d/${fileId}/view`;
 const TYPES_ALERTE = ["revision_periodique", "echeance_fixe", "rupture_reglementaire"];
-const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, fichiers_attendus, incomplet,
+export const ETAT_APRES = `SELECT statut, statut_effectif, mode_fichiers, nb_fichiers, fichiers_attendus, incomplet,
                            type_alerte, periodicite_mois, date_echeance, date_derniere_revision, alerte_statut
                     FROM preuves_enrichies WHERE id = $1`;
 
@@ -555,7 +564,9 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
 
   const client = await getPool().connect();
   try {
+    const controleAvant = drive_file_id ? await precontroleFichier(drive_file_id) : null;
     await client.query("BEGIN");
+    await verrouillerGraphe(client);
     // Seuls les indicateurs du référentiel ACTIF sont acceptés : une preuve
     // rattachée à une version inexploitée n'apparaîtrait nulle part.
     const { rows: trouves } = await client.query(
@@ -589,15 +600,17 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
       // l'unique chose interdite est de rattacher deux fois le même fichier
       // à la MÊME preuve.
       if (drive_file_id) {
-        await client.query(
-          `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
-           VALUES ($1, $2, $3, $4, $5, 'manuel', $6)
-           ON CONFLICT (preuve_id, drive_file_id) DO NOTHING`,
-          [preuve.id, String(drive_file_id).trim(),
-           drive_url || infosFichier?.webViewLink || lienDrive(drive_file_id),
-           drive_nom || infosFichier?.name || null,
-           drive_mime || infosFichier?.mimeType || null, req.user.id]
-        );
+        await rattacherFichier(client, {
+          preuveId: preuve.id,
+          fichier: {
+            drive_file_id,
+            drive_url: drive_url || infosFichier?.webViewLink || lienDrive(String(drive_file_id).trim()),
+            drive_nom: drive_nom || infosFichier?.name || null,
+            drive_mime: drive_mime || infosFichier?.mimeType || null,
+          },
+          utilisateurId: req.user.id,
+          controle: controleAvant,
+        });
       }
       creees.push({ id: preuve.id, indicateur: ind.numero });
     }
@@ -605,6 +618,7 @@ router.post("/preuves", requireAdmin, wrap(async (req, res) => {
     res.status(201).json({ preuves: creees, total: creees.length });
   } catch (e) {
     await client.query("ROLLBACK");
+    if (repondreErreurDocument(res, e)) return;
     if (e.code === "23503") return res.status(400).json({ error: "Indicateur introuvable." });
     if (e.code === "23505") return res.status(409).json({ error: "Une preuve identique existe déjà pour cet indicateur." });
     throw e;
@@ -646,15 +660,6 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const sets = [];
   const params = [id];
   const set = (col, val) => { params.push(val); sets.push(`${col} = $${params.length}`); };
-  if (statut !== undefined) {
-    set("statut", statut);
-  } else if (confirmer) {
-    // Confirmer une preuve « à risque » la fait passer à « maîtrisé ». Si
-    // l'admin a lui-même choisi un statut dans ce même appel, la branche
-    // du dessus s'applique à la place ; un changement manuel ultérieur est
-    // un appel séparé et l'emporte toujours de la même façon.
-    sets.push("statut = CASE WHEN statut = 'a_risque' THEN 'maitrise' ELSE statut END");
-  }
   if (titre !== undefined) set("titre", titre.trim());
   if (description !== undefined) set("description", description?.trim() || null);
   if (indicateur_id !== undefined) set("indicateur_id", parseIdPositif(indicateur_id));
@@ -678,13 +683,17 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
     sets.push("a_confirmer = false", "motif_confirmation = NULL", "validee_le = now()");
     params.push(req.user.id); sets.push(`validee_par = $${params.length}`);
   }
-  if (!sets.length && drive_file_id === undefined) return res.status(400).json({ error: "Rien à modifier." });
+  if (!sets.length && drive_file_id === undefined && statut === undefined && !confirmer) {
+    return res.status(400).json({ error: "Rien à modifier." });
+  }
 
   // Plusieurs écritures (preuve + pièces jointes) : tout ou rien.
   const client = await getPool().connect();
   try {
+    const controleAvant = drive_file_id ? await precontroleFichier(drive_file_id) : null;
     await client.query("BEGIN");
-    const { rows: [avant] } = await client.query("SELECT mode_fichiers FROM preuves WHERE id = $1 FOR UPDATE", [id]);
+    await verrouillerGraphe(client);
+    const { rows: [avant] } = await client.query("SELECT mode_fichiers FROM preuves WHERE id = $1", [id]);
     if (!avant) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Preuve introuvable." }); }
     // Changer d'indicateur impose d'en choisir un du référentiel ACTIF :
     // une preuve rattachée à une version inexploitée disparaîtrait des
@@ -704,27 +713,45 @@ router.patch("/preuves/:id", requireAdmin, wrap(async (req, res) => {
 
     if (drive_file_id !== undefined) {
       const mode = mode_fichiers ?? avant.mode_fichiers;
-      // En mode « un seul fichier », le nouveau remplace l'ancien — c'est
-      // le comportement d'origine. Dans les autres modes, il s'ajoute.
-      if (mode === "unique" || !drive_file_id) {
-        await client.query("DELETE FROM preuve_fichiers WHERE preuve_id = $1", [id]);
-      }
-      if (drive_file_id) {
-        await client.query(
-          `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
-           VALUES ($1, $2, $3, $4, $5, 'manuel', $6)
-           ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
-             drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime`,
-          [id, drive_file_id, drive_url || lienDrive(drive_file_id), drive_nom || null, drive_mime || null, req.user.id]
+      const fichierCible = drive_file_id ? String(drive_file_id).trim() : null;
+      // Un seul fichier en mode « unique » : le nouveau remplace l'ancien.
+      // Les autres documents sont détachés (jamais supprimés), sauf celui déjà visé.
+      let cible = null;
+      if (fichierCible) {
+        const { rows: [c] } = await client.query(
+          "SELECT document_id FROM document_versions WHERE drive_file_id = $1 AND remplacee_le IS NULL", [fichierCible]
         );
+        cible = c?.document_id ?? null;
+      }
+      if (mode === "unique" || !drive_file_id) {
+        const { rows: liens } = await client.query("SELECT document_id FROM preuve_documents WHERE preuve_id = $1", [id]);
+        for (const l of liens) {
+          if (l.document_id !== cible) await detacherDocument(client, { preuveId: id, documentId: l.document_id });
+        }
+      }
+      if (fichierCible) {
+        await rattacherFichier(client, {
+          preuveId: id,
+          fichier: {
+            drive_file_id: fichierCible,
+            drive_url: drive_url || lienDrive(fichierCible),
+            drive_nom: drive_nom || null,
+            drive_mime: drive_mime || null,
+          },
+          utilisateurId: req.user.id,
+          controle: controleAvant,
+        });
       }
     }
+    if (statut !== undefined) await changerStatut(client, id, "admin_statut", { statut });
+    else if (confirmer) await changerStatut(client, id, "admin_confirmer");
     if (sets.length) await client.query(`UPDATE preuves SET ${sets.join(", ")} WHERE id = $1`, params);
     const { rows: [apres] } = await client.query(ETAT_APRES, [id]);
     await client.query("COMMIT");
     res.json({ ok: true, ...apres });
   } catch (e) {
     await client.query("ROLLBACK");
+    if (repondreErreurDocument(res, e)) return;
     // 23505 : un import a déjà créé une preuve de ce titre pour cet
     // indicateur (index partiel des preuves « import_drive »). On le dit
     // plutôt que de renvoyer un 500.
@@ -761,30 +788,72 @@ router.post("/preuves/:id/fichiers", requireAdmin, wrap(async (req, res) => {
       error: "Cette preuve n'accepte qu'un seul fichier. Passez-la en « plusieurs fichiers » ou « un par stagiaire » d'abord.",
     });
   }
-  const { rows: [fichier] } = await query(
-    `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, stagiaire_id, ajoute_par)
-     VALUES ($1, $2, $3, $4, $5, 'manuel', $6, $7)
-     ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
-       drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime
-     RETURNING id, drive_file_id, drive_url AS url, drive_nom AS nom, drive_mime AS mime, source`,
-    [id, drive_file_id, drive_url || lienDrive(drive_file_id), drive_nom || null, drive_mime || null,
-     stagiaire, req.user.id]
-  );
-  const { rows: [apres] } = await query(ETAT_APRES, [id]);
-  res.json({ ok: true, fichier, ...apres });
+  const client = await getPool().connect();
+  try {
+    const controleAvant = await precontroleFichier(String(drive_file_id).trim());
+    await client.query("BEGIN");
+    await verrouillerGraphe(client);
+    await rattacherFichier(client, {
+      preuveId: id,
+      fichier: {
+        drive_file_id,
+        drive_url: drive_url || lienDrive(String(drive_file_id).trim()),
+        drive_nom: drive_nom || null,
+        drive_mime: drive_mime || null,
+      },
+      origine: "manuel",
+      stagiaireId: stagiaire,
+      utilisateurId: req.user.id,
+      controle: controleAvant,
+    });
+    const { rows: [fichier] } = await client.query(
+      `SELECT id, drive_file_id, drive_url AS url, drive_nom AS nom, drive_mime AS mime, source
+         FROM preuve_fichiers WHERE preuve_id = $1 AND drive_file_id = $2`,
+      [id, String(drive_file_id).trim()]
+    );
+    const { rows: [apres] } = await client.query(ETAT_APRES, [id]);
+    await client.query("COMMIT");
+    res.json({ ok: true, fichier, ...apres });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (repondreErreurDocument(res, e)) return;
+    throw e;
+  } finally {
+    client.release();
+  }
 }));
 
 router.delete("/preuves/:id/fichiers/:fichierId", requireAdmin, wrap(async (req, res) => {
   const id = parseIdPositif(req.params.id);
   const fichierId = parseIdPositif(req.params.fichierId);
   if (!id || !fichierId) return res.status(400).json({ error: "Identifiant de fichier invalide." });
-  const { rowCount } = await query(
-    "DELETE FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2",
-    [fichierId, id]
-  );
-  if (!rowCount) return res.status(404).json({ error: "Fichier introuvable sur cette preuve." });
-  const { rows: [apres] } = await query(ETAT_APRES, [id]);
-  res.json({ ok: true, ...apres });
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await verrouillerGraphe(client);
+    const { rows: [f] } = await client.query(
+      "SELECT drive_file_id FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2", [fichierId, id]
+    );
+    if (!f) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Fichier introuvable sur cette preuve." });
+    }
+    const { rows: [d] } = await client.query("SELECT id FROM documents WHERE drive_file_id = $1", [f.drive_file_id]);
+    if (!d) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Fichier non rattaché à un document : réconciliation nécessaire.", code: "miroir_incoherent" });
+    }
+    await detacherDocument(client, { preuveId: id, documentId: d.id });
+    const { rows: [apres] } = await client.query(ETAT_APRES, [id]);
+    await client.query("COMMIT");
+    res.json({ ok: true, ...apres });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (repondreErreurDocument(res, e)) return;
+    throw e;
+  } finally {
+    client.release();
+  }
 }));
 
 // Changement de statut groupé : une sélection de preuves, un seul appel.
@@ -795,16 +864,47 @@ router.patch("/preuves", requireAdmin, wrap(async (req, res) => {
   if (ids.some((v) => !parseIdPositif(v))) return res.status(400).json({ error: "Identifiants de preuve invalides." });
   const propres = [...new Set(ids.map((v) => parseIdPositif(v)))];
   if (propres.length > 500) return res.status(400).json({ error: "500 preuves au maximum par changement groupé." });
-  const { rowCount } = await query("UPDATE preuves SET statut = $1 WHERE id = ANY($2::int[])", [statut, propres]);
-  res.json({ ok: true, misAJour: rowCount });
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await verrouillerGraphe(client);
+    const { rows: existantes } = await client.query(
+      "SELECT id FROM preuves WHERE id = ANY($1::int[]) ORDER BY id", [propres]
+    );
+    for (const { id } of existantes) {
+      await changerStatut(client, id, "bulk_admin", { statut });
+    }
+    await client.query("COMMIT");
+    res.json({ ok: true, misAJour: existantes.length });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (repondreErreurDocument(res, e)) return;
+    throw e;
+  } finally {
+    client.release();
+  }
 }));
 
 router.delete("/preuves/:id", requireAdmin, wrap(async (req, res) => {
   const id = parseIdPositif(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de preuve invalide." });
-  const { rowCount } = await query("DELETE FROM preuves WHERE id = $1", [id]);
-  if (!rowCount) return res.status(404).json({ error: "Preuve introuvable." });
-  res.json({ ok: true });
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await verrouillerGraphe(client);
+    const { rowCount } = await client.query("DELETE FROM preuves WHERE id = $1", [id]);
+    if (!rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Preuve introuvable." });
+    }
+    await client.query("COMMIT");
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }));
 
 // ── Import du classeur ───────────────────────────────────────
@@ -842,7 +942,7 @@ router.get("/drive/recherche", requireAdmin, wrap(async (req, res) => {
   const d = await getDrive();
   if (!d) return res.status(400).json({ error: "Drive non connecté." });
   const { data } = await d.drive.files.list({
-    q: `name contains '${q.replace(/'/g, "\\'")}' and trashed = false`,
+    q: requeteRechercheParNom(q),
     fields: "files(id,name,mimeType,webViewLink,modifiedTime)", pageSize: 20, orderBy: "modifiedTime desc",
     supportsAllDrives: true, includeItemsFromAllDrives: true,
   });
@@ -945,7 +1045,7 @@ router.get("/veille/:id", requireAuth, wrap(async (req, res) => {
   const { rows: preuves } = await query(
     `SELECT p.id, p.titre, p.statut, p.mode_fichiers, p.session_id, p.indicateur_id, p.veille_id,
        COALESCE((SELECT json_agg(json_build_object('id', f.id, 'drive_file_id', f.drive_file_id, 'url', f.drive_url, 'nom', f.drive_nom, 'mime', f.drive_mime) ORDER BY f.id)
-                 FROM preuve_fichiers f WHERE f.preuve_id = p.id), '[]'::json) AS fichiers
+                 FROM preuve_fichiers f WHERE f.preuve_id = p.id${clauseFichiersVisibles(req.user.role === "admin", "f")}), '[]'::json) AS fichiers
      FROM preuves p WHERE p.veille_id = $1${req.user.role !== "admin" ? ` AND ${preuveVisibleContributeur("p")}` : ""} ORDER BY p.id`,
     [id]
   );

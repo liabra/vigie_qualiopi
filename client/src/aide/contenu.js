@@ -94,6 +94,50 @@ const AIDE = {
           "L'import du classeur permet de rapprocher automatiquement les preuves du classeur d'audit.",
         ],
       },
+      {
+        titre: "Documents partagés",
+        lignes: [
+          "Chaque preuve affiche ses documents. Un nom de document mène à sa fiche (versions, preuves liées, formations) ; le lien « Drive » ouvre le fichier.",
+          "« À revalider » signale qu'un document a été remplacé depuis sa dernière revue : la preuve doit être revalidée.",
+        ],
+      },
+    ],
+  },
+  documents: {
+    titre: "Documents",
+    sections: [
+      {
+        titre: "La liste",
+        lignes: [
+          "Vous voyez les documents rattachés à vos preuves accessibles. Les documents confidentiels, ou partagés avec une preuve confidentielle, ne sont jamais affichés pour un contributeur.",
+          "La recherche filtre sur le nom du document.",
+        ],
+      },
+      {
+        titre: "La fiche d'un document",
+        lignes: [
+          "Preuves liées : chaque preuve qui utilise le document, avec son statut et son état de revalidation.",
+          "Formations : les formations auxquelles le document est rattaché. Un rattachement doit être validé par un administrateur.",
+          "Versions (administrateur) : la version courante est identifiée. Les anciennes versions restent consultables.",
+        ],
+      },
+      {
+        titre: "Actions de l'administrateur",
+        lignes: [
+          "Rattacher ou détacher une preuve ; détacher retire seulement le lien, jamais le document.",
+          "Remplacer par un autre fichier du Drive : il devient la nouvelle version courante, et les preuves liées doivent être revalidées.",
+          "Archiver un document le rend non rattachable ni remplaçable ; il se restaure à tout moment. L'archivage est refusé tant qu'une preuve y est liée.",
+        ],
+      },
+      {
+        titre: "Corbeille des anciennes versions",
+        lignes: [
+          "Une ancienne version peut être mise à la corbeille Drive, après confirmation. Aucune autre version n'est touchée, et rien n'est supprimé définitivement.",
+          "Tant que la mise à la corbeille n'est pas terminée, la version est réservée : aucun rattachement ni remplacement ne peut l'utiliser.",
+          "Une opération « en attente » est reprise automatiquement, au démarrage puis toutes les 15 minutes. Une opération « bloquée » attend une décision : son motif s'affiche (fichier introuvable, fichier encore utilisé, version devenue courante, échecs répétés).",
+          "Pour une opération bloquée, l'administrateur la relance une fois le problème réglé, ou l'abandonne avec un motif écrit. L'abandon conserve l'historique et lève la réservation ; le fichier reste intact sur Drive.",
+        ],
+      },
     ],
   },
   veille: {
@@ -295,6 +339,7 @@ const CLES = [
   ["/sessions", "sessions"],
   ["/indicateurs", "indicateurs"],
   ["/preuves", "preuves"],
+  ["/documents", "documents"],
   ["/veille", "veille"],
   ["/audits", "audits"],
   ["/tableau-de-bord-qualite", "tableauBordQualite"],
@@ -345,6 +390,14 @@ export const RUBRIQUES_GUIDE = [
     sections: [
       { titre: "Créer et corriger", lignes: ["Une session se crée à partir d'une formation (menu Sessions → Nouvelle session). L'admin peut ensuite corriger la référence, les dates, le lieu, le formateur, la durée, l'horaire et le statut."] },
       { titre: "Cycle de vie", lignes: ["L'archivage met une session en lecture seule, sans rien supprimer ; la restauration la rend de nouveau modifiable. La suppression définitive reste exceptionnelle, réservée aux sessions vides."] },
+    ],
+  },
+  {
+    id: "documents", titre: "Documents partagés", admin: false,
+    sections: [
+      { titre: "Principe", lignes: ["Un document (fichier Drive) peut servir à plusieurs preuves et à plusieurs formations. Le menu Qualité → Documents liste ceux auxquels vous avez accès ; la fiche d'un document montre ses versions, ses preuves liées et ses formations."] },
+      { titre: "Versions et revalidation", lignes: ["Un remplacement crée une nouvelle version courante : les preuves qui l'utilisent sont signalées « À revalider » jusqu'à leur revalidation par un administrateur."] },
+      { titre: "Corbeille", lignes: ["La mise à la corbeille ne concerne que les anciennes versions, après confirmation. Les opérations en attente sont reprises automatiquement ; une opération bloquée exige une décision : relance une fois le problème réglé, ou abandon avec motif écrit (l'historique est conservé)."] },
     ],
   },
   {

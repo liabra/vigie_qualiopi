@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "./api.js";
 import { RechercheDrive } from "./RechercheDrive.jsx";
+import { lienDriveSur, messageErreur } from "./documents/format.js";
 import { Badge, Button, ConfirmDialog, Drawer, EmptyState } from "./ui/index.js";
 import { useTexteUrl } from "./ui/useTexteUrl.js";
 import { SOURCES, ALERTES, filtresActifs, filtrerPreuves, grouperParIndicateur } from "./preuves/format.js";
@@ -51,6 +52,11 @@ function Fichiers({ p, actions, admin, sessions }) {
   const multi = p.mode_fichiers !== "unique";
   const attendus = p.fichiers_attendus;
   const session = sessions.find((s) => s.id === p.session_id);
+  // Documents liés (couche documentaire). Un fichier legacy déjà représenté par un document
+  // n'est pas affiché deux fois.
+  const documents = p.documents || [];
+  const idsDocuments = new Set(documents.map((d) => d.drive_file_id));
+  const fichiersSeuls = (p.fichiers || []).filter((f) => !idsDocuments.has(f.drive_file_id));
 
   return (
     <div className="fichiers-preuve">
@@ -72,9 +78,27 @@ function Fichiers({ p, actions, admin, sessions }) {
         </div>
       )}
 
-      {p.fichiers.length > 0 ? (
+      {documents.length + fichiersSeuls.length > 0 ? (
         <ul className="liste-fichiers">
-          {p.fichiers.map((f) => (
+          {documents.map((d) => (
+            <li key={`doc-${d.id}`}>
+              <Link to={`/documents/${d.id}`}>{d.nom || `Document n°${d.id}`}</Link>
+              {lienDriveSur(d.url) && <a className="muted small" href={lienDriveSur(d.url)} target="_blank" rel="noreferrer">Drive</a>}
+              {d.a_revalider && <span className="pill warn">À revalider</span>}
+              {admin && d.a_revalider && (
+                <button className="btn petit" onClick={() => actions.revaliderDocument(p, d)} aria-label={`Revalider ${d.nom || "ce document"}`}>
+                  revalider
+                </button>
+              )}
+              {admin && (
+                <button className="btn petit danger" onClick={() => actions.retirerDocument(p, d)} aria-label={`Retirer ${d.nom || "ce document"}`}>
+                  retirer
+                </button>
+              )}
+            </li>
+          ))}
+          {/* Anciens enregistrements sans document : affichés tels quels, sans les dédoubler. */}
+          {fichiersSeuls.map((f) => (
             <li key={f.id}>
               <a href={f.url} target="_blank" rel="noreferrer">{f.nom || f.drive_file_id}</a>
               {admin && (
@@ -541,17 +565,31 @@ export default function Preuves({ admin, onChange }) {
       } catch (e) { setErr(e.message); }
       onChange?.();
     },
+    // Couche documentaire : le rattachement passe par la route document-preuve (même service central).
     async ajouterFichier(p, f) {
       try {
-        const r = await api(`/api/preuves/${p.id}/fichiers`, {
+        const r = await api(`/api/preuves/${p.id}/documents`, {
           method: "POST",
           body: JSON.stringify({ drive_file_id: f.id, drive_url: f.url, drive_nom: f.nom, drive_mime: f.mime }),
         });
-        majLocale(p, {
-          fichiers: [...(p.fichiers || []).filter((x) => x.drive_file_id !== r.fichier.drive_file_id), r.fichier],
-          ...compteurs(r),
-        });
-      } catch (e) { setErr(e.message); }
+        majLocale(p, compteurs(r));
+        await rafraichirLigne(p);
+      } catch (e) { setErr(messageErreur(e)); }
+      onChange?.();
+    },
+    async retirerDocument(p, document) {
+      majLocale(p, { documents: (p.documents || []).filter((x) => x.id !== document.id) });
+      try {
+        await api(`/api/preuves/${p.id}/documents/${document.id}`, { method: "DELETE" });
+      } catch (e) { setErr(messageErreur(e)); }
+      await rafraichirLigne(p);
+      onChange?.();
+    },
+    async revaliderDocument(p, document) {
+      try {
+        await api(`/api/preuves/${p.id}/documents/${document.id}/revalider`, { method: "POST" });
+      } catch (e) { setErr(messageErreur(e)); }
+      await rafraichirLigne(p);
       onChange?.();
     },
     async remplacerFichier(p, f) {

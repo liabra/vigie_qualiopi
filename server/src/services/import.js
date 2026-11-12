@@ -11,6 +11,8 @@ import { getPool, query } from "../db.js";
 import { getDrive, chercherClasseurs, lireOnglet, appelGoogle, etatJeton, SHEETS_READONLY } from "./google.js";
 import { extrairePreuves, normaliser } from "./classeur.js";
 import { construireIndex, rapprocher } from "./driveIndex.js";
+import { changerStatut, synchroniserImport, verrouillerGraphe } from "./documentsPreuves.js";
+import { precontroleFichiers } from "./controleDrive.js";
 
 // Choisit le classeur de suivi parmi les candidats trouvés par nom.
 // Priorité au compte de l'organisme, puis au nom le plus proche des
@@ -109,9 +111,11 @@ export async function importerClasseur({ fichierId = null, onglet = null, apercu
   };
   if (apercu) return { ...resume, apercu: true, lignes: lignes.slice(0, 50) };
 
+  const { controle } = await precontroleFichiers(lignes.map((l) => l.drive_file_id).filter(Boolean));
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    await verrouillerGraphe(client);
     const { rows: [imp] } = await client.query(
       `INSERT INTO imports_drive (fichier_id, fichier_nom, fichier_url, onglet, entetes, colonnes, lignes_lues, lignes_ignorees, lance_par)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
@@ -126,7 +130,7 @@ export async function importerClasseur({ fichierId = null, onglet = null, apercu
            import_id, created_by)
          VALUES ($1,$2,$3,'import_drive',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (indicateur_id, md5(lower(titre))) WHERE source = 'import_drive' DO UPDATE SET
-           statut = EXCLUDED.statut, modele_nom = EXCLUDED.modele_nom, tache = EXCLUDED.tache,
+           modele_nom = EXCLUDED.modele_nom, tache = EXCLUDED.tache,
            etat_source = EXCLUDED.etat_source, occurrences = EXCLUDED.occurrences,
            lignes_source = EXCLUDED.lignes_source, import_id = EXCLUDED.import_id,
            -- un rattachement validé à la main n'est jamais écrasé par un réimport
@@ -148,20 +152,17 @@ export async function importerClasseur({ fichierId = null, onglet = null, apercu
       // fichiers ajoutés à la main ne sont jamais supprimés : on ne
       // remplace que ce qu'un import précédent avait posé.
       if (preuve && !preuve.validee_le) {
-        await client.query(
-          "DELETE FROM preuve_fichiers WHERE preuve_id = $1 AND source = 'import_drive'" +
-            (l.drive_file_id ? " AND drive_file_id <> $2" : ""),
-          l.drive_file_id ? [preuve.id, l.drive_file_id] : [preuve.id]
-        );
-        if (l.drive_file_id) {
-          await client.query(
-            `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, ajoute_par)
-             VALUES ($1, $2, $3, $4, $5, 'import_drive', $6)
-             ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET
-               drive_url = EXCLUDED.drive_url, drive_nom = EXCLUDED.drive_nom, drive_mime = EXCLUDED.drive_mime`,
-            [preuve.id, l.drive_file_id, l.drive_url, l.drive_nom, l.drive_mime, utilisateurId]
-          );
-        }
+        await synchroniserImport(client, {
+          preuveId: preuve.id,
+          fichiers: l.drive_file_id
+            ? [{ drive_file_id: l.drive_file_id, drive_url: l.drive_url, drive_nom: l.drive_nom, drive_mime: l.drive_mime }]
+            : [],
+          statutImport: l.statut,
+          utilisateurId,
+          controle,
+        });
+      } else if (preuve) {
+        await changerStatut(client, preuve.id, "import", { statutImport: l.statut });
       }
     }
     await client.query(

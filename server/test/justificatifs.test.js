@@ -202,7 +202,13 @@ test("CONFIDENTIALITÉ : accès direct par identifiant, liste, recherche, sessio
 test("CONFIDENTIALITÉ : document généré d'une session devenu justificatif — masqué au contributeur dans le détail de session", async () => {
   const { rows: [m] } = await pool.query("INSERT INTO modeles_documents (nom, drive_file_id, portee) VALUES ('Attestation', 'DRV-MODELE', 'session') RETURNING id");
   const pGen = await preuve("Attestation-generee-fictive", null, { session: F.session });
-  await pool.query("INSERT INTO documents_generes (modele_id, session_id, drive_file_id, drive_url, nom, preuve_id) VALUES ($1,$2,'DRV-GEN','https://drive.google.com/file/d/DRV-GEN/view','Attestation-generee-fictive',$3)", [m.id, F.session, pGen]);
+  // Document généré réel : document + version 1 + lien vers la preuve, puis copie de génération.
+  const { rows: [doc] } = await pool.query(
+    "INSERT INTO documents (drive_file_id, drive_url, drive_nom, source) VALUES ('DRV-GEN', 'https://drive.google.com/file/d/DRV-GEN/view', 'Attestation-generee-fictive', 'generation') RETURNING id");
+  await pool.query("INSERT INTO document_versions (document_id, numero, drive_file_id, drive_nom) VALUES ($1, 1, 'DRV-GEN', 'Attestation-generee-fictive')", [doc.id]);
+  await pool.query("INSERT INTO preuve_documents (preuve_id, document_id, origine, version_validee) VALUES ($1, $2, 'generation', 1)", [pGen, doc.id]);
+  await pool.query("INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, source) VALUES ($1, 'DRV-GEN', 'https://drive.google.com/file/d/DRV-GEN/view', 'Attestation-generee-fictive', 'generation')", [pGen]);
+  await pool.query("INSERT INTO documents_generes (modele_id, session_id, drive_file_id, drive_url, nom, preuve_id, document_id) VALUES ($1,$2,'DRV-GEN','https://drive.google.com/file/d/DRV-GEN/view','Attestation-generee-fictive',$3,$4)", [m.id, F.session, pGen, doc.id]);
   assert.equal(ok(await api("GET", `/api/sessions/${F.session}`, undefined, C())).documents.length, 1, "avant rattachement : visible");
   ok(await api("POST", `/api/intervenants/${F.zoe}/justificatifs`, { preuve_id: pGen, categorie: "attestation" }, A()));
   const c = ok(await api("GET", `/api/sessions/${F.session}`, undefined, C()));

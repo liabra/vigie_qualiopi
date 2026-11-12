@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { sessionMiddleware } from "./session.js";
 import authRoutes from "./routes/auth.js";
 import apiRoutes from "./routes/api.js";
+import documentsRoutes from "./routes/documents.js";
 import gestionRoutes from "./routes/gestion.js";
 import qualiteRoutes from "./routes/qualite.js";
 import parcoursRoutes from "./routes/parcours.js";
@@ -42,6 +43,7 @@ export function createApp() {
   app.use("/api", entretiensRoutes);
   app.use("/api", pilotageRoutes);
   app.use("/api", variablesRoutes);
+  app.use("/api", documentsRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

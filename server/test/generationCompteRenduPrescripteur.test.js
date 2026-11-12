@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import { setPoolFactory } from "../src/db.js";
 import { genererDocuments } from "../src/services/documents.js";
 import { DRIVE_FILE } from "../src/services/google.js";
+import { repondreDocuments } from "./helpers/documentsMock.js";
 
 const DOC = "application/vnd.google-apps.document";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
@@ -94,6 +95,7 @@ function baseSimulee({ generationMultiple = false } = {}) {
       if (i === -1) generes.push(ligne); else generes[i] = ligne;
       return { rows: [] };
     }
+    const documents = repondreDocuments(sql, params); if (documents) return documents;
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = { query: executer, connect: async () => ({ query: executer, release: () => {} }) };

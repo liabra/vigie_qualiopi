@@ -12,6 +12,8 @@ import { createApp } from "../src/app.js";
 import { setPoolFactory } from "../src/db.js";
 import { setDriveFactory, DRIVE_FILE } from "../src/services/google.js";
 import { encode } from "../src/session.js";
+import { repondreDocuments, definirHorsContexte, definirDocument } from "./helpers/documentsMock.js";
+import { clientDriveSimule } from "./helpers/genererDrive.js";
 
 const DOC = "application/vnd.google-apps.document";
 const SHEET = "application/vnd.google-apps.spreadsheet";
@@ -91,6 +93,7 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     if (sql.startsWith("INSERT INTO documents_generes")) { noter("DB:documents_generes"); return { rows: [] }; }
     // Q4-1 : intervenants rattachés — aucun (cas historique, rendu inchangé).
     if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: intervenants };
+    const documents = repondreDocuments(sql, params); if (documents) return documents;
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
   const pool = {
@@ -117,101 +120,6 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
 // Simulateur FIDÈLE : copie identique au modèle, application RÉELLE des
 // replaceAllText/findReplace, relecture du contenu résultant. Un marqueur
 // volontairement ignoré (remplacementIgnorer) reste donc réellement visible.
-function clientDriveSimule({ modeleGet = null, mimeModele = DOC, trashModele = false, echecGet = null,
-  echecCopy = null, echecBatch = null, echecTrash = null, attente = null, journal = null,
-  modeleTexte = "{{nom_stagiaire}}", modeleGrille = null, remplacementIgnorer = [] } = {}) {
-  const trace = { copies: 0, copiesCreees: [], corbeille: [], relectures: 0, relecturesSheet: 0, remplacements: 0, dossiersCrees: 0, ciblesReplacees: [] };
-  const noter = (evt) => { if (journal) journal.push(evt); };
-  const contenuCopies = new Map(); // copie-Id → texte (Doc), initialisé à l'identique du modèle
-  const grilleCopies = new Map();  // copie-Id → grille (Sheet), idem
-  trace.contenuCopies = contenuCopies;
-  trace.grilleCopies = grilleCopies;
-  let n = 0;
-  const client = {
-    row: { scopes: DRIVE_FILE, expiry: Date.now() + 60_000, access_token: "x" },
-    drive: {
-      files: {
-        get: async () => {
-          if (echecGet) throw Object.assign(new Error(echecGet.message), { response: { status: echecGet.statut } });
-          return { data: { id: "MODELE", name: "Attestation", mimeType: modeleGet || mimeModele, trashed: trashModele } };
-        },
-        list: async () => ({ data: { files: [] } }),
-        create: async () => { trace.dossiersCrees++; return { data: { id: "dossier-" + ++n } }; },
-        copy: async ({ requestBody }) => {
-          if (attente) await attente;
-          if (echecCopy) throw Object.assign(new Error(echecCopy.message), { response: { status: echecCopy.statut } });
-          trace.copies++;
-          const id = "copie-" + trace.copies;
-          trace.copiesCreees.push(id);
-          contenuCopies.set(id, modeleTexte);
-          grilleCopies.set(id, (modeleGrille || []).map((r) => [...r]));
-          noter("Drive:copy:" + id);
-          return { data: { id, name: requestBody.name, webViewLink: "https://d/" + id, mimeType: mimeModele } };
-        },
-        update: async ({ fileId, requestBody }) => {
-          if (requestBody?.trashed) {
-            if (echecTrash) throw Object.assign(new Error(echecTrash.message), { response: { status: echecTrash.statut } });
-            trace.corbeille.push(fileId);
-            noter("Drive:trash:" + fileId);
-          }
-          return { data: {} };
-        },
-      },
-    },
-    docs: {
-      documents: {
-        get: async ({ documentId }) => {
-          if (documentId !== "MODELE") {
-            trace.relectures++;
-            const texte = contenuCopies.get(documentId) ?? "";
-            return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: texte } }] } }] }, headers: {}, footers: {} } };
-          }
-          return { data: { body: { content: [{ paragraph: { elements: [{ textRun: { content: modeleTexte } }] } }] }, headers: {}, footers: {} } };
-        },
-        batchUpdate: async ({ documentId, requestBody }) => {
-          if (echecBatch) throw Object.assign(new Error(echecBatch.message), { response: { status: echecBatch.statut } });
-          trace.remplacements++;
-          let resultat = contenuCopies.get(documentId) ?? modeleTexte;
-          for (const r of requestBody?.requests || []) {
-            const cible = r.replaceAllText?.containsText?.text;
-            if (!cible || remplacementIgnorer.includes(cible)) continue;
-            trace.ciblesReplacees.push({ cible, remplacement: r.replaceAllText?.replaceText ?? "" });
-            resultat = resultat.split(cible).join(r.replaceAllText?.replaceText ?? "");
-          }
-          contenuCopies.set(documentId, resultat);
-          return { data: {} };
-        },
-      },
-    },
-    sheets: { spreadsheets: {
-      get: async ({ spreadsheetId }) => {
-        if (spreadsheetId !== "MODELE") trace.relecturesSheet++;
-        return { data: { sheets: [{ properties: { title: "Feuille 1", index: 0, gridProperties: { rowCount: 5, columnCount: 5 } } }] } };
-      },
-      values: { get: async ({ spreadsheetId }) => {
-        const grille = spreadsheetId === "MODELE" ? (modeleGrille || []) : (grilleCopies.get(spreadsheetId) || []);
-        return { data: { values: grille } };
-      } },
-      batchUpdate: async ({ spreadsheetId, requestBody }) => {
-        if (echecBatch) throw Object.assign(new Error(echecBatch.message), { response: { status: echecBatch.statut } });
-        trace.remplacements++;
-        const grille = (grilleCopies.get(spreadsheetId) || []).map((r) => [...r]);
-        for (const req of requestBody?.requests || []) {
-          const fr = req.findReplace;
-          if (!fr || remplacementIgnorer.includes(fr.find)) continue;
-          trace.ciblesReplacees.push({ cible: fr.find, remplacement: fr.replacement ?? "" });
-          for (const ligne of grille) for (let i = 0; i < ligne.length; i++) {
-            if (typeof ligne[i] === "string") ligne[i] = ligne[i].split(fr.find).join(fr.replacement ?? "");
-          }
-        }
-        grilleCopies.set(spreadsheetId, grille);
-        return { data: {} };
-      },
-    } },
-  };
-  return { trace, client };
-}
-
 const generer = async (corps, utilisateur = ADMIN) => {
   const r = await fetch(origine + "/api/generations", {
     method: "POST",
@@ -532,25 +440,29 @@ test("DOC-6B : bloc intervenants rendu de bout en bout (groupe prioritaire)", as
 // une par stagiaire. Compare le nombre de lectures (hors BEGIN/COMMIT/
 // ROLLBACK/INSERT, propres à chaque document produit) pour 1 puis 3
 // stagiaires : il doit être STRICTEMENT identique.
-test("DOC-3B : aucun N+1 SQL — le nombre de LECTURES ne dépend pas du nombre de stagiaires", async () => {
-  const lectures = (appels) => appels.filter((a) =>
-    a.sql.startsWith("SELECT") && !a.sql.startsWith("SELECT id, email, nom, role")).length;
+test("DOC-3B : aucun N+1 SQL — les lectures de CONTEXTE ne dépendent pas du nombre de stagiaires", async () => {
+  // Lectures documentaires (identité, versions, liens) : une par document produit, par nature.
+  // corbeille_operations : réservation vérifiée une fois par document produit (lecture documentaire).
+  const documentaires = (sql) => /FROM (documents|document_versions|preuve_documents|preuves|preuve_fichiers|corbeille_operations)\b/.test(sql) || sql.includes("pg_advisory");
+  const contexte = (appels) => appels.filter((a) =>
+    a.sql.startsWith("SELECT") && !a.sql.startsWith("SELECT id, email, nom, role") && !documentaires(a.sql)).length;
+  const documentsLus = (appels) => appels.filter((a) => a.sql.startsWith("SELECT") && documentaires(a.sql)).length;
 
   const b1 = baseSimulee({ nbStagiaires: 1 }).installer();
   setDriveFactory(() => clientDriveSimule().client);
   const r1 = await generer(requete);
   assert.equal(r1.statut, 200);
   assert.equal(r1.corps.documents, 1);
-  const n1 = lectures(b1.appels);
 
   const b3 = baseSimulee({ nbStagiaires: 3 }).installer();
   setDriveFactory(() => clientDriveSimule().client);
   const r3 = await generer(requete);
   assert.equal(r3.statut, 200);
   assert.equal(r3.corps.documents, 3);
-  const n3 = lectures(b3.appels);
 
-  assert.equal(n3, n1, `${n3} lectures pour 3 stagiaires contre ${n1} pour 1 : une requête par stagiaire s'est glissée quelque part`);
+  assert.equal(contexte(b3.appels), contexte(b1.appels), "lectures de contexte constantes : aucune requête par stagiaire");
+  const parDocument = (documentsLus(b3.appels) - documentsLus(b1.appels)) / 2;
+  assert.ok(parDocument <= 12, `lectures documentaires bornées par document produit (${parDocument} par document)`);
 });
 
 // ── Échecs Google ────────────────────────────────────────────
@@ -615,7 +527,7 @@ const existantsRegen = () => [
     drive_file_id: "ancien-fichier", drive_url: "https://d/ancien", nom: "Attestation - Stark" },
 ];
 
-test("régénérer : nouveau créé, DB écrite, ancien trashé SEULEMENT après le commit", async () => {
+test("régénérer : nouveau créé, DB écrite, ancien fichier conservé (jamais mis à la corbeille)", async () => {
   const journal = [];
   baseSimulee({ existants: existantsRegen(), journal }).installer();
   const { trace, client } = clientDriveSimule({ journal });
@@ -623,12 +535,9 @@ test("régénérer : nouveau créé, DB écrite, ancien trashé SEULEMENT après
   const r = await generer({ ...requete, remplacer: true });
   assert.equal(r.statut, 200);
   assert.equal(r.corps.remplaces, 1);
-  assert.deepEqual(r.corps.anciensNonArchives, []);
   assert.deepEqual(trace.copiesCreees, ["copie-1"], "un nouveau fichier est créé");
-  assert.ok(trace.corbeille.includes("ancien-fichier"), "l'ancien fichier est mis à la corbeille");
-  const iCommit = journal.indexOf("DB:COMMIT");
-  const iTrash = journal.indexOf("Drive:trash:ancien-fichier");
-  assert.ok(iCommit >= 0 && iTrash > iCommit, "l'ancien n'est trashé qu'APRÈS le commit DB");
+  assert.ok(!trace.corbeille.includes("ancien-fichier"), "l'ancien fichier n'est jamais mis à la corbeille par la régénération");
+  assert.ok(journal.includes("DB:COMMIT"), "la nouvelle version est enregistrée");
 });
 
 test("régénérer, DB échoue : ancien intact, nouveau trashé, erreur conservée", async () => {
@@ -645,16 +554,52 @@ test("régénérer, DB échoue : ancien intact, nouveau trashé, erreur conserv�
   assert.ok(!journal.includes("DB:documents_generes"), "l'ancien enregistrement n'est pas réécrit");
 });
 
-test("régénérer, trash de l'ancien échoue après DB : génération réussie, avertissement", async () => {
+test("régénérer : aucune suppression Drive de l'ancien fichier, même sans erreur (le trash n'est plus appelé)", async () => {
   baseSimulee({ existants: existantsRegen() }).installer();
   const { trace, client } = clientDriveSimule({ echecTrash: { statut: 500, message: "Internal" } });
   setDriveFactory(() => client);
   const r = await generer({ ...requete, remplacer: true });
-  assert.equal(r.statut, 200, "la génération reste réussie");
+  assert.equal(r.statut, 200, "la génération réussit");
   assert.equal(r.corps.remplaces, 1);
-  assert.deepEqual(r.corps.anciensNonArchives, ["ancien-fichier"], "l'échec d'archivage est signalé");
+  assert.deepEqual(trace.corbeille, [], "aucun appel de corbeille sur l'ancien fichier");
   assert.deepEqual(trace.copiesCreees, ["copie-1"], "le nouveau fichier est bien créé");
-  assert.ok(!trace.corbeille.includes("ancien-fichier"), "l'ancien n'a pas été trashé (échec)");
+});
+
+const existantsAvecDocument = () => [
+  { id: 6, modele_id: 1, session_id: 1, groupe_id: null, stagiaire_id: 1,
+    drive_file_id: "ancien-fichier", drive_url: "https://d/ancien", nom: "Attestation - Stark", document_id: 500 },
+];
+
+test("R11 : régénérer un document partagé hors contexte est refusé 409 sans copie Drive", async () => {
+  definirHorsContexte([{ document_id: 500, preuve_id: 77 }]);
+  try {
+    baseSimulee({ existants: existantsAvecDocument() }).installer();
+    const { trace, client } = clientDriveSimule();
+    setDriveFactory(() => client);
+    const r = await generer({ ...requete, remplacer: true });
+    assert.equal(r.statut, 409);
+    assert.equal(r.corps.code, "document_partage_hors_contexte");
+    assert.deepEqual(r.corps.details.documents, [500]);
+    assert.deepEqual(trace.copiesCreees, [], "aucune copie créée avant le refus");
+  } finally {
+    definirHorsContexte([]);
+  }
+});
+
+test("R11 : avec confirmer_partage, la régénération a lieu et ne supprime aucun fichier", async () => {
+  definirHorsContexte([{ document_id: 500, preuve_id: 77 }]);
+  definirDocument({ id: 500, drive_file_id: "ancien-fichier", version_courante: 1 });
+  try {
+    baseSimulee({ existants: existantsAvecDocument() }).installer();
+    const { trace, client } = clientDriveSimule();
+    setDriveFactory(() => client);
+    const r = await generer({ ...requete, remplacer: true, confirmer_partage: true });
+    assert.equal(r.statut, 200, JSON.stringify(r.corps));
+    assert.equal(r.corps.remplaces, 1);
+    assert.ok(!trace.corbeille.includes("ancien-fichier"), "l'ancien fichier n'est jamais supprimé");
+  } finally {
+    definirHorsContexte([]);
+  }
 });
 
 // ── Droits ───────────────────────────────────────────────────

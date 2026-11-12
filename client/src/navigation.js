@@ -28,6 +28,7 @@ export const NAVIGATION = [
       { to: "/tableau-de-bord-qualite", libelle: "Tableau de bord qualité", admin: true },
       { to: "/indicateurs", libelle: "Indicateurs" },
       { to: "/preuves", libelle: "Preuves" },
+      { to: "/documents", libelle: "Documents" },
       { to: "/veille", libelle: "Veille" },
       { to: "/audits", libelle: "Audits" },
       { to: "/actions-qualite", libelle: "Actions qualité" },

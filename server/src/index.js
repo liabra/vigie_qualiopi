@@ -4,6 +4,7 @@ import { seedIfEmpty } from "./seed.js";
 import { createApp } from "./app.js";
 import { closePool } from "./db.js";
 import { installerArretPropre } from "./arret.js";
+import { demarrerRepriseCorbeille } from "./services/repriseCorbeille.js";
 
 try {
   checkConfig();
@@ -16,4 +17,5 @@ try {
 }
 
 const server = createApp().listen(config.port, () => console.log(`Vigie Qualiopi en ligne sur le port ${config.port} (Node ${process.version})`));
-installerArretPropre(server, { closePool });
+const reprise = demarrerRepriseCorbeille();
+installerArretPropre(server, { closePool: async () => { await reprise.arreter(); await closePool(); } });

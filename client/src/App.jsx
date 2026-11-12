@@ -23,6 +23,8 @@ import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
 import { VeilleFiche } from "./veille/VeilleFiche.jsx";
 import { VeilleFormulaire } from "./veille/VeilleFormulaire.jsx";
+import { DocumentsListe } from "./documents/DocumentsListe.jsx";
+import { DocumentFiche } from "./documents/DocumentFiche.jsx";
 import { ActionsListe } from "./qualite/ActionsListe.jsx";
 import { ActionFiche } from "./qualite/ActionFiche.jsx";
 import { SignalementsListe } from "./qualite/SignalementsListe.jsx";
@@ -188,6 +190,8 @@ export default function App() {
         <Route path="indicateurs" element={<IndicateursPage vue="referentiel" admin={isAdmin} rafraichir={version} />} />
         <Route path="indicateurs/non-applicables" element={<IndicateursPage vue="non_applicables" admin={isAdmin} rafraichir={version} />} />
         <Route path="preuves" element={<EcranExistant><Preuves admin={isAdmin} onChange={auChangement} /></EcranExistant>} />
+        <Route path="documents" element={<DocumentsListe admin={isAdmin} />} />
+        <Route path="documents/:documentId" element={<DocumentFiche admin={isAdmin} />} />
         <Route path="veille" element={<VeilleListe admin={isAdmin} />} />
         <Route path="veille/nouvelle" element={admin(<VeilleFormulaire />)} />
         <Route path="veille/:veilleId" element={<VeillePage admin={isAdmin} />} />

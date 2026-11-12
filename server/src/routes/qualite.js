@@ -24,6 +24,7 @@ import {
 } from "../services/qualite.js";
 import { synthetiserSatisfactions } from "../services/satisfactionSynthese.js";
 import { preuveVisibleContributeur } from "../services/confidentialite.js";
+import { clauseFichiersVisibles } from "../services/documentsPreuves.js";
 import { alertesJustificatifs } from "../services/justificatifs.js";
 
 const router = Router();
@@ -197,7 +198,7 @@ async function preuvesLiees(colonne, id, admin = true) {
             p.alerte_statut, l.cree_le AS lie_le,
             COALESCE((SELECT json_agg(json_build_object('id', f.id, 'url', f.drive_url, 'nom', f.drive_nom, 'mime', f.drive_mime)
                                 ORDER BY f.ajoute_le, f.id)
-                      FROM preuve_fichiers f WHERE f.preuve_id = p.id), '[]'::json) AS fichiers
+                      FROM preuve_fichiers f WHERE f.preuve_id = p.id${clauseFichiersVisibles(admin, "f")}), '[]'::json) AS fichiers
      FROM liens_preuves_qualite l
      JOIN preuves_enrichies p ON p.id = l.preuve_id
      JOIN indicateurs i ON i.id = p.indicateur_id

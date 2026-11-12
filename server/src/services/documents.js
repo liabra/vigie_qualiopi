@@ -21,6 +21,7 @@ import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
 import { planContenuTableaux, planStructureTableaux } from "./blocsTableaux.js";
+import { attacherDocument, creerDocument, remplacerDocument, verrouillerGraphe, ErreurDocument } from "./documentsPreuves.js";
 
 const DOSSIER = "application/vnd.google-apps.folder";
 const DOC = "application/vnd.google-apps.document";
@@ -464,22 +465,6 @@ export async function nettoyerCopies(d, ids, jeton) {
 // Archive les ANCIENS fichiers après un remplacement réussi en base.
 // Un échec d'archivage ne remet JAMAIS en cause la génération : il est
 // journalisé et la liste des fichiers non archivés est renvoyée.
-async function archiverAnciens(d, ids, jeton) {
-  const echoues = [];
-  for (const id of ids) {
-    const ok = await appelGoogle(
-      "drive.files.update",
-      () => d.drive.files.update({ fileId: id, requestBody: { trashed: true }, supportsAllDrives: true }),
-      { api: "drive", fichierId: id, jeton }
-    ).then(() => true).catch((e) => {
-      console.error("Génération — archive de l'ancien fichier " + id + " impossible : " + (e.message || "erreur inconnue"));
-      return false;
-    });
-    if (!ok) echoues.push(id);
-  }
-  return echoues;
-}
-
 // Garde anti double clic : une seule génération à la fois pour un même
 // (modèle, session, groupe). Portée du PROCESSUS (une seule instance en
 // production) — documenté comme limite, pas une infrastructure distribuée.
@@ -488,7 +473,26 @@ const generationsEnCours = new Map();
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
 // DOC-3C : `admin` (booléen, estAdmin(req.user) calculé par la route) sert
 // au précontrôle pour les variables/blocs `sensibilite: "restreinte"`.
-export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null } = {}) {
+// R11 : preuves liées à un document hors du contexte de la génération (session, groupe, indicateurs du modèle).
+async function partagesHorsContexte(cx, documentIds, { sessionId, groupeId, indicateurs }) {
+  const { rows } = await cx.query(
+    `SELECT pd.document_id, p.id AS preuve_id
+       FROM preuve_documents pd JOIN preuves p ON p.id = pd.preuve_id
+      WHERE pd.document_id = ANY($1::int[])
+        AND (p.session_id IS DISTINCT FROM $2 OR p.groupe_id IS DISTINCT FROM $3
+             OR NOT (p.indicateur_id = ANY($4::int[])))`,
+    [documentIds, sessionId, groupeId, indicateurs]
+  );
+  return rows;
+}
+
+function refusPartage(hors) {
+  return new ErreurDocument(409, "document_partage_hors_contexte",
+    "Ce document est aussi rattaché à des preuves hors de cette session, de ce groupe ou de ce modèle. Confirmez le partage pour le régénérer.",
+    { documents: [...new Set(hors.map((h) => h.document_id))], preuves: hors.map((h) => h.preuve_id) });
+}
+
+export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, confirmerPartage = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null } = {}) {
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
@@ -533,6 +537,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
        AND COALESCE(libelle, '') = COALESCE($4, '')`,
     [modeleId, sessionId || 0, groupeId || 0, libelleNorm]
   );
+  const documentsExistants = existants.map((x) => x.document_id).filter(Boolean);
   if (existants.length && !remplacer) {
     const e = new Error(
       `${existants.length} document(s) ont déjà été générés pour ce modèle sur cette session${libelleNorm ? ` (« ${libelleNorm} »)` : ""}. ` +
@@ -540,6 +545,11 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     );
     e.dejaGeneres = existants.length;
     throw e;
+  }
+
+  if (remplacer && documentsExistants.length && !confirmerPartage) {
+    const hors = await partagesHorsContexte({ query }, documentsExistants, { sessionId, groupeId, indicateurs: indicateurs.map((i) => i.indicateur_id) });
+    if (hors.length) throw refusPartage(hors);
   }
 
   // Garde anti double clic : une seule génération à la fois pour ce couple.
@@ -554,6 +564,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   // Copies Drive créées au fil de l'eau : en cas d'échec, on les met à la
   // corbeille (au mieux) pour ne pas laisser d'orphelin.
   const copiesCreees = [];
+  let commit = false;
   try {
     // DOC-3C — PRÉCONTRÔLE : « ce modèle peut-il être généré, par cet
     // utilisateur, avec ces données, pour TOUTES les cibles ? » AVANT tout
@@ -581,10 +592,6 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
     const lignesIntervenants = blocsDemandes.includes("intervenants")
       ? (ctx.formateursGroupe?.length ? ctx.formateursGroupe : (ctx.formateursSession || []))
       : null;
-    // Anciens fichiers à archiver : mis à la corbeille SEULEMENT APRÈS le
-    // succès de l'écriture en base (sinon la DB pointerait vers un fichier
-    // déjà trashé). Collectés ici, exécutés après COMMIT.
-    const anciensATrasher = [];
     // Un seul modèle par génération : le cache évite de le relire à chaque copie.
     const cacheMarqueurs = new Map();
     // DOC-3D : relecture post-rendu Sheet limitée à la première copie —
@@ -627,70 +634,91 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       premiereCopie = false;
       copiesCreees.push(copie.id);
 
-      if (ancien) {
-        // Rien n'est trashé ici : on garde l'ancien fichier intact tant que
-        // la base n'a pas confirmé le remplacement.
-        anciensATrasher.push(ancien.drive_file_id);
-        remplaces++;
-      }
+      // L'ancien fichier reste intact : la régénération crée une version, elle ne supprime rien.
+      if (ancien) remplaces++;
       produits.push({ stagiaire, copie, nom });
     }
 
-  // Écriture en base : tout ou rien.
+  // Écriture en base : tout ou rien. Verrou global d'abord ; R11 revérifié sous verrou.
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
+    await verrouillerGraphe(cx);
+    if (remplacer && documentsExistants.length && !confirmerPartage) {
+      const hors = await partagesHorsContexte(cx, documentsExistants, { sessionId, groupeId, indicateurs: indicateurs.map((i) => i.indicateur_id) });
+      if (hors.length) throw refusPartage(hors);
+    }
+
     const { rows: [gen] } = await cx.query(
       `INSERT INTO generations (modele_id, session_id, groupe_id, nb_documents, nb_remplaces, lancee_par)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [modeleId, sessionId, groupeId, produits.length, remplaces, utilisateurId]
     );
 
+    // R4 : une régénération est un remplacement de la version courante du document existant ;
+    // sinon création d'un document. Les copies Drive ne sont jamais supprimées ici.
+    const documentParProduit = [];
+    for (const p of produits) {
+      const ancien = dejaParCle.get(p.stagiaire?.id ?? 0);
+      const fichier = {
+        drive_file_id: p.copie.id,
+        drive_url: p.copie.webViewLink || null,
+        drive_nom: p.nom,
+        drive_mime: p.copie.mimeType || null,
+      };
+      if (ancien?.document_id) {
+        const { rows: [courant] } = await cx.query("SELECT version_courante FROM documents WHERE id = $1", [ancien.document_id]);
+        await remplacerDocument(cx, {
+          documentId: ancien.document_id,
+          fichier,
+          versionAttendue: courant.version_courante,
+          motif: "Régénération",
+          utilisateurId,
+          origine: "generation",
+        });
+        documentParProduit.push(ancien.document_id);
+      } else {
+        const { documentId } = await creerDocument(cx, { fichier, source: "generation", utilisateurId });
+        documentParProduit.push(documentId);
+      }
+    }
+
+    // R12 : chaque preuve de la cible reçoit les documents ; les liens existants sont conservés.
     const preuves = [];
     for (const indicateurId of indicateurs.map((i) => i.indicateur_id)) {
       const preuveId = await preuvePourModele(cx, { modele, indicateurId, session: ctx.session, groupe: ctx.groupe, utilisateurId });
       preuves.push(preuveId);
-      // Les pièces jointes de cette preuve sont refaites à neuf : les
-      // anciens fichiers viennent d'être mis à la corbeille.
-      await cx.query(
-        "DELETE FROM preuve_fichiers WHERE preuve_id = $1 AND drive_file_id = ANY($2::text[])",
-        [preuveId, existants.map((x) => x.drive_file_id)]
-      );
-      for (const p of produits) {
-        await cx.query(
-          `INSERT INTO preuve_fichiers (preuve_id, drive_file_id, drive_url, drive_nom, drive_mime, source, stagiaire_id, ajoute_par)
-           VALUES ($1, $2, $3, $4, $5, 'generation', $6, $7)
-           ON CONFLICT (preuve_id, drive_file_id) DO UPDATE SET drive_nom = EXCLUDED.drive_nom, source = 'generation'`,
-          [preuveId, p.copie.id, p.copie.webViewLink || null, p.nom, p.copie.mimeType || null, p.stagiaire?.id || null, utilisateurId]
-        );
+      for (const [i, p] of produits.entries()) {
+        await attacherDocument(cx, {
+          preuveId,
+          documentId: documentParProduit[i],
+          origine: "generation",
+          stagiaireId: p.stagiaire?.id || null,
+          utilisateurId,
+        });
       }
     }
 
-    for (const p of produits) {
+    for (const [i, p] of produits.entries()) {
       await cx.query(
         `INSERT INTO documents_generes (modele_id, session_id, groupe_id, stagiaire_id, generation_id,
-           drive_file_id, drive_url, nom, preuve_id, libelle)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           drive_file_id, drive_url, nom, preuve_id, libelle, document_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (modele_id, COALESCE(session_id, 0), COALESCE(groupe_id, 0), COALESCE(stagiaire_id, 0), COALESCE(libelle, ''))
          DO UPDATE SET drive_file_id = EXCLUDED.drive_file_id, drive_url = EXCLUDED.drive_url,
            nom = EXCLUDED.nom, generation_id = EXCLUDED.generation_id, preuve_id = EXCLUDED.preuve_id,
-           genere_le = now(), remplace_le = now()`,
+           genere_le = now(), remplace_le = now(), document_id = EXCLUDED.document_id`,
         [modeleId, sessionId, groupeId, p.stagiaire?.id || null, gen.id,
-         p.copie.id, p.copie.webViewLink || null, p.nom, preuves[0] || null, libelleNorm]
+         p.copie.id, p.copie.webViewLink || null, p.nom, preuves[0] || null, libelleNorm, documentParProduit[i]]
       );
     }
     await cx.query("COMMIT");
-
-    // Seulement APRÈS le succès DB : archive l'ancien fichier. Un échec
-    // d'archivage ne remet JAMAIS en cause la génération déjà enregistrée —
-    // il est journalisé et signalé (anciensNonArchives), sans rollback.
-    const anciensNonArchives = await archiverAnciens(d, anciensATrasher, jeton);
+    commit = true;
 
     return {
       generationId: gen.id, modele: modele.nom, portee: modele.portee,
       documents: produits.length, remplaces, preuves: preuves.length,
       dossierId, libelle: libelleNorm,
-      anciensNonArchives,
       marqueursNonRemplaces: produits.filter((p) => !p.copie.marqueursRemplaces).length,
       // Marqueurs écrits dans le modèle mais absents de la convention :
       // ils restent tels quels dans les documents produits.
@@ -713,7 +741,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   } catch (e) {
     // Des copies Drive ont pu être créées avant l'échec : on les met à la
     // corbeille (au mieux), sans jamais masquer l'erreur d'origine.
-    if (copiesCreees.length) await nettoyerCopies(d, copiesCreees, jeton);
+    if (copiesCreees.length && !commit) await nettoyerCopies(d, copiesCreees, jeton);
     // Une erreur Google brute ne doit pas fuir : message métier sûr, le
     // diagnostic complet (champs sensibles masqués) est déjà journalisé.
     if (!e.statut && !e.dejaGeneres && !e.genEnCours && e.diagnostic) {

@@ -19,6 +19,9 @@ import { createApp } from "../src/app.js";
 import { setPoolFactory } from "../src/db.js";
 import { setDriveFactory } from "../src/services/google.js";
 import { encode } from "../src/session.js";
+import { repondreDocuments } from "./helpers/documentsMock.js";
+import { driveConforme } from "./helpers/driveConforme.js";
+import { documentIdPour } from "./helpers/documentsMock.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
@@ -118,6 +121,36 @@ function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fic
       return { rows: [], rowCount: avant - etat.fichiers.length };
     }
 
+    // Service documentaire : lecture et écriture du statut et des liens legacy (miroir).
+    if (sql === "SELECT id, statut, statut_avant_remplacement FROM preuves WHERE id = $1 FOR UPDATE") {
+      const p = etat.preuves.get(params[0]);
+      return { rows: p ? [{ id: p.id, statut: p.statut, statut_avant_remplacement: null }] : [] };
+    }
+    if (sql.startsWith("UPDATE preuves SET statut = $2, statut_avant_remplacement = $3")) {
+      const p = etat.preuves.get(params[0]);
+      if (p) p.statut = params[1];
+      return { rows: [], rowCount: p ? 1 : 0 };
+    }
+    // Liens documentaires dérivés des fichiers legacy de la preuve (base simulée cohérente).
+    if (sql === "SELECT document_id FROM preuve_documents WHERE preuve_id = $1") {
+      return { rows: etat.fichiers.filter((f) => f.preuve_id === params[0]).map((f) => ({ document_id: documentIdPour(f.drive_file_id) })) };
+    }
+    if (sql === "DELETE FROM preuve_documents WHERE preuve_id = $1 AND document_id = $2") {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql === "DELETE FROM preuve_fichiers WHERE preuve_id = $1 AND drive_file_id = $2") {
+      const avant = etat.fichiers.length;
+      etat.fichiers = etat.fichiers.filter((f) => !(f.preuve_id === params[0] && f.drive_file_id === params[1]));
+      return { rows: [], rowCount: avant - etat.fichiers.length };
+    }
+    if (sql === "SELECT id, drive_file_id, drive_url AS url, drive_nom AS nom, drive_mime AS mime, source FROM preuve_fichiers WHERE preuve_id = $1 AND drive_file_id = $2") {
+      const f = etat.fichiers.find((x) => x.preuve_id === params[0] && x.drive_file_id === params[1]);
+      return { rows: f ? [{ id: f.id, drive_file_id: f.drive_file_id, url: f.drive_url, nom: f.drive_nom, mime: f.drive_mime, source: f.source }] : [] };
+    }
+    if (sql === "SELECT drive_file_id FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2") {
+      const f = etat.fichiers.find((x) => x.id === params[0] && x.preuve_id === params[1]);
+      return { rows: f ? [{ drive_file_id: f.drive_file_id }] : [] };
+    }
     if (sql === "DELETE FROM preuve_fichiers WHERE id = $1 AND preuve_id = $2") {
       const avant = etat.fichiers.length;
       etat.fichiers = etat.fichiers.filter((f) => !(f.id === params[0] && f.preuve_id === params[1]));
@@ -154,6 +187,7 @@ function baseSimulee({ indicateurs = { 10: 1, 11: 2, 30: 27 }, preuves = [], fic
       return { rows: a ? [a] : [] };
     }
 
+    const documents = repondreDocuments(sql, params); if (documents) return documents;
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
 
@@ -176,9 +210,7 @@ const FICHIER_EXISTANT = { id: 3, preuve_id: 7, drive_file_id: "ANCIEN", source:
 // création avec fichier passent ainsi la vérification sans configurer
 // Google. Les cas « fichier absent » ou « Drive non connecté » le
 // remplacent ponctuellement.
-const driveValide = () => ({
-  drive: { files: { get: async ({ fileId }) => ({ data: { id: fileId, name: "Fiche.pdf", mimeType: "application/pdf", webViewLink: "https://drive.google.com/file/d/" + fileId + "/view" } }) } },
-});
+const driveValide = () => ({ drive: driveConforme(() => ({ name: "Fiche.pdf" })) });
 
 let serveur, origine;
 before(async () => {
@@ -239,15 +271,14 @@ test("un document externe (EduSign) se rattache à une session sans copier le fi
   // Seul l'identifiant Drive est stocké : aucun contenu, aucun appel Google.
   assert.deepEqual(b.etat.fichiers.map((f) => f.drive_file_id), ["EDUSIGN-1"]);
   assert.equal(b.etat.fichiers[0].source, "manuel", "source externe, jamais « generation »");
-  for (const a of b.appels) {
+  // Seules les écritures comptent : métadonnées de preuve, de document et de lien, jamais de contenu.
+  for (const a of b.appels.filter((x) => /^(INSERT|UPDATE|DELETE)\b/.test(x.sql))) {
     assert.ok(
-      ["BEGIN", "COMMIT", "ROLLBACK"].includes(a.sql) ||
-      a.sql === SQL_UTILISATEUR ||
-      a.sql === "SELECT archivee_le FROM sessions WHERE id = $1" ||
-      a.sql === "SELECT session_id FROM groupes WHERE id = $1" ||
-      a.sql.startsWith("SELECT i.id, i.numero FROM indicateurs") ||
       a.sql.startsWith("INSERT INTO preuves") ||
-      a.sql.startsWith("INSERT INTO preuve_fichiers"),
+      a.sql.startsWith("INSERT INTO preuve_fichiers") ||
+      a.sql.startsWith("INSERT INTO documents") ||
+      a.sql.startsWith("INSERT INTO document_versions") ||
+      a.sql.startsWith("INSERT INTO preuve_documents"),
       "la route n'écrit que des métadonnées (aucun contenu, aucune copie) : " + a.sql
     );
   }

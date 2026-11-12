@@ -28,6 +28,7 @@ import {
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, dependancesStagiaire, verifierSessionActive } from "../services/archive.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
+import { clauseDocumentsGeneresVisibles } from "../services/documentsPreuves.js";
 import { lireAbandon } from "../services/parcours.js";
 import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
 
@@ -360,7 +361,7 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   const { rows: documents } = await query(
     `SELECT d.*, m.nom AS modele, m.portee FROM documents_generes d
      JOIN modeles_documents m ON m.id = d.modele_id
-     WHERE d.session_id = $1${estAdmin(req.user) ? "" : " AND (d.preuve_id IS NULL OR NOT EXISTS (SELECT 1 FROM preuves_confidentielles pc WHERE pc.preuve_id = d.preuve_id))"}
+     WHERE d.session_id = $1${clauseDocumentsGeneresVisibles(estAdmin(req.user), "d")}
      ORDER BY d.genere_le DESC`, // fix Q4-2 : document généré devenu justificatif ⇒ masqué hors admin
     [id]
   );
@@ -1548,7 +1549,7 @@ router.get("/modeles/:id/diagnostic", requireAdmin, wrap(async (req, res) => {
 
 // ── Génération ───────────────────────────────────────────────
 router.post("/generations", requireRedacteur, wrap(async (req, res) => {
-  const { modele_id, session_id, groupe_id = null, remplacer = false, libelle = null } = req.body || {};
+  const { modele_id, session_id, groupe_id = null, remplacer = false, confirmer_partage = false, libelle = null } = req.body || {};
   const modeleId = identifiant(modele_id);
   const sessionId = identifiant(session_id);
   if (!modeleId) return res.status(400).json({ error: "Identifiant de modèle invalide." });
@@ -1570,7 +1571,7 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
   try {
     const r = await genererDocuments({
       modeleId, sessionId, groupeId, libelle: libelle?.trim() || null,
-      remplacer: remplacer === true, utilisateurId: req.user.id, admin: estAdmin(req.user),
+      remplacer: remplacer === true, confirmerPartage: confirmer_partage === true, utilisateurId: req.user.id, admin: estAdmin(req.user),
     });
     res.json(r);
   } catch (e) {
@@ -1586,7 +1587,7 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     if (e.precontrole) return res.status(e.statut || 400).json({ error: e.message, precontrole: e.precontrole });
     // 503 : Google indisponible. 400 : erreur métier exploitable. Le
     // diagnostic Google complet reste dans les logs serveur uniquement.
-    if (e.statut) return res.status(e.statut).json({ error: e.message });
+    if (e.statut) return res.status(e.statut).json({ error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.details ? { details: e.details } : {}) });
     return res.status(400).json({ error: e.message });
   }
 }));

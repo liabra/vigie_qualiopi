@@ -11,6 +11,8 @@ import { createApp } from "../src/app.js";
 import { setPoolFactory } from "../src/db.js";
 import { setDriveFactory } from "../src/services/google.js";
 import { encode } from "../src/session.js";
+import { driveConforme } from "./helpers/driveConforme.js";
+import { repondreDocuments } from "./helpers/documentsMock.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
@@ -169,6 +171,7 @@ function baseSimulee({ veilles = [], indicateurs = { 10: 1, 11: 2 }, liens = [],
       return { rows: [{ id, drive_file_id: f.drive_file_id, url: f.drive_url, nom: f.drive_nom, mime: f.drive_mime, source: f.source }], rowCount: 1 };
     }
 
+    const documents = repondreDocuments(sql, params); if (documents) return documents;
     throw new Error("Requête inattendue pour la base simulée : " + sql);
   };
 
@@ -176,9 +179,7 @@ function baseSimulee({ veilles = [], indicateurs = { 10: 1, 11: 2 }, liens = [],
   return { etat, installer: () => { setPoolFactory(() => pool); return pool; } };
 }
 
-const driveValide = () => ({
-  drive: { files: { get: async ({ fileId }) => ({ data: { id: fileId, name: "Preuve.pdf", mimeType: "application/pdf", webViewLink: "https://drive.google.com/file/d/" + fileId + "/view" } }) } },
-});
+const driveValide = () => ({ drive: driveConforme(() => ({ name: "Preuve.pdf", mimeType: "application/pdf" })) });
 
 let serveur, origine;
 before(async () => {

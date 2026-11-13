@@ -41,6 +41,7 @@ export const NAVIGATION = [
     entrees: [
       { to: "/modeles", libelle: "Modèles de documents" },
       { to: "/prescripteurs", libelle: "Prescripteurs" },
+      { to: "/questionnaires", libelle: "Questionnaires de formation" },
       { to: "/versions", libelle: "Versions du référentiel" },
       { to: "/parametres/google", libelle: "Google Drive" },
       { to: "/parametres/inventaire-drive", libelle: "Inventaire Drive" },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
+import { Alert, Badge, Button, Checkbox, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
 import { aujourdhuiISO } from "../qualite/format.js";
 import {
   AIDE_ABANDON, AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
@@ -17,13 +17,23 @@ import {
 // « Ouvrir le dossier ». Lecture AGRÉGÉE (un appel, sans texte libre) ; les
 // textes ne sont chargés qu'à l'ouverture d'un panneau. Rien ne bloque
 // l'assiduité, les documents, les évaluations ni la clôture.
+// Texte affiché pour une réponse déjà enregistrée au questionnaire de
+// formation — relit l'instantané porté par la réponse (jamais une valeur
+// inventée). Même logique que reponseAffichage() côté serveur.
+function reponseAffichageClient(reponse) {
+  if (!reponse) return "";
+  if (reponse.valeur_texte) return reponse.valeur_texte;
+  if (reponse.valeurs_choisies?.length) return reponse.valeurs_choisies.join(", ");
+  return "";
+}
+
 export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
   const sessionId = donnees.session.id;
   const [parcours, setParcours] = useState(null);
   const [err, setErr] = useState(null);
   const [filtre, setFiltre] = useState("tous"); // tous | recueil | adaptations
   const [dossier, setDossier] = useState(null); // ligne dont le dossier d'accompagnement est ouvert
-  const [vue, setVue] = useState(null); // null (dossier) | "recueil" | "mesures" | "suivi"
+  const [vue, setVue] = useState(null); // null (dossier) | "recueil" | "mesures" | "suivi" | "questionnaire"
 
   const charger = useCallback(async () => {
     try { setParcours(await api(`/api/sessions/${sessionId}/parcours`)); setErr(null); }
@@ -130,6 +140,9 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
       {ligneDossier && vue === "suivi" && (
         <PanneauSuivi ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} onChange={charger} />
       )}
+      {ligneDossier && vue === "questionnaire" && (
+        <PanneauQuestionnaire ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} />
+      )}
     </section>
   );
 }
@@ -158,6 +171,11 @@ function DossierAccompagnement({ ligne, positionnement, modifiable, onOuvrir, on
       id: "suivi", titre: "Observations et relances", aide: AIDE_SECTION_SUIVI,
       etat: <span>{rs.dernier ? `Dernier événement : ${rs.dernier} · ${rs.relances}` : "Aucune observation ni relance"}</span>,
       bouton: action("Consulter les observations et relances", "Gérer les observations et relances"),
+    },
+    {
+      id: "questionnaire", titre: "Questionnaire de formation", aide: "Questions propres à la formation suivie — distinctes de l'analyse des besoins commune ci-dessus.",
+      etat: <span className="sess-secondaire">Ouvrir pour consulter</span>,
+      bouton: action("Consulter le questionnaire de formation", "Renseigner le questionnaire de formation"),
     },
   ];
   return (
@@ -634,6 +652,135 @@ function PanneauSuivi({ ligne, modifiable, onFermer, onChange }) {
             </>
           )}
         </div>
+      )}
+    </Drawer>
+  );
+}
+
+// Q2-4 — Panneau « Questionnaire de formation » d'une inscription : affiche
+// automatiquement le questionnaire de LA FORMATION du stagiaire (aucun
+// choix à faire), avec les réponses déjà recueillies. Formation sans
+// questionnaire configuré (dont eSenior aujourd'hui) → message explicite,
+// jamais un formulaire vide trompeur.
+function PanneauQuestionnaire({ ligne, modifiable, onFermer }) {
+  const [donnees, setDonnees] = useState(null);
+  const [reponses, setReponses] = useState(null); // { [question_id]: { valeur_texte, valeurs_choisies } }
+  const [errChargement, setErrChargement] = useState(null);
+  const [erreurServeur, setErreurServeur] = useState(null);
+  const [enCours, setEnCours] = useState(false);
+  const verrou = useRef(false);
+
+  useEffect(() => {
+    let actif = true;
+    api(`/api/inscriptions/${ligne.inscription_id}/questionnaire`)
+      .then((r) => {
+        if (!actif) return;
+        setDonnees(r);
+        const etat = {};
+        for (const q of r.questions) etat[q.id] = { valeur_texte: q.reponse?.valeur_texte ?? "", valeurs_choisies: q.reponse?.valeurs_choisies ?? [] };
+        setReponses(etat);
+      })
+      .catch((e) => { if (actif) setErrChargement(e.message); });
+    return () => { actif = false; };
+  }, [ligne.inscription_id]);
+
+  const lecture = !modifiable || donnees?.archivee;
+
+  function majTexte(id, valeur) { setReponses((r) => ({ ...r, [id]: { valeur_texte: valeur, valeurs_choisies: [] } })); }
+  function majChoixUnique(id, option) { setReponses((r) => ({ ...r, [id]: { valeur_texte: null, valeurs_choisies: [option] } })); }
+  function majChoixMultiple(id, option, coche) {
+    setReponses((r) => {
+      const actuelles = r[id]?.valeurs_choisies || [];
+      const suivantes = coche ? [...new Set([...actuelles, option])] : actuelles.filter((o) => o !== option);
+      return { ...r, [id]: { valeur_texte: null, valeurs_choisies: suivantes } };
+    });
+  }
+
+  async function enregistrer(e) {
+    e.preventDefault();
+    if (lecture || verrou.current) return; // jamais de double enregistrement
+    verrou.current = true;
+    setEnCours(true);
+    setErreurServeur(null);
+    const corps = { reponses: donnees.questions.map((q) => ({ question_id: q.id, ...reponses[q.id] })) };
+    try {
+      await api(`/api/inscriptions/${ligne.inscription_id}/questionnaire/reponses`, { method: "PUT", body: JSON.stringify(corps) });
+      onFermer();
+    } catch (err) {
+      setErreurServeur(err.message);
+      setEnCours(false);
+      verrou.current = false;
+    }
+  }
+
+  return (
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Questionnaire de formation"
+      description={`${ligne.prenom} ${ligne.nom}`}
+      pied={!donnees?.questionnaire || lecture
+        ? <Button onClick={onFermer}>Fermer</Button>
+        : (
+          <>
+            <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
+            <Button variante="primary" type="submit" form="form-questionnaire" disabled={enCours}>{enCours ? "Enregistrement…" : "Enregistrer"}</Button>
+          </>
+        )}>
+      {errChargement && <Alert ton="error" titre="Le questionnaire n'a pas pu être chargé.">{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement du questionnaire…" />}
+      {donnees && !donnees.questionnaire && (
+        <EmptyState titre="Aucun questionnaire pour cette formation">
+          La formation suivie par {ligne.prenom} {ligne.nom} n'a pas de questionnaire configuré. Un administrateur peut en créer un dans Paramètres → Questionnaires de formation.
+        </EmptyState>
+      )}
+      {donnees?.questionnaire && (
+        <form id="form-questionnaire" onSubmit={enregistrer} noValidate className="ui-form">
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : questionnaire en lecture seule." : "Consultation seule."}</Alert>}
+          {erreurServeur && <Alert ton="error" titre="Le questionnaire n'a pas été enregistré.">{erreurServeur}</Alert>}
+          <fieldset className="ui-form-lecture" disabled={lecture}>
+            {donnees.questions.map((q) => (
+              // fix : Field n'accepte qu'un contrôle ; une question porte un libellé, une note et plusieurs choix.
+              <div key={q.id} className="ui-field">
+                {q.type === "texte_libre"
+                  ? <label htmlFor={`q-${q.id}`} className="ui-field__label">{q.libelle}{!q.obligatoire && <span className="ui-field__facultatif"> (facultatif)</span>}</label>
+                  : <p className="ui-field__label">{q.libelle}{!q.obligatoire && <span className="ui-field__facultatif"> (facultatif)</span>}</p>}
+                {q.reponse && q.reponse.question_libelle !== q.libelle && (
+                  <p className="sess-secondaire">
+                    Le libellé ou les options de cette question ont changé depuis la réponse de ce stagiaire.
+                    Répondu alors à « {q.reponse.question_libelle} » : {reponseAffichageClient(q.reponse)}
+                  </p>
+                )}
+                {q.type === "texte_libre" && (
+                  <textarea id={`q-${q.id}`} rows={3} maxLength={2000} value={reponses[q.id]?.valeur_texte || ""} onChange={(e) => majTexte(q.id, e.target.value)} />
+                )}
+                {q.type === "oui_non" && (
+                  <div className="sess-actions" role="radiogroup" aria-label={q.libelle}>
+                    {["Oui", "Non"].map((o) => (
+                      <label key={o} className="ui-case">
+                        <input type="radio" name={`q-${q.id}`} checked={reponses[q.id]?.valeur_texte === o} onChange={() => majTexte(q.id, o)} /> <span>{o}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {q.type === "choix_unique" && (
+                  <div role="radiogroup" aria-label={q.libelle}>
+                    {q.options.map((o) => (
+                      <label key={o} className="ui-case">
+                        <input type="radio" name={`q-${q.id}`} checked={(reponses[q.id]?.valeurs_choisies || [])[0] === o} onChange={() => majChoixUnique(q.id, o)} /> <span>{o}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {q.type === "choix_multiple" && (
+                  <div>
+                    {q.options.map((o) => (
+                      <Checkbox key={o} label={o} checked={(reponses[q.id]?.valeurs_choisies || []).includes(o)}
+                        onChange={(e) => majChoixMultiple(q.id, o, e.target.checked)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </fieldset>
+        </form>
       )}
     </Drawer>
   );

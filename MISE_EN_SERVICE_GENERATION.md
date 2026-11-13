@@ -109,3 +109,12 @@ Contrôles après déploiement (lecture seule) :
 SELECT code, est_active, guide_de_lecture_disponible, nb_indicateurs_attendu, date_application
 FROM referentiel_versions ORDER BY id;          -- V9 active, V10 inactive (33, 2026-11-01)
 ```
+
+# Questionnaires de formation (branche `livraison/questionnaires`, migrations 033 et 040)
+
+- Repris du chantier existant (non commité) : un questionnaire de positionnement par formation
+  (Paramètres → Questionnaires de formation), réponses saisies par inscription dans le dossier
+  d'accompagnement (onglet Parcours), instantané de la question conservé avec chaque réponse.
+- Corrections : réorganisation des questions (contrainte d'unicité différée, migration 040),
+  panneau de saisie qui plantait à l'affichage d'une question, libellés d'options reliés.
+- Non repris : l'intégration des réponses aux documents générés (dépend du chantier documentaire).

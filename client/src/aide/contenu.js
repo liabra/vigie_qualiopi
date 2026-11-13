@@ -158,6 +158,19 @@ const AIDE = {
       },
     ],
   },
+  questionnaires: {
+    titre: "Questionnaires de formation",
+    sections: [
+      {
+        titre: "À quoi ça sert",
+        lignes: [
+          "Chaque formation peut avoir ses propres questions de positionnement, en plus de l'analyse des besoins commune.",
+          "Les réponses se saisissent dans le dossier d'accompagnement du stagiaire (onglet Parcours de la session).",
+          "Modifier ou retirer une question ne change jamais les réponses déjà recueillies : elles gardent la question telle que posée.",
+        ],
+      },
+    ],
+  },
   "parametres/inventaire-drive": {
     titre: "Inventaire Drive",
     sections: [
@@ -342,6 +355,7 @@ const CLES = [
   ["/modeles", "modeles"],
   ["/parametres/inventaire-drive", "parametres/inventaire-drive"],
   ["/prescripteurs", "prescripteurs"],
+  ["/questionnaires", "questionnaires"],
   ["/versions", "versions"],
   ["/parametres/google", "parametres/google"],
 ];

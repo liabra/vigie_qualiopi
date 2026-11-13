@@ -128,6 +128,17 @@ const appel = async (chemin, { methode = "GET", corps, utilisateur = ADMIN } = {
 
 // ── Classification et coexistence ────────────────────────────
 
+test("version applicable plus récente que l'active : « en vigueur », jamais « historique »", async () => {
+  baseSimulee([
+    { id: 1, code: "V9", libelle: "V9", date_publication: "2024-01-08", date_application: null, est_active: true },
+    { id: 2, code: "V10", libelle: "V10", date_application: "2026-11-01", est_active: false },
+    { id: 3, code: "V8", libelle: "V8", date_application: "2022-01-01", est_active: false },
+  ]).installer();
+  const r = await appel("/api/referentiel/versions", { utilisateur: CONTRIBUTEUR });
+  const type = Object.fromEntries(r.corps.versions.map((v) => [v.code, v.type]));
+  assert.deepEqual(type, { V9: "active", V10: "en_vigueur", V8: "historique" });
+});
+
 test("les versions se classent en active / future / historique", async () => {
   const b = baseSimulee([
     { id: 1, code: "V9", libelle: "Référentiel V9", date_application: "2023-01-01", est_active: true },

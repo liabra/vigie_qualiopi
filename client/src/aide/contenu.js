@@ -165,7 +165,7 @@ const AIDE = {
         titre: "À quoi ça sert",
         lignes: [
           "Chaque formation peut avoir ses propres questions de positionnement, en plus de l'analyse des besoins commune.",
-          "Les réponses se saisissent dans le dossier d'accompagnement du stagiaire (onglet Parcours de la session).",
+          "Les réponses se saisissent dans le dossier d'accompagnement du stagiaire (onglet Accompagnement de la session).",
           "Modifier ou retirer une question ne change jamais les réponses déjà recueillies : elles gardent la question telle que posée.",
         ],
       },

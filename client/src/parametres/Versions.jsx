@@ -6,6 +6,7 @@ import { useTitrePage } from "../pages/titre.js";
 export const TYPES_VERSION = {
   active: { libelle: "Active", ton: "success" },
   future: { libelle: "Future", ton: "info" },
+  en_vigueur: { libelle: "En vigueur, à activer", ton: "warning" },
   historique: { libelle: "Historique", ton: "neutral" },
 };
 // `guide_de_lecture_disponible` à FAUX par défaut : prudent, jamais déclaré

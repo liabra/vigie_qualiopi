@@ -78,7 +78,7 @@ export function QuestionnairesPage() {
       <PageHeader
         fil={[{ libelle: "Paramètres" }, { libelle: "Questionnaires de formation" }]}
         titre="Questionnaires de formation"
-        description="Le questionnaire d'une formation s'ajoute automatiquement à la fiche d'analyse des besoins générée pour ses stagiaires. Le questionnaire eSenior actuel n'est pas concerné."
+        description="Questions de positionnement propres à chaque formation. Les réponses se saisissent dans le dossier d'accompagnement de chaque stagiaire (onglet Accompagnement de la session)."
       />
       {succes && <Alert ton="success">{succes}</Alert>}
       {err && <Alert ton="error" titre="Les formations n'ont pas pu être chargées.">{err}</Alert>}

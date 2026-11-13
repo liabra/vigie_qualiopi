@@ -105,10 +105,14 @@ router.get("/referentiel", requireAuth, wrap(async (req, res) => {
 // ── Versions du référentiel ──────────────────────────────────
 // Plusieurs versions coexistent : une active, des futures, des historiques.
 // L'activation est EXPLICITE (on n'infère jamais le passage en vigueur).
-function classerVersion(v) {
+// `en_vigueur` : version inactive déjà applicable et plus récente que l'active (ex. V10 après le
+// 01/11/2026 tant que V9 reste active) — à activer, jamais présentée comme historique.
+function classerVersion(v, active = null) {
   if (v.est_active) return "active";
   const aujourdhui = dateMetierAujourdhui(); // fix : jour civil de Cayenne
   if (v.date_application && v.date_application > aujourdhui) return "future";
+  const referenceActive = active?.date_application || active?.date_publication || null;
+  if (v.date_application && referenceActive && v.date_application > referenceActive) return "en_vigueur";
   return "historique";
 }
 
@@ -118,7 +122,8 @@ router.get("/referentiel/versions", requireAuth, wrap(async (_req, res) => {
             guide_de_lecture_disponible, nb_indicateurs_attendu
      FROM referentiel_versions ORDER BY date_application DESC NULLS LAST, id DESC`
   );
-  res.json({ versions: rows.map((v) => ({ ...v, type: classerVersion(v) })), total: rows.length });
+  const active = rows.find((v) => v.est_active) || null;
+  res.json({ versions: rows.map((v) => ({ ...v, type: classerVersion(v, active) })), total: rows.length });
 }));
 
 router.get("/referentiel/versions/:id", requireAuth, wrap(async (req, res) => {

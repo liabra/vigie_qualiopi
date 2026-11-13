@@ -168,7 +168,8 @@ test("version de référentiel : « future » jugée au jour de Cayenne", async 
   const v = ok(await api("GET", "/api/referentiel/versions")).versions.find((x) => x.code === "VTEST");
   assert.equal(v.type, "future", "le 2 octobre n'est pas encore arrivé à Cayenne");
   fixerHorlogeMetier(() => new Date("2026-10-02T03:00:01Z"));
-  assert.equal(ok(await api("GET", "/api/referentiel/versions")).versions.find((x) => x.code === "VTEST").type, "historique");
+  // Applicable et plus récente que la version active : à activer, jamais « historique ».
+  assert.equal(ok(await api("GET", "/api/referentiel/versions")).versions.find((x) => x.code === "VTEST").type, "en_vigueur");
 });
 
 test("aucune modification rétroactive : les dates déjà enregistrées ne bougent pas", async () => {

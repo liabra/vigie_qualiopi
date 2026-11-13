@@ -335,6 +335,7 @@ test("modèles : création avec le sélecteur d'indicateurs (numéros envoyés)"
   assert.ok(texte().includes("Donnez un nom au modèle."));
   await saisir(champ("Nom"), "Convocation");
   await saisir(champ("Usage"), "session");
+  await saisir(champ("Type de document"), "convocation");
   await saisir(champ("Lien ou identifiant du fichier Drive"), "https://docs.google.com/document/d/abcdefghijk/edit");
   await cliquer(dialogue().querySelector(".indic-groupe__tete"));
   await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
@@ -343,6 +344,9 @@ test("modèles : création avec le sélecteur d'indicateurs (numéros envoyés)"
   const corps = appels.find((a) => a.methode === "POST").corps;
   assert.deepEqual(corps.indicateurs, [9]);
   assert.equal(corps.portee, "session");
+  assert.equal(corps.type_document, "convocation");
+  assert.equal(corps.mode_generation, "manuel");
+  assert.equal(corps.condition_generation, null);
   await attendre(() => texte().includes("Modèle « Convocation » enregistré."));
 });
 
@@ -463,4 +467,22 @@ test("Google Drive : déconnexion confirmée par une boîte de dialogue", async 
   await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Déconnecter"));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/drive/disconnect"));
   await attendre(() => texte().includes("Google Drive déconnecté.") && texte().includes("Non connecté"));
+});
+
+test("modèles : type de document obligatoire à la création", async () => {
+  const appels = await monter("/modeles", "admin", {
+    "GET /api/modeles": { modeles: [MODELE], marqueurs: [] },
+    "GET /api/referentiel": REFERENTIEL,
+    "POST /api/modeles": [201, { modele: { id: 5 } }],
+  });
+  await attendre(() => texte().includes("Attestation de fin"));
+  await cliquer(bouton("+ Nouveau modèle"));
+  await attendre(() => dialogue()?.textContent.includes("Critère 3"));
+  await saisir(champ("Nom"), "Émargement");
+  await saisir(champ("Lien ou identifiant du fichier Drive"), "https://docs.google.com/document/d/abcdefghijk/edit");
+  await cliquer(dialogue().querySelector(".indic-groupe__tete"));
+  await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
+  await soumettre("form-modele");
+  await attendre(() => texte().includes("Choisissez le type de document."));
+  assert.equal(appels.filter((a) => a.methode === "POST").length, 0, "rien envoyé sans type");
 });

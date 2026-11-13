@@ -380,7 +380,7 @@ function valeursDe(modele) {
 
 // Création et modification : même formulaire. En modification, seul le lien modifié est envoyé
 // (un lien inchangé ne réinitialise pas le type du fichier Drive).
-function FormulaireModele({ ouvert, criteres, modele, onFermer, onEnregistre }) {
+export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = null, onFermer, onEnregistre }) {
   const [valeurs, setValeurs] = useState(VIDE);
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
@@ -388,8 +388,9 @@ function FormulaireModele({ ouvert, criteres, modele, onFermer, onEnregistre }) 
 
   useEffect(() => {
     if (!ouvert) return;
-    setValeurs(valeursDe(modele)); setErreurs({}); setErreurServeur(null); setEnCours(false);
-  }, [ouvert, modele]);
+    setValeurs(modele ? valeursDe(modele) : { ...VIDE, ...(valeursInitiales || {}) });
+    setErreurs({}); setErreurServeur(null); setEnCours(false);
+  }, [ouvert, modele, valeursInitiales]);
 
   const champ = (cle) => (e) => setValeurs({ ...valeurs, [cle]: e.target.value });
   const titre = modele ? "Modifier le modèle" : "Nouveau modèle";

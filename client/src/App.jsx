@@ -18,6 +18,7 @@ import { PrescripteursPage } from "./parametres/Prescripteurs.jsx";
 import { ModelesPage } from "./parametres/Modeles.jsx";
 import { VersionsPage } from "./parametres/Versions.jsx";
 import { GoogleDrivePage } from "./parametres/GoogleDrive.jsx";
+import { InventaireDrivePage } from "./parametres/InventaireDrive.jsx";
 import { SessionsListe } from "./sessions/SessionsListe.jsx";
 import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
@@ -201,6 +202,7 @@ export default function App() {
         <Route path="prescripteurs" element={admin(<PrescripteursPage />)} />
         <Route path="versions" element={admin(<VersionsPage onChange={auChangement} />)} />
         <Route path="parametres/google" element={admin(<GoogleDrivePage />)} />
+        <Route path="parametres/inventaire-drive" element={admin(<InventaireDrivePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />
       </Route>

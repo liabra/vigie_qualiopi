@@ -191,6 +191,14 @@ const AIDE = {
           "Une seule version est active à la fois. Une version vide (sans critère ni indicateur) ne peut pas être activée.",
         ],
       },
+      {
+        titre: "Passer au référentiel V10",
+        lignes: [
+          "Le V10 (décret n° 2026-728, en vigueur le 1er novembre 2026) est fourni avec Vigie : 33 indicateurs, libellés du décret. Son guide de lecture n'est pas encore publié : niveaux attendus et exemples de preuves sont absents.",
+          "À l'activation, « Reporter les rattachements » relie preuves, modèles, veille et qualité à l'indicateur de même numéro. Les preuves des indicateurs dont le texte a changé passent « à confirmer » : relisez-les depuis Preuves.",
+          "L'indicateur 33 (nouveau, propre aux CFA) démarre sans preuve. Réactiver V9 avec report ramène les rattachements.",
+        ],
+      },
     ],
   },
   "parametres/google": {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
+import { Alert, Badge, Button, Checkbox, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
 
 export const TYPES_VERSION = {
@@ -8,7 +8,9 @@ export const TYPES_VERSION = {
   future: { libelle: "Future", ton: "info" },
   historique: { libelle: "Historique", ton: "neutral" },
 };
-const VIDE = { code: "", libelle: "", date_publication: "", date_application: "", source: "", note: "" };
+// `guide_de_lecture_disponible` à FAUX par défaut : prudent, jamais déclaré
+// disponible tant que l'administrateur ne l'affirme pas explicitement.
+const VIDE = { code: "", libelle: "", date_publication: "", date_application: "", source: "", note: "", guide_de_lecture_disponible: false };
 
 export function formaterDateVersion(d) {
   if (!d) return null;
@@ -32,6 +34,7 @@ export function VersionsPage({ onChange }) {
   const [avertissement, setAvertissement] = useState(null);
   const [aActiver, setAActiver] = useState(null);
   const [activation, setActivation] = useState(false);
+  const [reporter, setReporter] = useState(true);
   const [creation, setCreation] = useState(false);
 
   const charger = useCallback(async () => {
@@ -56,11 +59,14 @@ export function VersionsPage({ onChange }) {
     setActivation(true);
     setErreurAction(null); setAvertissement(null);
     try {
-      const r = await api(`/api/referentiel/versions/${aActiver.id}/activer`, { method: "POST" });
+      const r = await api(`/api/referentiel/versions/${aActiver.id}/activer`, { method: "POST", body: JSON.stringify({ reporter }) });
       const code = aActiver.code;
       setAActiver(null);
       await charger();
-      setSucces(`La version ${code} est désormais active.`);
+      const b = r.bilan;
+      setSucces(b
+        ? `La version ${code} est désormais active. Rattachements reportés : ${b.preuves} preuve(s), dont ${b.preuves_a_confirmer} à confirmer (libellé modifié), ${b.modele_indicateurs} lien(s) de modèles, ${b.veille_indicateurs} de veille, ${b.non_applicables} indicateur(s) non applicable(s).`
+        : `La version ${code} est désormais active.`);
       if (r.avertissement) setAvertissement(r.avertissement);
       onChange?.();
     } catch (e) {
@@ -106,7 +112,7 @@ export function VersionsPage({ onChange }) {
                 </EmptyState>
               : autres.map((v) => (
                 <CarteVersion key={v.id} v={v} contenu={contenus[v.id]}
-                  action={<ActionActivation v={v} contenu={contenus[v.id]} onActiver={() => { setSucces(null); setAvertissement(null); setErreurAction(null); setAActiver(v); }} />} />
+                  action={<ActionActivation v={v} contenu={contenus[v.id]} onActiver={() => { setSucces(null); setAvertissement(null); setErreurAction(null); setReporter(true); setAActiver(v); }} />} />
               ))}
           </section>
         </>
@@ -125,6 +131,17 @@ export function VersionsPage({ onChange }) {
         </p>
         {aActiver?.type === "future" && <p>Sa date d'application ({formaterDateVersion(aActiver.date_application)}) n'est pas encore atteinte.</p>}
         <p>Une seule version est active à la fois.</p>
+        {active && (
+          <Checkbox
+            label={`Reporter les rattachements de ${active.code} (recommandé)`}
+            aide="Preuves, modèles, veille, signalements, actions et indicateurs non applicables suivent l'indicateur de même numéro. Les preuves d'un indicateur dont le libellé a changé passent « à confirmer ». Réactiver l'ancienne version avec report les y ramène."
+            checked={reporter}
+            onChange={(e) => setReporter(e.target.checked)}
+          />
+        )}
+        {active && !reporter && (
+          <Alert ton="warning">Sans report, les preuves restent rattachées à {active.code} et n'apparaissent plus dans le tableau de bord.</Alert>
+        )}
       </ConfirmDialog>
     </>
   );
@@ -147,6 +164,7 @@ function CarteVersion({ v, contenu, action }) {
           <div className="sess-badges">
             <Badge ton={type.ton}>{type.libelle}</Badge>
             {estCoquille(contenu) && <Badge ton="warning">Contenu non importé</Badge>}
+            {v.guide_de_lecture_disponible === false && <Badge ton="warning">Guide de lecture non disponible</Badge>}
           </div>
         </div>
         {action && <div className="param-carte__action">{action}</div>}
@@ -176,6 +194,7 @@ function CreationVersion({ ouvert, onFermer, onCree }) {
   }, [ouvert]);
 
   const champ = (cle) => (e) => setValeurs({ ...valeurs, [cle]: e.target.value });
+  const champCoche = (cle) => (e) => setValeurs({ ...valeurs, [cle]: e.target.checked });
 
   async function creer(e) {
     e.preventDefault();
@@ -222,6 +241,12 @@ function CreationVersion({ ouvert, onFermer, onCree }) {
         <FormSection titre="Origine" colonnes={1}>
           <Field label="Source" facultatif><input value={valeurs.source} onChange={champ("source")} /></Field>
           <Field label="Note" facultatif><input value={valeurs.note} onChange={champ("note")} /></Field>
+          <Checkbox
+            label="Le guide de lecture officiel de cette version est déjà disponible"
+            aide="Laissez décochée si seul un texte réglementaire (ex. un décret) est disponible, sans ses précisions de guide (niveaux attendus, exemples de preuves…). Le guide pourra être marqué disponible plus tard, via un nouvel import."
+            checked={valeurs.guide_de_lecture_disponible}
+            onChange={champCoche("guide_de_lecture_disponible")}
+          />
         </FormSection>
       </form>
     </Drawer>

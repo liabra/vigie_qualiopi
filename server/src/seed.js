@@ -2,10 +2,17 @@
 // lecture V9 officiel, server/seed/referentiel_qualiopi_v9_indicateurs.json).
 // Idempotent : relancer ne crée pas de doublon.
 //
-// Vérification : un fichier est réputé tiré du guide officiel, sauf s'il
+// Vérification : un fichier est réputé avoir des libellés confrontés à une
+// source officielle pertinente (décret ou guide de lecture), sauf s'il
 // porte "provisoire": true (ou texte_source_verifie: false par indicateur).
 // Un import provisoire ne réécrit JAMAIS une ligne déjà vérifiée ; un
 // import vérifié, lui, met toujours à jour.
+//
+// `guide_de_lecture_disponible` (par version, distinct de la vérification
+// du texte) : vrai par défaut — absent du fichier, une version est réputée
+// disposer d'un guide complet, comme V9. À mettre à `false` explicitement
+// pour une version dont seul le texte réglementaire est disponible (ex. un
+// décret publié avant la parution de son guide de lecture).
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +21,11 @@ import { getPool } from "./db.js";
 export const DEFAULT_SEED = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../seed/referentiel_qualiopi_v9_indicateurs.json"
+);
+// Référentiel V10 (décret n° 2026-728, en vigueur le 01/11/2026) : texte réglementaire seul.
+export const SEED_V10 = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../seed/referentiel_qualiopi_v10.json"
 );
 
 const CATEGORIES = ["OF", "CFA", "CBC", "VAE"];
@@ -27,8 +39,11 @@ export function normalizeReferentiel(data) {
       code: data.version,
       libelle: `${data.referentiel || "Référentiel national qualité"} — ${data.version}`,
       date_publication: data.date_version || null,
+      date_application: data.date_entree_vigueur || data.date_application || null,
       source: data.source || null,
       note: data.note_v10 || data.note || null,
+      guide_de_lecture_disponible: data.guide_de_lecture_disponible !== false,
+      nb_indicateurs_attendu: data.nb_indicateurs ?? null,
     },
     nbAttendu: data.nb_indicateurs,
     criteres: (data.criteres || []).map((c) => ({ numero: c.numero, libelle: c.libelle })),
@@ -85,12 +100,17 @@ export async function seedReferentiel(file = DEFAULT_SEED, { activate = true } =
     await client.query("BEGIN");
     const v = ref.version;
     const { rows: [version] } = await client.query(
-      `INSERT INTO referentiel_versions (code, libelle, date_publication, source, note)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO referentiel_versions (code, libelle, date_publication, source, note,
+         guide_de_lecture_disponible, nb_indicateurs_attendu, date_application)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (code) DO UPDATE SET libelle = EXCLUDED.libelle,
-         date_publication = EXCLUDED.date_publication, source = EXCLUDED.source, note = EXCLUDED.note
+         date_publication = EXCLUDED.date_publication, source = EXCLUDED.source, note = EXCLUDED.note,
+         date_application = COALESCE(EXCLUDED.date_application, referentiel_versions.date_application),
+         guide_de_lecture_disponible = EXCLUDED.guide_de_lecture_disponible,
+         nb_indicateurs_attendu = EXCLUDED.nb_indicateurs_attendu
        RETURNING id`,
-      [v.code, v.libelle, v.date_publication, v.source, v.note]
+      [v.code, v.libelle, v.date_publication, v.source, v.note,
+       v.guide_de_lecture_disponible, v.nb_indicateurs_attendu, v.date_application]
     );
     const critIds = {};
     for (const c of ref.criteres) {
@@ -146,5 +166,15 @@ export async function seedIfEmpty(log = console.log) {
   if (rows[0].n > 0) return null;
   const r = await seedReferentiel();
   log(`Référentiel ${r.version} importé (${r.indicateursEcrits} indicateurs).`);
+  return r;
+}
+
+// Au démarrage : met à disposition le référentiel V10, SANS l'activer. L'activation (et le
+// report des preuves) reste une décision de l'administrateur, depuis Paramètres → Versions.
+export async function seedVersionsEmbarquees(log = console.log) {
+  const { rows } = await getPool().query("SELECT 1 FROM referentiel_versions WHERE code = 'V10'");
+  if (rows.length) return null;
+  const r = await seedReferentiel(SEED_V10, { activate: false });
+  log(`Référentiel ${r.version} disponible (${r.indicateursEcrits} indicateurs), non activé.`);
   return r;
 }

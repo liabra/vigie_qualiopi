@@ -399,6 +399,25 @@ test("versions : activer exige une confirmation explicite, avertissement relayé
   await cliquer(bouton("Activer cette version"));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/referentiel/versions/2/activer"));
   await attendre(() => texte().includes("Cette version a une date d'application future."));
+  assert.deepEqual(appels.find((a) => a.chemin === "/api/referentiel/versions/2/activer").corps, { reporter: true }, "report proposé par défaut");
+});
+
+test("versions : bascule avec bilan du report, ou sans report après avertissement", async () => {
+  const appels = await monter("/versions", "admin", {
+    "GET /api/referentiel/versions": VERSIONS,
+    "GET /api/referentiel/versions/1": contenu(32), "GET /api/referentiel/versions/2": contenu(31), "GET /api/referentiel/versions/3": contenu(0),
+    "POST /api/referentiel/versions/2/activer": (corps) => ({ ok: true, bilan: corps.reporter
+      ? { preuves: 12, preuves_a_confirmer: 4, modele_indicateurs: 3, veille_indicateurs: 2, non_applicables: 1 } : null }),
+  });
+  await attendre(() => document.querySelector('button[aria-label="Activer la version V10"]'));
+  await cliquer(document.querySelector('button[aria-label="Activer la version V10"]'));
+  await attendre(() => dialogue()?.textContent.includes("Reporter les rattachements de V9"));
+  await cliquer(dialogue().querySelector('input[type="checkbox"]'));
+  await attendre(() => dialogue().textContent.includes("n'apparaissent plus dans le tableau de bord"));
+  await cliquer(dialogue().querySelector('input[type="checkbox"]'));
+  await cliquer(bouton("Activer cette version"));
+  await attendre(() => texte().includes("12 preuve(s), dont 4 à confirmer"));
+  assert.deepEqual(appels.find((a) => a.methode === "POST").corps, { reporter: true });
 });
 
 test("versions : préparer une nouvelle version (code et libellé obligatoires)", async () => {

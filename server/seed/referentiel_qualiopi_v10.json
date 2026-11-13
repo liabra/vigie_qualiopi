@@ -1,0 +1,473 @@
+{
+  "_avertissement": "Référentiel V10 (décret n° 2026-728 du 1er août 2026, en vigueur le 1er novembre 2026). Libellés repris verbatim du texte réglementaire du décret (même contenu que referentiel_qualiopi_decret_2026-728_draft.json). Guide de lecture non publié : niveaux attendus, exemples de preuves, gradation et autres précisions de guide sont absents. La correspondance des catégories (1°=OF, 2°=CBC, 3°=VAE, 4°=CFA) est déduite par recoupement avec V9 (voir methode_categories).",
+  "referentiel": "RNQ Qualiopi",
+  "version": "V10",
+  "statut_fichier": "texte_reglementaire_verifie_guide_absent",
+  "source": "Décret n° 2026-728 du 1er août 2026, JORF n°0180 du 4 août 2026, texte n°11, NOR TRSD2619632D, article 1er (remplace le I de l'annexe au chapitre VI du titre Ier du livre III de la sixième partie du code du travail)",
+  "source_pdf": "https://www.legifrance.gouv.fr/download/file/4U3XDmcEAgw9yUg7cDa-CXmCI3QSXKSmlpm1SsbgHmk%3D/JOE_TEXTE (téléchargé et extrait le 22/10/2026 via une extraction de texte embarqué, PDF natif non scanné, 4 pages)",
+  "date_decret": "2026-08-01",
+  "date_entree_vigueur": "2026-11-01",
+  "nb_indicateurs": 33,
+  "provisoire": false,
+  "guide_de_lecture_disponible": false,
+  "_note_statut": "`provisoire: false` car les 33 libellés ont été confrontés au texte officiel du décret (PDF authentifié, extraction vérifiée) — ils ne sont PAS provisoires. `guide_de_lecture_disponible: false` car aucun guide de lecture n'a été publié pour ce décret : les précisions de guide (niveau attendu, exemples de preuves, gradation…) restent absentes, séparément de la fiabilité du texte lui-même.",
+  "methode_categories": "La matrice du décret porte des colonnes 'L. 6313-1-1°' à 'L. 6313-1-4°' (les 4 catégories d'actions de l'article L. 6313-1 du code du travail), sans les nommer OF/CFA/CBC/VAE. La correspondance 1°=OF, 2°=CBC, 3°=VAE, 4°=CFA n'est pas écrite littéralement dans le décret : elle est déduite ici par recoupement avec les catégories déjà connues du fichier V9 existant, et confirmée concordante sur les 33 indicateurs sans aucune exception. A valider par A2C avant tout usage si une confirmation juridique indépendante est nécessaire.",
+  "criteres": [
+    {
+      "numero": 1,
+      "libelle": "Les conditions d'information du public sur les prestations proposées, les délais pour y accéder et les résultats obtenus.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 2,
+      "libelle": "L'identification précise des objectifs des prestations proposées et l'adaptation de ces prestations aux publics bénéficiaires, lors de la conception des prestations.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 3,
+      "libelle": "L'adaptation aux publics bénéficiaires des prestations et des modalités d'accueil, d'accompagnement, de suivi et d'évaluation mises en œuvre.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 4,
+      "libelle": "L'adéquation des moyens pédagogiques, techniques et d'encadrement aux prestations mises en œuvre.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 5,
+      "libelle": "La qualification et le développement des connaissances et compétences des personnels chargés de mettre en œuvre les prestations.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 6,
+      "libelle": "L'inscription et l'investissement du prestataire dans son environnement professionnel.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 7,
+      "libelle": "Le recueil et la prise en compte des appréciations et des réclamations formulées par les parties prenantes aux prestations délivrées.",
+      "statut_vs_v9": "inchange"
+    }
+  ],
+  "indicateurs": [
+    {
+      "numero": 1,
+      "critere": 1,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire diffuse une information accessible au public, détaillée et vérifiable sur les prestations proposées : prérequis, objectifs, type de reconnaissance de la formation délivrée, durée, modalités pédagogiques et de financements, délais d'accès, tarifs, contacts, méthodes mobilisées et modalités d'évaluation, accessibilité aux personnes en situation de handicap. Sa communication ne comporte aucune mention de nature à induire le public en erreur, notamment sur les conditions d'accès, le contenu, les modalités pédagogiques, le financement des formations, les droits ou l'absence de droits de poursuite d'études conférés par la formation préparée.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute « type de reconnaissance de la formation délivrée » et « modalités pédagogiques et de financements » à la liste d'informations obligatoires ; ajoute une phrase entière interdisant toute communication trompeuse (conditions d'accès, contenu, modalités pédagogiques, financement, droits de poursuite d'études)."
+    },
+    {
+      "numero": 2,
+      "critere": 1,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire diffuse des indicateurs de résultats adaptés à la nature des prestations mises en œuvre et des publics accueillis en précisant de manière transparente leurs modalités de calcul ou en s'appuyant sur des dispositifs existants.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute l'exigence de préciser de manière transparente les modalités de calcul des indicateurs, ou de s'appuyer sur des dispositifs existants."
+    },
+    {
+      "numero": 3,
+      "critere": 1,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Lorsque le prestataire met en œuvre des prestations conduisant à une certification professionnelle, il informe sur les taux d'obtention des certifications préparées, les possibilités de valider un/ ou des blocs de compétences, ainsi que sur les équivalences, passerelles, suites de parcours, en particulier les poursuites d'études, et les débouchés.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute « en particulier les poursuites d'études » en précision des suites de parcours — modification mineure."
+    },
+    {
+      "numero": 4,
+      "critere": 2,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire analyse le besoin du bénéficiaire en lien avec l'entreprise et/ ou le financeur concerné (s).",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 5,
+      "critere": 2,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire définit les objectifs opérationnels et évaluables de la prestation.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 6,
+      "critere": 2,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire établit les contenus et les modalités de mise en œuvre de la prestation, adaptés aux objectifs définis et aux publics bénéficiaires.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 7,
+      "critere": 2,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "libelle": "Lorsque le prestataire met en œuvre des prestations conduisant à une certification professionnelle, il s'assure de l'adéquation du ou des contenus de la prestation aux exigences de la certification visée et peut prouver sa capacité à assurer cette certification, y compris en qualité d'organisme habilité.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute l'exigence que le prestataire puisse prouver sa capacité à assurer la certification, y compris en qualité d'organisme habilité."
+    },
+    {
+      "numero": 8,
+      "critere": 2,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "libelle": "Le prestataire détermine les procédures de positionnement et d'évaluation des acquis à l'entrée de la prestation.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 9,
+      "critere": 3,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire informe les publics bénéficiaires sur les conditions de déroulement de la prestation.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 10,
+      "critere": 3,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire met en œuvre et adapte la prestation, l'accompagnement et le suivi aux publics bénéficiaires.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 11,
+      "critere": 3,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire évalue l'atteinte par les publics bénéficiaires des objectifs de la prestation.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 12,
+      "critere": 3,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire décrit et met en œuvre les mesures pour favoriser l'engagement des bénéficiaires et prévenir les ruptures de parcours. Il s'assure de la prévention et du traitement de toute situation de violence, dont les violences sexistes et sexuelles, de harcèlement ou de discrimination dans le cadre de leur formation.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute une phrase entière sur la prévention et le traitement des violences (dont sexistes et sexuelles), du harcèlement et des discriminations."
+    },
+    {
+      "numero": 13,
+      "critere": 3,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "libelle": "Pour les formations en alternance, le prestataire, en lien avec l'entreprise, anticipe avec l'apprenant les missions confiées, à court, moyen et long terme, et assure la coordination et la progressivité des apprentissages réalisés en centre de formation et en entreprise.",
+      "statut_vs_v9": "inchange",
+      "note": "Le JSON V9 porte un champ note_v10 qui liste cet indicateur comme modifié. La comparaison verbatim ici (texte du décret contre libellé V9) ne montre AUCUNE différence. Ecart signalé, pas tranché par supposition."
+    },
+    {
+      "numero": 14,
+      "critere": 3,
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "libelle": "Le prestataire met en œuvre un accompagnement socio-professionnel, éducatif et relatif à l'exercice de la citoyenneté. Il dispose d'une procédure de traitement sans délai des situations de rupture liées à des difficultés, violences ou discriminations subies par l'apprenant en formation ou dans l'entreprise d'accueil.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute l'obligation d'une procédure de traitement sans délai des ruptures liées à des difficultés, violences ou discriminations."
+    },
+    {
+      "numero": 15,
+      "critere": 3,
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "libelle": "Le prestataire informe les apprentis de leurs droits et devoirs en tant qu'apprentis et salariés ainsi que des règles applicables en matière de santé et de sécurité en milieu professionnel, de manière renforcée lorsqu'ils sont mineurs. Il les informe des dispositifs d'accompagnement, de prévention et de signalement des situations de violences, de harcèlement moral ou sexuel, d'agissements sexistes et de discriminations, ainsi que des interlocuteurs susceptibles de les accompagner. Il communique les coordonnées du médiateur de l'apprentissage et veille à signaler les dysfonctionnements à l'inspection du travail.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute : information renforcée pour les mineurs ; dispositifs de signalement de violences/harcèlement/discriminations ; coordonnées du médiateur de l'apprentissage ; signalement des dysfonctionnements à l'inspection du travail."
+    },
+    {
+      "numero": 16,
+      "critere": 3,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Lorsque le prestataire met en œuvre des formations conduisant à une certification professionnelle, il s'assure que les conditions de présentation des bénéficiaires à la certification respectent les exigences formelles de l'autorité de certification.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 17,
+      "critere": 4,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire met à disposition ou s'assure de la mise à disposition des moyens humains et techniques adaptés et d'un environnement approprié (conditions, locaux, équipements, plateaux techniques …).",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 18,
+      "critere": 4,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire mobilise et coordonne les différents intervenants internes et/ ou externes (pédagogiques, administratifs, logistiques, commerciaux …).",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 19,
+      "critere": 4,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire met à disposition du bénéficiaire des ressources pédagogiques et permet à celui-ci de se les approprier. Lorsque des modules pédagogiques sont réalisés à distance, le prestataire vérifie l'effectivité de leur suivi par les apprenants. Au-delà d'un nombre d'intervenants par formation, fixé par arrêté du ministre chargé de la formation professionnelle, le prestataire dispose d'un référent pédagogique par formation chargé d'assurer la coordination pédagogique entre les intervenants.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute la vérification de l'effectivité du suivi à distance par les apprenants, et rend obligatoire (au-delà d'un seuil fixé par arrêté, non encore publié) un référent pédagogique par formation."
+    },
+    {
+      "numero": 20,
+      "critere": 4,
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "libelle": "Le prestataire dispose d'un personnel dédié à l'appui à la mobilité nationale et internationale, d'un référent handicap et d'un conseil de perfectionnement. Il s'assure de la qualité du pilotage de la formation, de la participation des apprentis, formateurs et entreprises à sa gouvernance. Lorsque la proportion d'heures d'enseignement réalisées par des intervenants permanents est inférieure à un seuil fixé par arrêté du ministre chargé de la formation professionnelle, le prestataire s'assure de la mise en œuvre de modalités renforcées de supervision pédagogique et de contrôle de la qualité des interventions.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute l'exigence de qualité de gouvernance (participation apprentis/formateurs/entreprises) et une supervision pédagogique renforcée si la part d'heures des intervenants permanents est sous un seuil fixé par arrêté (non encore publié)."
+    },
+    {
+      "numero": 21,
+      "critere": 5,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire détermine, mobilise et évalue les compétences des différents intervenants internes et/ ou externes, adaptées aux prestations.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 22,
+      "critere": 5,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire entretient et développe les compétences de ses salariés, adaptées aux prestations qu'il délivre.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 23,
+      "critere": 6,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire réalise une veille légale et réglementaire sur le champ de la formation professionnelle et en exploite les enseignements.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 24,
+      "critere": 6,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire réalise une veille sur les évolutions des compétences, des métiers et des emplois dans ses secteurs d'intervention et en exploite les enseignements.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 25,
+      "critere": 6,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire réalise une veille sur les innovations pédagogiques et technologiques permettant une évolution de ses prestations et en exploite les enseignements.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 26,
+      "critere": 6,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire mobilise les expertises, outils et réseaux nécessaires pour accueillir, accompagner/ former ou orienter les publics en situation de handicap.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 27,
+      "critere": 6,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Lorsque le prestataire fait appel à la sous-traitance ou au portage salarial, il s'assure du respect de la conformité au présent référentiel et en assure la traçabilité dans les contrats de sous-traitance.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute l'obligation de tracer cette conformité dans les contrats de sous-traitance."
+    },
+    {
+      "numero": 28,
+      "critere": 6,
+      "type": "specifique",
+      "categories": [
+        "OF",
+        "CFA"
+      ],
+      "libelle": "Lorsque les prestations dispensées au bénéficiaire comprennent des périodes de formation en situation de travail, le prestataire mobilise son réseau de partenaires socio-économiques pour co-construire l'ingénierie de formation et favoriser l'accueil en entreprise.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 29,
+      "critere": 6,
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "libelle": "Le prestataire développe des actions qui concourent à l'insertion professionnelle ou la poursuite d'étude par la voie de l'apprentissage ou par toute autre voie permettant de développer leurs connaissances et leurs compétences.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 30,
+      "critere": 7,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire recueille les appréciations des parties prenantes : bénéficiaires, financeurs (le cas échéant), équipes pédagogiques et entreprises concernées.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "Ajoute « (le cas échéant) » après financeurs ; « entreprise » devient « entreprises » — modification mineure, pas de nouvelle exigence de fond."
+    },
+    {
+      "numero": 31,
+      "critere": 7,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire met en œuvre des modalités de traitement des difficultés rencontrées par les parties prenantes, des réclamations exprimées par ces dernières ainsi que des aléas survenus en cours de prestation.",
+      "statut_vs_v9": "inchange"
+    },
+    {
+      "numero": 32,
+      "critere": 7,
+      "type": "commun",
+      "categories": [
+        "OF",
+        "CBC",
+        "VAE",
+        "CFA"
+      ],
+      "libelle": "Le prestataire met en place une démarche d'amélioration continue à partir de l'analyse des appréciations et des réclamations, ainsi qu'une analyse des risques sur la qualité des formations délivrées.",
+      "statut_vs_v9": "modifie",
+      "difference_vs_v9": "« met en œuvre des mesures d'amélioration » devient « met en place une démarche d'amélioration continue » ; ajoute l'exigence explicite d'une analyse des risques sur la qualité des formations délivrées (nouvelle exigence de fond, pas une simple reformulation)."
+    },
+    {
+      "numero": 33,
+      "critere": 7,
+      "type": "specifique",
+      "categories": [
+        "CFA"
+      ],
+      "libelle": "Le prestataire met en place un dispositif d'évaluation des contenus et des enseignements par les apprenants, distinct du recueil général de satisfaction, dont les résultats sont partagés avec les équipes pédagogiques et donnent lieu à la formalisation d'une démarche d'amélioration continue, dont il mesure périodiquement l'efficacité.",
+      "statut_vs_v9": "ajoute",
+      "difference_vs_v9": "Indicateur entièrement nouveau, n'existe pas dans V9. Catégorie déduite d'une seule colonne marquée dans la matrice (la 4e, CFA) ; le texte extrait ne comporte pas d'en-tête explicite « indicateur spécifique » visible avant ce point, le type « specifique » est donc une inférence par cohérence avec les autres indicateurs à colonne unique, pas une citation littérale — à vérifier si une confirmation stricte est nécessaire."
+    }
+  ],
+  "date_version": "2026-08-01"
+}

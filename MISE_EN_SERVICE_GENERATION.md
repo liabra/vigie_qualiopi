@@ -89,3 +89,23 @@ COMMIT;
 ```
 
 Les documents déjà générés automatiquement restent sur le Drive et dans `documents_generes`.
+
+# Référentiel V10 (branche `livraison/referentiel-v10`, migrations 032 et 039)
+
+- 032 (travail existant, repris tel quel) : statut « guide de lecture disponible » et nombre
+  d'indicateurs attendu, par version. Additive.
+- 039 : journal des bascules de référentiel (`bascules_referentiel`). Additive.
+- Au démarrage, le V10 (`server/seed/referentiel_qualiopi_v10.json`, 33 indicateurs, libellés du
+  décret n° 2026-728, guide de lecture absent) est importé **sans être activé**, une seule fois.
+- L'activation reste une action de l'administrateur (Paramètres → Versions) :
+  - « Reporter les rattachements » (coché par défaut) relie preuves, modèles, veille, signalements,
+    actions et marquages « non applicable » à l'indicateur de même numéro (1 à 32 conservés par le décret) ;
+  - les preuves des 12 indicateurs dont le texte a changé passent « à confirmer » ;
+  - l'indicateur 33 (nouveau, CFA) démarre sans preuve ;
+  - chaque bascule est journalisée ; réactiver V9 avec report ramène les rattachements.
+
+Contrôles après déploiement (lecture seule) :
+```sql
+SELECT code, est_active, guide_de_lecture_disponible, nb_indicateurs_attendu, date_application
+FROM referentiel_versions ORDER BY id;          -- V9 active, V10 inactive (33, 2026-11-01)
+```

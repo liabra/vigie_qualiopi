@@ -432,7 +432,7 @@ test("installation existante 001→014 + données : 015 à 025 appliquées sans 
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "036", "037", "038"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "032", "036", "037", "038", "039"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-PRE'");
   assert.equal(n, 1, "la session antérieure a survécu à 015");

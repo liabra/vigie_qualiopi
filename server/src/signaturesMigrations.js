@@ -47,7 +47,9 @@ export const SIGNATURES = {
   "023_intervenants.sql": table("intervenants"),
   "024_justificatifs_intervenants.sql": table("preuves_confidentielles"),
   "025_seances_suivi_pedagogique.sql": table("seances"),
+  "032_referentiel_statut_guide.sql": colonne("referentiel_versions", "guide_de_lecture_disponible"),
   "036_modeles_bibliotheque.sql": colonne("modeles_documents", "type_document"),
   "037_modeles_typologie_unicite.sql": "SELECT to_regclass('public.modeles_un_actif_par_fichier_portee') IS NOT NULL AS ok",
   "038_generations_automatiques.sql": table("generations_planifiees"),
+  "039_bascules_referentiel.sql": table("bascules_referentiel"),
 };

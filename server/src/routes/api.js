@@ -9,6 +9,7 @@ import { champsAudit } from "../services/audits.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
 import { preuveVisibleContributeur } from "../services/confidentialite.js";
+import { reporterRattachements } from "../services/basculeReferentiel.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -53,7 +54,9 @@ router.get("/referentiel", requireAuth, wrap(async (req, res) => {
   const admin = req.user.role === "admin";
   const vis = admin ? "TRUE" : "pc.preuve_id IS NULL";
   const { rows: [version] } = await query(
-    "SELECT id, code, libelle, date_publication, date_application, source, note FROM referentiel_versions WHERE est_active"
+    `SELECT id, code, libelle, date_publication, date_application, source, note,
+            guide_de_lecture_disponible, nb_indicateurs_attendu
+     FROM referentiel_versions WHERE est_active`
   );
   if (!version) return res.status(404).json({ error: "Aucun référentiel actif en base." });
   const [{ rows: criteres }, { rows: indicateurs }] = await Promise.all([
@@ -111,7 +114,8 @@ function classerVersion(v) {
 
 router.get("/referentiel/versions", requireAuth, wrap(async (_req, res) => {
   const { rows } = await query(
-    `SELECT id, code, libelle, date_publication, date_application, source, note, est_active
+    `SELECT id, code, libelle, date_publication, date_application, source, note, est_active,
+            guide_de_lecture_disponible, nb_indicateurs_attendu
      FROM referentiel_versions ORDER BY date_application DESC NULLS LAST, id DESC`
   );
   res.json({ versions: rows.map((v) => ({ ...v, type: classerVersion(v) })), total: rows.length });
@@ -135,7 +139,7 @@ router.get("/referentiel/versions/:id", requireAuth, wrap(async (req, res) => {
 // Préparer une nouvelle version : on ne crée que la COQUILLE (métadonnées).
 // Le contenu officiel des critères/indicateurs viendra d'un import ultérieur.
 router.post("/referentiel/versions", requireAdmin, wrap(async (req, res) => {
-  const { code, libelle, date_publication, date_application, source, note } = req.body || {};
+  const { code, libelle, date_publication, date_application, source, note, guide_de_lecture_disponible } = req.body || {};
   const c = code?.trim();
   if (!c) return res.status(400).json({ error: "Code de version obligatoire." });
   if (!libelle?.trim()) return res.status(400).json({ error: "Libellé de version obligatoire." });
@@ -146,10 +150,15 @@ router.post("/referentiel/versions", requireAdmin, wrap(async (req, res) => {
     return res.status(400).json({ error: "Date d'application invalide : format attendu AAAA-MM-JJ." });
   }
   try {
+    // Prudent par défaut : un appelant qui omet ce champ (ancien client,
+    // formulaire pas encore mis à jour) ne doit JAMAIS déclarer à tort un
+    // guide disponible — seul `true` explicite l'affirme.
     const { rows: [version] } = await query(
-      `INSERT INTO referentiel_versions (code, libelle, date_publication, date_application, source, note)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [c, libelle.trim(), date_publication || null, date_application || null, source?.trim() || null, note?.trim() || null]
+      `INSERT INTO referentiel_versions (code, libelle, date_publication, date_application, source, note,
+         guide_de_lecture_disponible)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [c, libelle.trim(), date_publication || null, date_application || null, source?.trim() || null, note?.trim() || null,
+       guide_de_lecture_disponible === true]
     );
     res.status(201).json({ version });
   } catch (e) {
@@ -180,15 +189,29 @@ router.post("/referentiel/versions/:id/activer", requireAdmin, wrap(async (req, 
     });
   }
 
+  if (version.est_active) return res.status(409).json({ error: "Cette version est déjà active." });
+  const reporter = req.body?.reporter === true;
+
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    // Verrou : deux activations simultanées ne reportent jamais deux fois.
+    const { rows: [ancienne] } = await client.query(
+      "SELECT id FROM referentiel_versions WHERE est_active FOR UPDATE"
+    );
+    // Report par numéro d'indicateur (preuves, modèles, veille, qualité, non applicables).
+    const bilan = reporter && ancienne ? await reporterRattachements(client, ancienne.id, id) : null;
     await client.query("UPDATE referentiel_versions SET est_active = false WHERE est_active AND id <> $1", [id]);
     await client.query("UPDATE referentiel_versions SET est_active = true WHERE id = $1", [id]);
+    await client.query(
+      `INSERT INTO bascules_referentiel (ancienne_version_id, nouvelle_version_id, report, bilan, par)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [ancienne?.id ?? null, id, Boolean(bilan), JSON.stringify(bilan || {}), req.user.id]
+    );
     await client.query("COMMIT");
     const avertissement = version.date_application && version.date_application > dateMetierAujourdhui()
       ? "Cette version a une date d'application future." : null;
-    res.json({ ok: true, version: { ...version, est_active: true }, avertissement });
+    res.json({ ok: true, version: { ...version, est_active: true }, avertissement, bilan });
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;

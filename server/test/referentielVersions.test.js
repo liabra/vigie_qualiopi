@@ -40,7 +40,7 @@ function baseSimulee(versions = []) {
       return { rows: u ? [u] : [] };
     }
 
-    if (sql.startsWith("SELECT id, code, libelle, date_publication, date_application, source, note, est_active FROM referentiel_versions")) {
+    if (sql.startsWith("SELECT id, code, libelle, date_publication, date_application, source, note, est_active, guide_de_lecture_disponible, nb_indicateurs_attendu FROM referentiel_versions")) {
       const rows = [...etat.versions.values()]
         .sort((a, b) => (b.date_application || "").localeCompare(a.date_application || "") || b.id - a.id);
       return { rows };
@@ -49,6 +49,15 @@ function baseSimulee(versions = []) {
     if (sql === "SELECT * FROM referentiel_versions WHERE id = $1") {
       const v = etat.versions.get(params[0]);
       return { rows: v ? [{ ...v }] : [] };
+    }
+
+    // Bascule : version active verrouillée, journal de bascule.
+    if (sql === "SELECT id FROM referentiel_versions WHERE est_active FOR UPDATE") {
+      return { rows: [...etat.versions.values()].filter((v) => v.est_active).map((v) => ({ id: v.id })) };
+    }
+    if (sql.startsWith("INSERT INTO bascules_referentiel")) {
+      (etat.bascules ||= []).push(params);
+      return { rows: [] };
     }
 
     if (sql.startsWith("SELECT (SELECT count(*)::int FROM criteres")) {
@@ -134,6 +143,26 @@ test("les versions se classent en active / future / historique", async () => {
   assert.equal(r.corps.versions.filter((v) => v.type === "active").length, 1);
 });
 
+// Statut de guide par version (texte réglementaire vérifié vs guide de
+// lecture disponible), distinct de `texte_source_verifie` (par indicateur).
+test("le statut de guide et le nombre attendu sont remontés par version", async () => {
+  const b = baseSimulee([
+    { id: 1, code: "V9", libelle: "V9", date_application: "2023-01-01", est_active: true,
+      guide_de_lecture_disponible: true, nb_indicateurs_attendu: 32 },
+    { id: 2, code: "DECRET-2026-728-DRAFT", libelle: "Décret 2026-728 (candidat)", date_application: "2026-11-01", est_active: false,
+      guide_de_lecture_disponible: false, nb_indicateurs_attendu: 33 },
+  ]);
+  b.installer();
+  const r = await appel("/api/referentiel/versions", { utilisateur: CONTRIBUTEUR });
+  assert.equal(r.statut, 200);
+  const v9 = r.corps.versions.find((v) => v.code === "V9");
+  const decret = r.corps.versions.find((v) => v.code === "DECRET-2026-728-DRAFT");
+  assert.equal(v9.guide_de_lecture_disponible, true);
+  assert.equal(v9.nb_indicateurs_attendu, 32);
+  assert.equal(decret.guide_de_lecture_disponible, false);
+  assert.equal(decret.nb_indicateurs_attendu, 33);
+});
+
 test("un contributeur consulte le détail d'une version", async () => {
   const b = baseSimulee([
     { id: 1, code: "V9", libelle: "Référentiel V9", date_application: "2023-01-01", est_active: true,
@@ -167,6 +196,38 @@ test("un admin prépare une nouvelle version (coquille, sans contenu)", async ()
   assert.equal(r.corps.version.code, "V10", "code rogné");
   assert.equal(r.corps.version.est_active, false, "une nouvelle version n'est jamais active d'office");
   assert.equal([...b.etat.versions.values()].filter((v) => v.est_active).length, 1, "la V9 reste la seule active");
+});
+
+// P2 — comportement prudent : un champ omis ne doit JAMAIS déclarer à tort
+// un guide disponible (ex. un ancien client qui ne connaît pas ce champ).
+test("création d'une coquille : guide_de_lecture_disponible omis ⇒ false, jamais déclaré disponible", async () => {
+  baseSimulee([{ id: 1, code: "V9", libelle: "V9", est_active: true }]).installer();
+  const r = await appel("/api/referentiel/versions", {
+    methode: "POST",
+    corps: { code: "V10", libelle: "Référentiel V10" },
+  });
+  assert.equal(r.statut, 201);
+  assert.equal(r.corps.version.guide_de_lecture_disponible, false);
+});
+
+test("création d'une coquille : guide_de_lecture_disponible explicitement vrai est conservé", async () => {
+  baseSimulee([{ id: 1, code: "V9", libelle: "V9", est_active: true }]).installer();
+  const r = await appel("/api/referentiel/versions", {
+    methode: "POST",
+    corps: { code: "V10", libelle: "Référentiel V10", guide_de_lecture_disponible: true },
+  });
+  assert.equal(r.statut, 201);
+  assert.equal(r.corps.version.guide_de_lecture_disponible, true);
+});
+
+test("création d'une coquille : une valeur non booléenne (ex. chaîne) n'est jamais interprétée comme vraie", async () => {
+  baseSimulee([{ id: 1, code: "V9", libelle: "V9", est_active: true }]).installer();
+  const r = await appel("/api/referentiel/versions", {
+    methode: "POST",
+    corps: { code: "V10", libelle: "Référentiel V10", guide_de_lecture_disponible: "oui" },
+  });
+  assert.equal(r.statut, 201);
+  assert.equal(r.corps.version.guide_de_lecture_disponible, false, "seul le booléen true explicite est accepté");
 });
 
 test("un code vide est refusé", async () => {

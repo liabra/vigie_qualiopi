@@ -142,6 +142,33 @@ const AIDE = {
           "Un modèle est un Google Doc ou Sheet existant sur le Drive. Vigie en fait une copie et remplace les marqueurs {{…}} — le modèle d'origine n'est jamais modifié.",
         ],
       },
+      {
+        titre: "Modes de génération",
+        lignes: [
+          "Manuelle : le document est généré depuis l'onglet Documents de la session.",
+          "Automatique : le document est produit seul au moment choisi (création de la session, inscription d'un stagiaire, début ou fin de la session).",
+          "Conditionnelle : comme l'automatique, mais seulement pour les stagiaires concernés (situation de handicap, besoin d'adaptation, prescripteur renseigné).",
+          "Seuls les documents manquants sont produits : un document existant n'est jamais remplacé. Un modèle utilisant une donnée restreinte n'est jamais généré automatiquement : générez-le à la main.",
+          "Le suivi (fait, sans objet, bloqué) apparaît dans l'onglet Documents de chaque session ; une génération bloquée se relance après correction.",
+        ],
+      },
+      {
+        titre: "Retirer un modèle",
+        lignes: ["Désactiver un modèle le retire des listes et arrête ses générations automatiques ; les documents déjà produits sont conservés. Il peut être réactivé."],
+      },
+    ],
+  },
+  "parametres/inventaire-drive": {
+    titre: "Inventaire Drive",
+    sections: [
+      {
+        titre: "À quoi sert cette page",
+        lignes: [
+          "Elle liste, en lecture seule, les Google Docs et Sheets du dossier Vigie sur le Drive, et indique ceux déjà déclarés comme modèles.",
+          "« Analyser » vérifie les marqueurs d'un fichier et propose un type, un usage et des indicateurs. Rien n'est enregistré sans votre validation.",
+          "« Enregistrer comme modèle… » ouvre le formulaire prérempli : le fichier Drive n'est ni copié, ni déplacé, ni modifié.",
+        ],
+      },
     ],
   },
   prescripteurs: {
@@ -305,6 +332,7 @@ const CLES = [
   ["/intervenants", "intervenants"],
   ["/justificatifs-intervenants", "justificatifsIntervenants"],
   ["/modeles", "modeles"],
+  ["/parametres/inventaire-drive", "parametres/inventaire-drive"],
   ["/prescripteurs", "prescripteurs"],
   ["/versions", "versions"],
   ["/parametres/google", "parametres/google"],
@@ -376,7 +404,7 @@ export const RUBRIQUES_GUIDE = [
   {
     id: "documents", titre: "Documents", admin: false,
     sections: [
-      { titre: "Génération", lignes: ["Vigie copie un modèle Drive et remplace les marqueurs {{…}}. Le modèle d'origine n'est jamais modifié."] },
+      { titre: "Génération", lignes: ["Vigie copie un modèle Drive et remplace les marqueurs {{…}}. Le modèle d'origine n'est jamais modifié.", "Les modèles automatiques et conditionnels sont produits seuls ; leur suivi apparaît sous « Générations automatiques »."] },
       { titre: "Externes / EduSign", lignes: ["Rattachez un fichier déjà présent sur le Drive (export EduSign…) sans le copier ni le stocker dans Vigie."] },
     ],
   },

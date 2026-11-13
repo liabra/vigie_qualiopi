@@ -92,11 +92,11 @@ test("création : type et mode obligatoires, réponse complète avec indicateurs
 });
 
 test("création : mode conditionnel exige une condition, refusée en mode manuel", async () => {
-  const sansCondition = await api("POST", "/api/modeles", MODELE(3, { mode_generation: "conditionnel" }), A());
+  const sansCondition = await api("POST", "/api/modeles", MODELE(3, { mode_generation: "conditionnel", declencheur: "inscription" }), A());
   assert.equal(sansCondition.statut, 400);
-  assert.match(sansCondition.corps.error, /décrivez la condition/);
+  assert.match(sansCondition.corps.error, /choisissez une condition/);
 
-  const avecCondition = await api("POST", "/api/modeles", MODELE(4, { mode_generation: "conditionnel", condition_generation: "Si le stagiaire est en situation de handicap" }), A());
+  const avecCondition = await api("POST", "/api/modeles", MODELE(4, { mode_generation: "conditionnel", declencheur: "inscription", condition_code: "situation_handicap", condition_generation: "Si le stagiaire est en situation de handicap" }), A());
   assert.equal(avecCondition.statut, 201, JSON.stringify(avecCondition.corps));
   assert.equal(avecCondition.corps.modele.condition_generation, "Si le stagiaire est en situation de handicap");
 
@@ -109,6 +109,8 @@ test("GET : filtres par type et par mode, liste des valeurs admises, modèles in
   const tous = await api("GET", "/api/modeles", undefined, C());
   assert.equal(tous.statut, 200);
   assert.deepEqual(tous.corps.modes_generation, ["manuel", "automatique", "conditionnel"]);
+  assert.deepEqual(Object.keys(tous.corps.declencheurs), ["creation_session", "inscription", "debut_session", "fin_session"]);
+  assert.deepEqual(Object.keys(tous.corps.conditions), ["situation_handicap", "besoin_adaptation", "prescripteur_renseigne"]);
   assert.ok(tous.corps.types_document.includes("convocation"));
 
   const conditionnels = await api("GET", "/api/modeles?mode_generation=conditionnel", undefined, C());
@@ -150,13 +152,14 @@ test("PATCH : changement de mode conditionnel, condition retirée au retour en m
   const sansCondition = await api("PATCH", `/api/modeles/${id}`, { mode_generation: "conditionnel" }, A());
   assert.equal(sansCondition.statut, 400);
 
-  const conditionnel = await api("PATCH", `/api/modeles/${id}`, { mode_generation: "conditionnel", condition_generation: "Après validation du positionnement" }, A());
+  const conditionnel = await api("PATCH", `/api/modeles/${id}`, { mode_generation: "conditionnel", declencheur: "fin_session", condition_code: "prescripteur_renseigne", condition_generation: "Après validation du positionnement" }, A());
   assert.equal(conditionnel.statut, 200, JSON.stringify(conditionnel.corps));
   assert.equal(conditionnel.corps.modele.condition_generation, "Après validation du positionnement");
 
   const retour = await api("PATCH", `/api/modeles/${id}`, { mode_generation: "manuel" }, A());
   assert.equal(retour.statut, 200, JSON.stringify(retour.corps));
   assert.equal(retour.corps.modele.condition_generation, null, "condition retirée automatiquement");
+  assert.deepEqual([retour.corps.modele.declencheur, retour.corps.modele.condition_code], [null, null], "déclencheur et condition retirés");
 });
 
 test("PATCH : conflit de fichier et de portée renvoie 409", async () => {

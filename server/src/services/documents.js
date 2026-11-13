@@ -488,11 +488,16 @@ const generationsEnCours = new Map();
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
 // DOC-3C : `admin` (booléen, estAdmin(req.user) calculé par la route) sert
 // au précontrôle pour les variables/blocs `sensibilite: "restreinte"`.
-export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, client: clientGoogle = null } = {}) {
+// Génération automatique : `completer` ne produit que les documents manquants (jamais de
+// remplacement ni de suppression) et `filtre(stagiaire)` restreint les cibles stagiaire ; quand
+// il ne reste rien à produire, le résultat est { documents: 0, rien: true } au lieu d'une erreur.
+// `planificationId` rattache la génération à la tâche planifiée qui l'a lancée.
+export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, client: clientGoogle = null, completer = false, filtre = null, planificationId = null } = {}) {
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
     e.statut = 503;
+    e.driveAbsent = true;
     throw e;
   }
   if (!d.row.scopes.split(/\s+/).includes(DRIVE_FILE)) {
@@ -505,17 +510,25 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   const { rows: indicateurs } = await query("SELECT indicateur_id FROM modele_indicateurs WHERE modele_id = $1", [modeleId]);
 
   const ctx = await contexteGeneration(sessionId, groupeId);
-  const aProduire = await cibles(modele, ctx);
-  if (!aProduire.length) {
-    throw new Error("Aucun stagiaire inscrit (hors abandons) : rien à générer pour ce modèle.");
-  }
+  let aProduire = await cibles(modele, ctx);
+  if (filtre && modele.portee === "stagiaire") aProduire = aProduire.filter((c) => filtre(c.stagiaire));
 
   // Déjà produits pour ce couple : on ne double jamais sans consigne.
-  const { rows: existants } = await query(
+  const { rows: tousExistants } = await query(
     `SELECT * FROM documents_generes
      WHERE modele_id = $1 AND COALESCE(session_id, 0) = $2 AND COALESCE(groupe_id, 0) = $3`,
     [modeleId, sessionId || 0, groupeId || 0]
   );
+  // En complément, les documents existants ne sont ni remplacés ni retirés des preuves.
+  const existants = completer ? [] : tousExistants;
+  if (completer) {
+    const dejaFaits = new Set(tousExistants.map((x) => x.stagiaire_id ?? 0));
+    aProduire = aProduire.filter((c) => !dejaFaits.has(c.stagiaire?.id ?? 0));
+  }
+  if (!aProduire.length) {
+    if (completer || filtre) return { modele: modele.nom, portee: modele.portee, documents: 0, rien: true };
+    throw new Error("Aucun stagiaire inscrit (hors abandons) : rien à générer pour ce modèle.");
+  }
   if (existants.length && !remplacer) {
     const e = new Error(
       `${existants.length} document(s) ont déjà été générés pour ce modèle sur cette session. ` +
@@ -624,9 +637,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   try {
     await cx.query("BEGIN");
     const { rows: [gen] } = await cx.query(
-      `INSERT INTO generations (modele_id, session_id, groupe_id, nb_documents, nb_remplaces, lancee_par)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [modeleId, sessionId, groupeId, produits.length, remplaces, utilisateurId]
+      `INSERT INTO generations (modele_id, session_id, groupe_id, nb_documents, nb_remplaces, lancee_par, planification_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [modeleId, sessionId, groupeId, produits.length, remplaces, utilisateurId, planificationId]
     );
 
     const preuves = [];

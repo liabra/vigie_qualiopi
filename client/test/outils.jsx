@@ -35,7 +35,7 @@ export function routesParDefaut(role) {
     "GET /api/sessions/1": {
       session: SESSION, groupes: [{ id: 5, nom: "Groupe A", lieu: "Lyon 7e", formateur: null, nb_inscrits: 1 }],
       stagiaires: STAGIAIRES,
-      documents: [{ id: 70, nom: "Attestation - Martin", drive_url: "https://d/70", modele: "Attestation", portee: "stagiaire", groupe_id: null, genere_le: "2026-09-20T10:00:00Z" }],
+      documents: [{ id: 70, nom: "Attestation - Martin", drive_url: "https://d/70", modele_id: 3, modele: "Attestation", portee: "stagiaire", groupe_id: null, genere_le: "2026-09-20T10:00:00Z" }],
     },
     "GET /api/sessions/1/absences": {
       session: { heures_prevues: 35, source_heures_prevues: "duree_heures_reelle", date_debut: SESSION.date_debut, date_fin: SESSION.date_fin },

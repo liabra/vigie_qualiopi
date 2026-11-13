@@ -7,8 +7,9 @@ import { Router } from "express";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
+import { relancer, signalerEvenement, tachesDeSession } from "../services/generationsAutomatiques.js";
 import { MARQUEURS } from "../services/marqueurs.js";
-import { CHAMPS_MODIFIABLES, MODES_GENERATION, TYPES_DOCUMENT, validerChamps, verifierCoherence } from "../services/modelesBibliotheque.js";
+import { CHAMPS_MODIFIABLES, CONDITIONS, DECLENCHEURS, MODES_GENERATION, TYPES_DOCUMENT, completerMode, validerChamps, verifierCoherence } from "../services/modelesBibliotheque.js";
 import { etatJeton, getDrive } from "../services/google.js";
 import { analyserModeleDrive } from "../services/diagnosticModele.js";
 import { parseIdPositif } from "../services/ids.js";
@@ -331,6 +332,7 @@ router.post("/sessions", requireAdmin, wrap(async (req, res) => {
      lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree,
      normaliserHoraire(horaire)]
   );
+  await signalerEvenement("creation_session", session.id);
   res.status(201).json({ session });
 }));
 
@@ -507,6 +509,11 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
   try {
     const { rows } = await query(`UPDATE sessions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
     if (!rows.length) return res.status(404).json({ error: "Session introuvable." });
+    // Passage en cours ou terminée : déclencheurs de début et de fin de session.
+    if (corps.statut !== undefined && corps.statut !== actuelle.statut) {
+      if (corps.statut === "en_cours") await signalerEvenement("debut_session", id);
+      if (corps.statut === "terminee") await signalerEvenement("fin_session", id);
+    }
     res.json({ session: rows[0], documentsObsoletes, ...(avertissementAbsences || {}) });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Cette référence est déjà utilisée par une autre session." });
@@ -630,6 +637,7 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
       [personneId, sessionId, gid, prescripteur || null, dossier_complet === true, date_inscription || null, dateMetierAujourdhui()] // fix : jour civil de Cayenne
     );
     await cx.query("COMMIT");
+    await signalerEvenement("inscription", sessionId);
     res.status(201).json({ inscription });
   } catch (e) {
     await cx.query("ROLLBACK");
@@ -1205,6 +1213,7 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
     }
 
     await cx.query("COMMIT");
+    if (bilan.inscrits) await signalerEvenement("inscription", sessionId);
     res.json({ bilan });
   } catch (e) {
     await cx.query("ROLLBACK");
@@ -1305,7 +1314,7 @@ async function rattacherIndicateurs(cx, modeleId, numeros) {
 }
 
 // Colonnes de modeles_documents correspondant aux champs validés (hors indicateurs et lien).
-const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation"];
+const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code"];
 
 router.get("/modeles", requireAuth, wrap(async (req, res) => {
   const filtres = [req.query.inactifs === "1" ? "NOT m.actif" : "m.actif"];
@@ -1321,6 +1330,7 @@ router.get("/modeles", requireAuth, wrap(async (req, res) => {
   res.json({
     modeles: rows, marqueurs: MARQUEURS, total: rows.length,
     types_document: TYPES_DOCUMENT, modes_generation: MODES_GENERATION,
+    declencheurs: DECLENCHEURS, conditions: CONDITIONS,
   });
 }));
 
@@ -1329,11 +1339,12 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   if (v.erreur) return res.status(400).json({ error: v.erreur });
   const fileId = extraireFileId(v.valeur.lien);
   if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
-  const modele = {
+  const modele = completerMode({
     nom: v.valeur.nom, portee: v.valeur.portee, type_document: v.valeur.type_document,
     mode_generation: v.valeur.mode_generation, condition_generation: v.valeur.condition_generation ?? null,
+    declencheur: v.valeur.declencheur ?? null, condition_code: v.valeur.condition_code ?? null,
     description: v.valeur.description ?? null,
-  };
+  }, new Set(Object.keys(v.valeur)));
   const coherence = verifierCoherence(modele);
   if (coherence.erreur) return res.status(400).json({ error: coherence.erreur });
 
@@ -1342,11 +1353,12 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
     await cx.query("BEGIN");
     const { rows: [cree] } = await cx.query(
       `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par,
-                                      type_document, mode_generation, condition_generation)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+                                      type_document, mode_generation, condition_generation, declencheur, condition_code,
+                                      declencheur_actif_depuis)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, CASE WHEN $9 = 'manuel' THEN NULL ELSE now() END) RETURNING id`,
       [modele.nom, fileId, `https://drive.google.com/open?id=${fileId}`, req.body.drive_mime || null,
        modele.portee, modele.description, req.user.id,
-       modele.type_document, modele.mode_generation, modele.condition_generation]
+       modele.type_document, modele.mode_generation, modele.condition_generation, modele.declencheur, modele.condition_code]
     );
     const rattachement = await rattacherIndicateurs(cx, cree.id, v.valeur.indicateurs);
     if (rattachement.erreur) {
@@ -1388,21 +1400,25 @@ router.patch("/modeles/:id", requireAdmin, wrap(async (req, res) => {
       await cx.query("ROLLBACK");
       return res.status(404).json({ error: "Modèle introuvable." });
     }
-    const fusion = { ...actuel };
+    let fusion = { ...actuel };
     for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined) fusion[c] = v.valeur[c];
-    // Passer en mode non conditionnel retire la condition, sauf si elle est transmise explicitement.
-    if (v.valeur.mode_generation !== undefined && v.valeur.mode_generation !== "conditionnel" && v.valeur.condition_generation === undefined) {
-      fusion.condition_generation = null;
-    }
-    const coherence = verifierCoherence(fusion);
+    // Un changement de mode remet en cohérence les champs dépendants non transmis.
+    if (v.valeur.mode_generation !== undefined) fusion = completerMode(fusion, new Set(Object.keys(v.valeur)));
+    const toucheMode = ["mode_generation", "declencheur", "condition_code"].some((c) => v.valeur[c] !== undefined);
+    const coherence = verifierCoherence(fusion, { exigerDeclencheur: toucheMode });
     if (coherence.erreur) {
       await cx.query("ROLLBACK");
       return res.status(400).json({ error: coherence.erreur });
     }
-    // Colonnes réellement modifiées : celles transmises, plus la condition effacée par le changement de mode.
+    // Colonnes réellement modifiées : celles transmises, plus les champs remis en cohérence par le mode.
     const modifs = {};
-    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined) modifs[c] = fusion[c];
-    if (fusion.condition_generation !== actuel.condition_generation) modifs.condition_generation = fusion.condition_generation;
+    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined || fusion[c] !== actuel[c]) modifs[c] = fusion[c];
+    // Date d'activation des déclenchements : posée au passage en automatique ou conditionnel,
+    // effacée au retour en manuel. Les déclenchements par date ne remontent jamais avant.
+    if (fusion.mode_generation === "manuel" && actuel.mode_generation !== "manuel") modifs.declencheur_actif_depuis = null;
+    if (fusion.mode_generation !== "manuel" && (actuel.mode_generation === "manuel" || fusion.declencheur !== actuel.declencheur)) {
+      modifs.declencheur_actif_depuis = new Date();
+    }
     if (fileId) Object.assign(modifs, { drive_file_id: fileId, drive_url: `https://drive.google.com/open?id=${fileId}`, drive_mime: corps.drive_mime || null });
     const colonnes = Object.keys(modifs);
     if (colonnes.length) {
@@ -1513,6 +1529,29 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     if (e.statut) return res.status(e.statut).json({ error: e.message });
     return res.status(400).json({ error: e.message });
   }
+}));
+
+// Générations automatiques et conditionnelles d'une session : tâches planifiées et leur sort.
+router.get("/sessions/:id/generations-planifiees", requireAuth, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const taches = await tachesDeSession(id);
+  res.json({ taches, total: taches.length });
+}));
+
+// Remise en file d'une tâche bloquée (administrateur), après correction du modèle ou des données.
+router.post("/generations-planifiees/:id/relancer", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de tâche invalide." });
+  const { rows: [t] } = await query(
+    `SELECT g.statut, s.archivee_le FROM generations_planifiees g JOIN sessions s ON s.id = g.session_id WHERE g.id = $1`, [id]
+  );
+  if (!t) return res.status(404).json({ error: "Tâche introuvable." });
+  if (t.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  if (!(await relancer(id))) {
+    return res.status(409).json({ error: "Seule une tâche bloquée ou en attente peut être relancée, sans doublon en attente." });
+  }
+  res.json({ ok: true });
 }));
 
 // ── Évaluations / QCM + satisfaction (lot L7) ────────────────

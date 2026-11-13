@@ -89,6 +89,7 @@ test("la liste des modèles ne déclenche aucun appel de diagnostic", async () =
 const MODELE_BIBLIO = {
   id: 7, nom: "Convocation session", portee: "session", description: "", type_document: "convocation",
   mode_generation: "conditionnel", condition_generation: "Si la session est en intra-entreprise",
+  declencheur: "inscription", condition_code: "situation_handicap",
   drive_url: "https://docs.google.com/document/d/CONV1234567890/edit", drive_mime: "application/vnd.google-apps.document",
   indicateurs: [{ id: 111, numero: 11 }],
 };
@@ -132,9 +133,11 @@ test("modification : le détail ouvre le formulaire prérempli, seuls les champs
   assert.equal(corps.nom, "Convocation intra");
   assert.equal(corps.lien, undefined, "lien inchangé : non renvoyé");
   assert.equal(corps.condition_generation, "Si la session est en intra-entreprise");
+  assert.equal(corps.declencheur, "inscription", "déclencheur conservé");
+  assert.equal(corps.condition_code, "situation_handicap", "condition conservée");
 });
 
-test("mode conditionnel : la condition est obligatoire avant envoi", async () => {
+test("mode conditionnel : moment et condition obligatoires avant envoi, puis envoyés", async () => {
   const appels = await monter("/modeles", "admin", {
     "GET /api/modeles": { modeles: [MODELE_BIBLIO], marqueurs: [] },
     "GET /api/referentiel": REFERENTIEL_BIBLIO,
@@ -150,8 +153,38 @@ test("mode conditionnel : la condition est obligatoire avant envoi", async () =>
   await cliquer(dialogue().querySelector(".indic-groupe__tete"));
   await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
   await soumettre("form-modele");
-  await attendre(() => texte().includes("Décrivez la condition de génération."));
+  await attendre(() => texte().includes("Choisissez quand le document est généré."));
+  assert.ok(texte().includes("Choisissez la condition."));
   assert.equal(appels.filter((a) => a.methode === "POST").length, 0);
+
+  await saisir(champ("Moment de la génération"), "inscription");
+  await saisir(champ("Condition"), "besoin_adaptation");
+  await soumettre("form-modele");
+  await attendre(() => appels.some((a) => a.methode === "POST"));
+  const corps = appels.find((a) => a.methode === "POST").corps;
+  assert.deepEqual([corps.mode_generation, corps.declencheur, corps.condition_code, corps.condition_generation],
+    ["conditionnel", "inscription", "besoin_adaptation", null], "précision facultative : libellé repris par le serveur");
+});
+
+test("mode manuel : ni moment ni condition envoyés", async () => {
+  const appels = await monter("/modeles", "admin", {
+    "GET /api/modeles": { modeles: [MODELE_BIBLIO], marqueurs: [] },
+    "GET /api/referentiel": REFERENTIEL_BIBLIO,
+    "POST /api/modeles": [201, { modele: { id: 8 } }],
+  });
+  await attendre(() => texte().includes("Convocation session"));
+  await cliquer(bouton("+ Nouveau modèle"));
+  await attendre(() => dialogue()?.textContent.includes("Critère 3"));
+  assert.equal(champ("Moment de la génération"), null);
+  await saisir(champ("Nom"), "Attestation manuelle");
+  await saisir(champ("Type de document"), "attestation");
+  await saisir(champ("Lien ou identifiant du fichier Drive"), "https://docs.google.com/document/d/ABCDEFGHIJKLMN/edit");
+  await cliquer(dialogue().querySelector(".indic-groupe__tete"));
+  await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
+  await soumettre("form-modele");
+  await attendre(() => appels.some((a) => a.methode === "POST"));
+  const corps = appels.find((a) => a.methode === "POST").corps;
+  assert.deepEqual([corps.mode_generation, corps.declencheur, corps.condition_code], ["manuel", null, null]);
 });
 
 test("modèles désactivés : liste dédiée et réactivation", async () => {

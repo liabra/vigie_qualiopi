@@ -59,10 +59,14 @@ test("longueurs bornées : nom, description, condition", () => {
 });
 
 test("cohérence : mode conditionnel exige une condition ; condition refusée hors mode conditionnel", () => {
-  const base = { mode_generation: "conditionnel", condition_generation: null, portee: "session" };
+  const base = { mode_generation: "conditionnel", declencheur: "inscription", condition_code: "situation_handicap", condition_generation: null, portee: "session" };
   assert.match(verifierCoherence(base).erreur, /décrivez la condition/);
   assert.equal(verifierCoherence({ ...base, condition_generation: "Si l'apprenant est en situation de handicap" }).ok, true);
-  assert.match(verifierCoherence({ ...base, mode_generation: "manuel", condition_generation: "x" }).erreur, /n'est admise qu'en mode conditionnel/);
+  assert.match(verifierCoherence({ mode_generation: "manuel", condition_generation: "x" }).erreur, /n'est admise qu'en mode conditionnel/);
+  assert.match(verifierCoherence({ ...base, condition_code: null, condition_generation: "x" }).erreur, /choisissez une condition/);
+  assert.match(verifierCoherence({ ...base, declencheur: null, condition_generation: "x" }).erreur, /choisissez un déclencheur/);
+  assert.match(verifierCoherence({ mode_generation: "manuel", declencheur: "inscription" }).erreur, /ni déclencheur ni condition/);
+  assert.match(verifierCoherence({ mode_generation: "automatique", declencheur: "inscription", condition_code: "situation_handicap" }).erreur, /qu'en mode conditionnel/);
 });
 
 test("champs modifiables : liste fermée, sans champ d'identité du modèle", () => {

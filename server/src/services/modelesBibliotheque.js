@@ -8,12 +8,26 @@ export const TYPES_DOCUMENT = [
 ];
 export const MODES_GENERATION = ["manuel", "automatique", "conditionnel"];
 
+// Déclencheurs métier d'une génération automatique ou conditionnelle.
+export const DECLENCHEURS = {
+  creation_session: "À la création de la session",
+  inscription: "À l'inscription d'un stagiaire",
+  debut_session: "Au début de la session",
+  fin_session: "À la fin de la session",
+};
+// Conditions évaluables sur les données des stagiaires (mode conditionnel).
+export const CONDITIONS = {
+  situation_handicap: "Stagiaire en situation de handicap",
+  besoin_adaptation: "Stagiaire ayant un besoin d'adaptation (handicap ou besoin renseigné)",
+  prescripteur_renseigne: "Stagiaire orienté par un prescripteur",
+};
+
 const LONGUEUR_NOM = 200;
 const LONGUEUR_DESCRIPTION = 1000;
 const LONGUEUR_CONDITION = 300;
 
 // Champs qu'une modification (PATCH) peut transmettre. Les autres sont refusés.
-export const CHAMPS_MODIFIABLES = ["nom", "lien", "portee", "description", "type_document", "mode_generation", "condition_generation", "indicateurs"];
+export const CHAMPS_MODIFIABLES = ["nom", "lien", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code", "indicateurs"];
 
 const estPresent = (v) => v !== undefined && v !== null;
 
@@ -55,6 +69,14 @@ export function validerChamps(corps, { complet }) {
     if (condition.length > LONGUEUR_CONDITION) return { erreur: `Condition trop longue : ${LONGUEUR_CONDITION} caractères maximum.` };
     valeur.condition_generation = condition || null;
   }
+  if (estPresent(src.declencheur)) {
+    if (!Object.hasOwn(DECLENCHEURS, src.declencheur)) return { erreur: "Déclencheur inconnu." };
+    valeur.declencheur = src.declencheur;
+  }
+  if (estPresent(src.condition_code)) {
+    if (!Object.hasOwn(CONDITIONS, src.condition_code)) return { erreur: "Condition inconnue." };
+    valeur.condition_code = src.condition_code;
+  }
   if (estPresent(src.indicateurs) || complet) {
     const bruts = Array.isArray(src.indicateurs) ? src.indicateurs : [];
     const entiers = bruts.map((v) => (typeof v === "number" ? v : Number(v)));
@@ -65,8 +87,45 @@ export function validerChamps(corps, { complet }) {
   return { valeur };
 }
 
+// Champs dépendants du mode : ceux qui n'ont pas été transmis explicitement sont remis en
+// cohérence (passer en manuel retire déclencheur et condition ; en conditionnel, la description
+// reprend le libellé de la condition si elle est absente).
+export function completerMode(modele, transmis = new Set()) {
+  const m = { ...modele };
+  if (m.mode_generation === "manuel") {
+    if (!transmis.has("declencheur")) m.declencheur = null;
+    if (!transmis.has("condition_code")) m.condition_code = null;
+    if (!transmis.has("condition_generation")) m.condition_generation = null;
+  }
+  if (m.mode_generation === "automatique") {
+    if (!transmis.has("condition_code")) m.condition_code = null;
+    if (!transmis.has("condition_generation")) m.condition_generation = null;
+  }
+  if (m.mode_generation === "conditionnel" && !m.condition_generation && m.condition_code) {
+    m.condition_generation = CONDITIONS[m.condition_code];
+  }
+  return m;
+}
+
 // Cohérence de l'état final d'un modèle (après fusion avec l'existant en cas de modification).
-export function verifierCoherence(modele) {
+// exigerDeclencheur = false : modification d'un modèle classé avant les déclencheurs, sans toucher
+// au mode ; il reste sans effet automatique tant que le déclencheur n'est pas choisi.
+export function verifierCoherence(modele, { exigerDeclencheur = true } = {}) {
+  if (modele.mode_generation === "manuel" && (modele.declencheur || modele.condition_code)) {
+    return { erreur: "Un modèle à génération manuelle n'a ni déclencheur ni condition." };
+  }
+  if (exigerDeclencheur && modele.mode_generation !== "manuel" && !modele.declencheur) {
+    return { erreur: "Génération automatique ou conditionnelle : choisissez un déclencheur." };
+  }
+  if (modele.mode_generation === "automatique" && modele.condition_code) {
+    return { erreur: "La condition n'est admise qu'en mode conditionnel." };
+  }
+  if (exigerDeclencheur && modele.mode_generation === "conditionnel" && !modele.condition_code) {
+    return { erreur: "Mode conditionnel : choisissez une condition." };
+  }
+  if (modele.condition_code && !modele.declencheur) {
+    return { erreur: "Une condition suppose un déclencheur." };
+  }
   if (modele.mode_generation === "conditionnel" && !(modele.condition_generation || "").trim()) {
     return { erreur: "Mode conditionnel : décrivez la condition de génération." };
   }

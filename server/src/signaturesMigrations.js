@@ -49,4 +49,5 @@ export const SIGNATURES = {
   "025_seances_suivi_pedagogique.sql": table("seances"),
   "036_modeles_bibliotheque.sql": colonne("modeles_documents", "type_document"),
   "037_modeles_typologie_unicite.sql": "SELECT to_regclass('public.modeles_un_actif_par_fichier_portee') IS NOT NULL AS ok",
+  "038_generations_automatiques.sql": table("generations_planifiees"),
 };

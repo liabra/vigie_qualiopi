@@ -77,13 +77,25 @@ export const MODES_GENERATION = {
   automatique: "Automatique",
   conditionnel: "Conditionnelle",
 };
+// Déclencheurs et conditions : mêmes valeurs que l'API (services/modelesBibliotheque.js).
+export const DECLENCHEURS = {
+  creation_session: "À la création de la session",
+  inscription: "À l'inscription d'un stagiaire",
+  debut_session: "Au début de la session",
+  fin_session: "À la fin de la session",
+};
+export const CONDITIONS = {
+  situation_handicap: "Stagiaire en situation de handicap",
+  besoin_adaptation: "Besoin d'adaptation signalé",
+  prescripteur_renseigne: "Prescripteur renseigné",
+};
 const TYPES_FICHIER = {
   "application/vnd.google-apps.document": "Google Docs",
   "application/vnd.google-apps.spreadsheet": "Google Sheets",
 };
 const VIDE = {
   nom: "", lien: "", portee: "stagiaire", description: "", indicateur_ids: [],
-  type_document: "", mode_generation: "manuel", condition_generation: "",
+  type_document: "", mode_generation: "manuel", condition_generation: "", declencheur: "", condition_code: "",
 };
 
 // Lien externe rendu seulement s'il est http(s). // fix
@@ -307,7 +319,11 @@ export function ModelesPage() {
               <dt>Mode de génération</dt>
               <dd>
                 {MODES_GENERATION[detail.mode_generation] || detail.mode_generation}
+                {detail.declencheur && <> · {DECLENCHEURS[detail.declencheur]?.toLowerCase() || detail.declencheur}</>}
                 {detail.mode_generation === "conditionnel" && detail.condition_generation && <> — {detail.condition_generation}</>}
+                {detail.mode_generation !== "manuel" && !detail.declencheur && (
+                  <div className="sess-secondaire">Aucun moment choisi : ce modèle n'est pas encore généré automatiquement.</div>
+                )}
               </dd>
             </div>
             <div><dt>Fichier Google</dt><dd><LienDrive url={detail.drive_url} nom={detail.nom} />{TYPES_FICHIER[detail.drive_mime] && <> · {TYPES_FICHIER[detail.drive_mime]}</>}</dd></div>
@@ -375,6 +391,8 @@ function valeursDe(modele) {
     type_document: modele.type_document || "",
     mode_generation: modele.mode_generation || "manuel",
     condition_generation: modele.condition_generation || "",
+    declencheur: modele.declencheur || "",
+    condition_code: modele.condition_code || "",
   };
 }
 
@@ -404,8 +422,11 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
     if (!valeurs.nom.trim()) trouvees.nom = "Donnez un nom au modèle.";
     if (!modele && !valeurs.lien.trim()) trouvees.lien = "Collez le lien ou l'identifiant du fichier Drive.";
     if (!valeurs.type_document) trouvees.type_document = "Choisissez le type de document.";
-    if (valeurs.mode_generation === "conditionnel" && !valeurs.condition_generation.trim()) {
-      trouvees.condition_generation = "Décrivez la condition de génération.";
+    if (valeurs.mode_generation !== "manuel" && !valeurs.declencheur) {
+      trouvees.declencheur = "Choisissez quand le document est généré.";
+    }
+    if (valeurs.mode_generation === "conditionnel" && !valeurs.condition_code) {
+      trouvees.condition_code = "Choisissez la condition.";
     }
     if (!numeros.length) trouvees.indicateurs = "Sélectionnez au moins un indicateur.";
     setErreurs(trouvees);
@@ -417,7 +438,9 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
       description: valeurs.description,
       type_document: valeurs.type_document,
       mode_generation: valeurs.mode_generation,
-      condition_generation: valeurs.mode_generation === "conditionnel" ? valeurs.condition_generation : null,
+      condition_generation: valeurs.mode_generation === "conditionnel" ? (valeurs.condition_generation.trim() || null) : null,
+      declencheur: valeurs.mode_generation !== "manuel" ? valeurs.declencheur : null,
+      condition_code: valeurs.mode_generation === "conditionnel" ? valeurs.condition_code : null,
       indicateurs: numeros,
     };
     if (!modele) corps.lien = valeurs.lien;
@@ -468,16 +491,33 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
               {Object.entries(PORTEES).map(([v, p]) => <option key={v} value={v}>{p.long}</option>)}
             </select>
           </Field>
-          <Field label="Mode de génération" aide="Manuelle : lancée depuis la session. Automatique et conditionnelle : déclarées, mais pas encore déclenchées automatiquement.">
+          <Field label="Mode de génération" aide="Manuelle : lancée depuis la session. Automatique : produite au moment choisi. Conditionnelle : produite au moment choisi, pour les seuls stagiaires concernés.">
             <select value={valeurs.mode_generation} onChange={champ("mode_generation")}>
               {Object.entries(MODES_GENERATION).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
-          {valeurs.mode_generation === "conditionnel" && (
-            <Field label="Condition de génération" erreur={erreurs.condition_generation} className="ui-field--large"
-              aide="Décrivez quand ce document doit être produit, en une phrase.">
-              <textarea value={valeurs.condition_generation} onChange={champ("condition_generation")} rows={2} maxLength={300} />
+          {valeurs.mode_generation !== "manuel" && (
+            <Field label="Moment de la génération" erreur={erreurs.declencheur}
+              aide="Seuls les documents manquants sont produits : un document existant n'est jamais remplacé.">
+              <select value={valeurs.declencheur} onChange={champ("declencheur")}>
+                <option value="">Choisir…</option>
+                {Object.entries(DECLENCHEURS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
             </Field>
+          )}
+          {valeurs.mode_generation === "conditionnel" && (
+            <>
+              <Field label="Condition" erreur={erreurs.condition_code}>
+                <select value={valeurs.condition_code} onChange={champ("condition_code")}>
+                  <option value="">Choisir…</option>
+                  {Object.entries(CONDITIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </Field>
+              <Field label="Précision" facultatif className="ui-field--large"
+                aide="Par défaut, le libellé de la condition.">
+                <textarea value={valeurs.condition_generation} onChange={champ("condition_generation")} rows={2} maxLength={300} />
+              </Field>
+            </>
           )}
           {!modele && (
             <Field label="Lien ou identifiant du fichier Drive" erreur={erreurs.lien} className="ui-field--large"

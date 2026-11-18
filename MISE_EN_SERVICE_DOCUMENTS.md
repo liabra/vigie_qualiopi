@@ -66,3 +66,15 @@ Branches empilées à partir de `origin/main` (8550bdd). Aucune n'est fusionnée
 - **Non repris ici** : le mode « plusieurs générations par session » (commit `c31fabe`, migration 028) dépend de la chaîne
   de commits locaux non poussés (compte rendu prescripteur, entretiens FSE-IA). Son cherry-pick isolé entre en conflit
   (documents.js, gestion.js, tests) : il doit être repris avec cette chaîne, dans une livraison dédiée.
+
+## Lot 6 — consolidation avec la chaîne FSE-IA / DOC-10 (branche `livraison/consolidation`)
+
+- Contient : la chaîne locale (entretiens FSE-IA, migrations 026–031, compte rendu prescripteur, génération multiple 028)
+  **et** les quatre lots (dictionnaire, signataires, données documentaires, questionnaire/assiduité), fusionnés sans perte.
+- Migrations : 41 au total, signatures 026–031 ajoutées. Appliquées « dans le désordre » sur la production (026–031 après
+  032–043 déjà présentes) : sans conséquence, elles sont indépendantes et additives.
+- Génération multiple : case « Plusieurs documents par session » à la création d'un modèle (usage session/groupe, génération
+  manuelle uniquement) ; champ « Libellé » obligatoire à la génération ; même libellé = remplacement après confirmation.
+- `{{formation_modalite}}` produit désormais « Présentiel / Distanciel / Mixte » (et non la valeur technique).
+- Modèles préparés : 7 fichiers (dont 2 propositions : questionnaire de satisfaction, dossier d'admission), rendus et
+  contrôlés avec des données fictives.

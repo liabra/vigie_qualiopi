@@ -22,8 +22,8 @@ const avert = (r) => r.avertissements.map((e) => e.code);
 // ── Catalogue ────────────────────────────────────────────────
 
 test("catalogue : noms canoniques et identifiants uniques, syntaxe {{nom}}", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.4");
-  assert.equal(VARIABLES.length, 164, "162 variables de la 1.3 + seance_competences + seance_activites");
+  assert.equal(DICTIONNAIRE_VERSION, "1.5");
+  assert.equal(VARIABLES.length, 164, "164 variables depuis la 1.4 ; la 1.5 ne change que des libellés");
   const noms = VARIABLES.map((v) => v.nom);
   assert.equal(new Set(noms).size, noms.length, "noms canoniques uniques");
   const ids = VARIABLES.map((v) => v.id);
@@ -225,7 +225,7 @@ test("validateur : modèle de convocation canonique valide, sans avertissement",
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.resume.canoniques.length, 9);
-  assert.equal(r.version, "1.4");
+  assert.equal(r.version, "1.5");
 });
 
 test("validateur : variable inconnue rejetée explicitement", () => {
@@ -316,7 +316,7 @@ test("validateur : entrée non textuelle ou démesurée refusée, écho des bali
 
 test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
-  assert.equal(c.version, "1.4");
+  assert.equal(c.version, "1.5");
   assert.equal(c.variables.length, VARIABLES.length);
   assert.equal(c.blocs.length, 10);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });

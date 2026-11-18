@@ -35,6 +35,11 @@ export const NAVIGATION = [
     ],
   },
   {
+    id: "documents",
+    titre: "Documents",
+    entrees: [{ to: "/variables-documentaires", libelle: "Variables documentaires" }],
+  },
+  {
     id: "parametres",
     titre: "Paramètres",
     admin: true,

@@ -158,6 +158,20 @@ const AIDE = {
       },
     ],
   },
+  variablesDocumentaires: {
+    titre: "Variables documentaires",
+    sections: [
+      {
+        titre: "À quoi sert cette page",
+        lignes: [
+          "Elle liste toutes les données que Vigie sait insérer dans un document, avec leur libellé et la balise {{…}} à écrire dans le modèle Google Docs.",
+          "La recherche ignore les accents et la casse. Une balise absente de la liste est refusée : le document n'est pas généré tant qu'elle n'est pas corrigée.",
+          "Les mentions « Donnée personnelle » et « Accès restreint » signalent les données sensibles : une donnée à accès restreint n'est jamais générée automatiquement.",
+          "La page est en consultation seule ; le dictionnaire est mis à jour avec l'application.",
+        ],
+      },
+    ],
+  },
   questionnaires: {
     titre: "Questionnaires de formation",
     sections: [
@@ -353,6 +367,7 @@ const CLES = [
   ["/intervenants", "intervenants"],
   ["/justificatifs-intervenants", "justificatifsIntervenants"],
   ["/modeles", "modeles"],
+  ["/variables-documentaires", "variablesDocumentaires"],
   ["/parametres/inventaire-drive", "parametres/inventaire-drive"],
   ["/prescripteurs", "prescripteurs"],
   ["/questionnaires", "questionnaires"],

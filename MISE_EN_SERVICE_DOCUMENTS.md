@@ -55,3 +55,14 @@ Branches empilées à partir de `origin/main` (8550bdd). Aucune n'est fusionnée
 - **Attestation automatique** : modèle « conditionnel », déclencheur « à la fin de la session », condition
   « assiduité d'au moins 80 % ». Le seuil est la constante `SEUIL_ASSIDUITE` (services/assiduite.js) : à ajuster en une
   ligne si la décision B4 diffère. Tant que le modèle de l'attestation reste en mode manuel, rien ne change.
+
+## Lot 5 — modèles préparés (hors dépôt) et dépendance « entretiens FSE-IA »
+
+- **Fichiers préparés** (dossier local « A2C - Modèles préparés », hors dépôt, aucune écriture sur le Drive) : convention
+  individuelle gratuite, bilan intermédiaire, fiche d'analyse des besoins (voie A, administrateur uniquement), convocation et
+  attestation à organisme/signataire paramétrés, questionnaire de satisfaction (PROPOSITION à valider). Toutes les balises
+  sont validées par `analyserModele` (aucune inconnue). À importer **sur copie** dans Google Docs, puis à enregistrer via
+  Paramètres → Modèles (signataire à choisir).
+- **Non repris ici** : le mode « plusieurs générations par session » (commit `c31fabe`, migration 028) dépend de la chaîne
+  de commits locaux non poussés (compte rendu prescripteur, entretiens FSE-IA). Son cherry-pick isolé entre en conflit
+  (documents.js, gestion.js, tests) : il doit être repris avec cette chaîne, dans une livraison dédiée.

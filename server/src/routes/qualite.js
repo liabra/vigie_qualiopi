@@ -901,13 +901,33 @@ router.get("/qualite/tableau-de-bord", requireAdmin, wrap(async (req, res) => {
      LEFT JOIN utilisateurs u ON u.id = h.par
      LEFT JOIN actions_qualite a ON h.entite_type = 'action' AND a.id = h.entite_id
      LEFT JOIN signalements_qualite s ON h.entite_type = 'signalement' AND s.id = h.entite_id
-     WHERE h.evenement = ANY($1::text[])
+     WHERE h.evenement = ANY($1::text[]) AND h.entite_type IN ('action', 'signalement')
      ORDER BY h.cree_le DESC, h.id DESC
      LIMIT 15`, [EVENEMENTS_ACTIVITE]
   );
 
+  // Vigie 2.0 — pilotage : tâches, preuves à actualiser, indicateurs sans preuve, risques, enquêtes, prochain audit.
+  const { rows: [pil] } = await query(
+    `SELECT
+       (SELECT count(*)::int FROM taches_qualite WHERE statut IN ('a_faire','en_cours')) AS taches_ouvertes,
+       (SELECT count(*)::int FROM taches_qualite WHERE statut IN ('a_faire','en_cours') AND echeance < $1::date) AS taches_en_retard,
+       (SELECT count(*)::int FROM taches_qualite WHERE statut IN ('a_faire','en_cours') AND responsable_id IS NULL) AS taches_sans_responsable,
+       (SELECT count(*)::int FROM preuves WHERE statut IN ('a_reviser','expiree') OR date_echeance < $1::date) AS preuves_a_actualiser,
+       (SELECT count(*)::int FROM indicateurs i JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+         WHERE NOT EXISTS (SELECT 1 FROM indicateurs_non_applicables na WHERE na.indicateur_id = i.id)
+           AND NOT EXISTS (SELECT 1 FROM preuves p WHERE p.indicateur_id = i.id)) AS indicateurs_sans_preuve,
+       (SELECT count(*)::int FROM risques_qualite WHERE statut = 'actif') AS risques_actifs,
+       (SELECT count(*)::int FROM risques_qualite WHERE statut = 'actif' AND criticite >= 12) AS risques_critiques,
+       (SELECT count(*)::int FROM risques_qualite WHERE statut <> 'clos' AND date_reevaluation < $1::date) AS risques_a_reevaluer,
+       (SELECT count(*)::int FROM enquetes e WHERE analyse_resultats IS NULL AND (NOT ouverte OR date_fin < $1::date)
+         AND EXISTS (SELECT 1 FROM satisfactions s WHERE s.enquete_id = e.id)) AS enquetes_a_analyser,
+       (SELECT count(*)::int FROM enquetes WHERE ouverte AND (date_fin IS NULL OR date_fin >= $1::date)) AS enquetes_ouvertes,
+       (SELECT json_build_object('id', id, 'titre', titre, 'date_audit', date_audit) FROM campagnes_audit
+         WHERE statut IN ('preparation','prete') AND date_audit >= $1::date ORDER BY date_audit LIMIT 1) AS prochain_audit`, [jour]);
+
   res.json({
     aujourdhui: jour,
+    pilotage: pil,
     kpis: { actions: ka, signalements: ks, preuves: { total: kp.total } },
     justificatifs_intervenants: justificatifs,
     satisfaction: { reponses: sg.reponses, publics: sg.publics, periode: { du: sg.du, au: sg.au }, echelles: parEchelle },

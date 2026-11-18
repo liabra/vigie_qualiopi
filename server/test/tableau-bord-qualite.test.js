@@ -177,6 +177,6 @@ test("performance : nombre de requêtes SQL constant (aucun N+1)", async () => {
   await tdb();
   const apres = sonde.n;
   sonde = null;
-  assert.ok(avant > 0 && avant <= 15, `requêtes : ${avant}`);
+  assert.ok(avant > 0 && avant <= 16, `requêtes : ${avant}`); // 16 : + une requête consolidée de pilotage (Vigie 2.0)
   assert.ok(apres <= avant + 2, `requêtes indépendantes du volume (${avant} → ${apres})`);
 });

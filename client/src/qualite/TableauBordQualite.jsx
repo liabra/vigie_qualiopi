@@ -48,6 +48,27 @@ export function TableauBordQualite() {
 
       {d && (
         <div className="tdb">
+          {d.pilotage && (
+            <section className="qualite-section" aria-labelledby="tdb-pilotage">
+              <h2 id="tdb-pilotage" className="qualite-section__titre">Pilotage</h2>
+              {d.pilotage.prochain_audit && (
+                <p>Prochain audit : <Link to={`/preparation-audit/${d.pilotage.prochain_audit.id}`}>{d.pilotage.prochain_audit.titre}</Link> le {formaterDate(d.pilotage.prochain_audit.date_audit)}.</p>
+              )}
+              <div className="qualite-compteurs tdb-compteurs--5">
+                <Tuile n={d.pilotage.taches_ouvertes} libelle="Tâches ouvertes" />
+                <Tuile n={d.pilotage.taches_en_retard} libelle="Tâches en retard" ton="alerte" />
+                <Tuile n={d.pilotage.indicateurs_sans_preuve} libelle="Indicateurs sans preuve" ton="alerte" />
+                <Tuile n={d.pilotage.preuves_a_actualiser} libelle="Preuves à actualiser" ton="alerte" />
+                <Tuile n={d.pilotage.risques_critiques} libelle="Risques critiques" ton="alerte" />
+                <Tuile n={d.pilotage.risques_a_reevaluer} libelle="Risques à réévaluer" ton="alerte" />
+                <Tuile n={d.pilotage.enquetes_ouvertes} libelle="Enquêtes ouvertes" />
+                <Tuile n={d.pilotage.enquetes_a_analyser} libelle="Enquêtes à analyser" ton="alerte" />
+              </div>
+              <p className="sess-secondaire">
+                <Link to="/taches">Tâches qualité</Link> · <Link to="/echeancier">Échéancier</Link> · <Link to="/risques">Risques</Link> · <Link to="/enquetes">Enquêtes</Link> · <Link to="/preparation-audit">Préparation d'audit</Link>
+              </p>
+            </section>
+          )}
           <section className="qualite-section" aria-labelledby="tdb-actions">
             <h2 id="tdb-actions" className="qualite-section__titre">Actions qualité</h2>
             <div className="qualite-compteurs">

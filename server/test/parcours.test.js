@@ -107,7 +107,7 @@ test("service : listes fermées, date exigée si réalisé, textes bornés, rien
   assert.match(lireRecueil({ statut: "a_faire", conclusion: "bidon" }).erreur, /Conclusion/);
   assert.match(lireRecueil({ statut: "a_faire", attentes: "x".repeat(2001) }).erreur, /trop long/);
   assert.ok(!lireRecueil({ statut: "a_faire", attentes: "x".repeat(2001) }).erreur.includes("xxx"), "jamais le texte dans l'erreur");
-  assert.deepEqual(lireRecueil({ statut: "non_applicable" }).champs, { statut: "non_applicable", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, positionnement_id: null });
+  assert.deepEqual(lireRecueil({ statut: "non_applicable" }).champs, { statut: "non_applicable", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, niveau_fourni: false, niveau_positionnement: null, positionnement_id: null });
 });
 
 test("parcours agrégé : une ligne par inscription, recueil absent identifiable, aucun texte libre", async () => {

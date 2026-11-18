@@ -38,6 +38,9 @@ const enumeration = (nom, v) => {
   const libelles = variableCanonique(nom)?.libelles;
   return v && libelles && Object.hasOwn(libelles, v) ? resolu(libelles[v]) : absent();
 };
+// Taux d'indicateur : null = pas de donnée (absent) ; comptage : toujours une valeur (0 est valide) dès que la session est chargée.
+const taux = (v) => (v === null || v === undefined ? absent() : resolu(v));
+const compte = (v) => (v === null || v === undefined ? absent() : resolu(v));
 const nombre = (v) => (v === null || v === undefined ? absent() : resolu(Number(v)));
 
 // 66 variables réellement supportées. Classement dans les commentaires
@@ -117,6 +120,33 @@ const RESOLVEURS_CANONIQUES = {
   // ne les produit jamais : un modèle qui les utilise se génère à la main par un administrateur.
   stagiaire_besoins_specifiques: (ctx) => texte(ctx.stagiaire?.besoins_adaptation),
   stagiaire_situation_handicap: (ctx) => (ctx.stagiaire ? resolu(ctx.stagiaire.situation_handicap === true ? "Oui" : "Non") : absent()),
+  // Compléments de fiche (migration 044) ; l'âge se calcule à la date de début de session, jamais stocké.
+  stagiaire_date_naissance: (ctx) => date(ctx.stagiaire?.date_naissance),
+  stagiaire_age: (ctx) => {
+    const n = ctx.stagiaire?.date_naissance; const d = ctx.session?.date_debut;
+    if (!n || !d) return absent();
+    const a = new Date(n); const b = new Date(d);
+    let age = b.getUTCFullYear() - a.getUTCFullYear();
+    if (b.getUTCMonth() < a.getUTCMonth() || (b.getUTCMonth() === a.getUTCMonth() && b.getUTCDate() < a.getUTCDate())) age--;
+    return age >= 0 && age < 130 ? resolu(age) : absent();
+  },
+  stagiaire_adresse: (ctx) => texte(ctx.stagiaire?.adresse),
+  stagiaire_code_postal: (ctx) => texte(ctx.stagiaire?.code_postal),
+  stagiaire_ville: (ctx) => texte(ctx.stagiaire?.ville),
+  stagiaire_profession: (ctx) => texte(ctx.stagiaire?.profession),
+  stagiaire_niveau_positionnement: (ctx) => enumeration("stagiaire_niveau_positionnement", ctx.stagiaire?.niveau_positionnement),
+  stagiaire_domaines_handicap: (ctx) => {
+    const l = ctx.stagiaire?.domaines_handicap;
+    const libelles = { moteur: "Moteur", visuel: "Visuel", auditif: "Auditif", psychique: "Psychique", deficience_intellectuelle: "Déficience intellectuelle", maladie_invalidante: "Maladie invalidante" };
+    return Array.isArray(l) && l.length ? resolu(l.map((d) => libelles[d]).filter(Boolean).join(", ")) : absent();
+  },
+  stagiaire_entreprise_nom: (ctx) => texte(ctx.stagiaire?.entreprise),
+  stagiaire_entreprise_adresse: (ctx) => texte(ctx.stagiaire?.entreprise_adresse),
+  stagiaire_entreprise_siret: (ctx) => texte(ctx.stagiaire?.entreprise_siret),
+  stagiaire_entreprise_ape: (ctx) => texte(ctx.stagiaire?.entreprise_ape),
+  stagiaire_entreprise_effectifs: (ctx) => texte(ctx.stagiaire?.entreprise_effectifs),
+  stagiaire_entreprise_responsable: (ctx) => texte(ctx.stagiaire?.entreprise_responsable),
+  stagiaire_entreprise_opca: (ctx) => texte(ctx.stagiaire?.entreprise_opca),
   // (stagiaire_amenagements : en attente d'une règle de rendu ; le bloc adaptations porte le détail.
   // stagiaire_date_naissance/age/adresse/code_postal/ville : aucune colonne, cf. DOC-3A.)
 
@@ -141,15 +171,46 @@ const RESOLVEURS_CANONIQUES = {
   // « categorie » (une classification fermée du résultat) ne correspondent
   // précisément à une « action » au sens du dictionnaire ; les concaténer
   // serait une interprétation, pas une relecture directe.)
-  // (indicateur_taux_assiduite, indicateur_taux_abandon : NON résolues —
+  // (anciennement NON résolues, désormais calculées par indicateursSession.js — voir plus bas :
   // aucune formule officielle et testée au niveau SESSION n'existe dans
   // Vigie aujourd'hui (seulement par inscription, calculerAssiduite) ;
   // en inventer une serait une formule par déduction, explicitement exclue.)
 
-  // ── Partenaire (1) ──
+  // ── Partenaire ──
   prescripteur_nom: (ctx) => texte(ctx.stagiaire?.prescripteur_nom),
+  prescripteur_contact_nom: (ctx) => texte(ctx.stagiaire?.prescripteur_contact_nom),
+  prescripteur_contact_fonction: (ctx) => texte(ctx.stagiaire?.prescripteur_contact_fonction),
+  prescripteur_email: (ctx) => texte(ctx.stagiaire?.prescripteur_contact_email),
+  prescripteur_telephone: (ctx) => texte(ctx.stagiaire?.prescripteur_contact_telephone),
+  prescripteur_adresse: (ctx) => texte(ctx.stagiaire?.prescripteur_adresse),
   // Financeur saisi sur le stagiaire (texte libre) ; la convention A2C, gratuite, ne l'utilise pas.
   financeur_nom: (ctx) => texte(ctx.stagiaire?.financeur),
+
+  // ── Indicateurs de session (ctx.indicateurs, voir indicateursSession.js) ──
+  indicateur_taux_satisfaction: (ctx) => taux(ctx.indicateurs?.taux_satisfaction),
+  indicateur_taux_assiduite: (ctx) => taux(ctx.indicateurs?.taux_assiduite),
+  indicateur_taux_absence: (ctx) => taux(ctx.indicateurs?.taux_absence),
+  indicateur_taux_abandon: (ctx) => taux(ctx.indicateurs?.taux_abandon),
+  indicateur_taux_atteinte_objectifs: (ctx) => taux(ctx.indicateurs?.taux_atteinte),
+  indicateur_nombre_repondants_satisfaction: (ctx) => compte(ctx.indicateurs?.repondants),
+  indicateur_satisfaction_tres_satisfaits: (ctx) => compte(ctx.indicateurs?.niveaux?.[5]),
+  indicateur_satisfaction_satisfaits: (ctx) => compte(ctx.indicateurs?.niveaux?.[4]),
+  indicateur_satisfaction_neutres: (ctx) => compte(ctx.indicateurs?.niveaux?.[3]),
+  indicateur_satisfaction_peu_satisfaits: (ctx) => compte(ctx.indicateurs?.niveaux?.[2]),
+  indicateur_satisfaction_pas_du_tout_satisfaits: (ctx) => compte(ctx.indicateurs?.niveaux?.[1]),
+  indicateur_nombre_reussites: (ctx) => compte(ctx.indicateurs?.reussites),
+  indicateur_nombre_echecs: (ctx) => compte(ctx.indicateurs?.echecs),
+  indicateur_nombre_abandons: (ctx) => compte(ctx.indicateurs?.abandons),
+  indicateur_abandons_personnel: (ctx) => compte(ctx.indicateurs?.motifs?.personnel),
+  indicateur_abandons_professionnel: (ctx) => compte(ctx.indicateurs?.motifs?.professionnel),
+  indicateur_abandons_financement: (ctx) => compte(ctx.indicateurs?.motifs?.financement),
+  indicateur_abandons_reorientation: (ctx) => compte(ctx.indicateurs?.motifs?.reorientation),
+  indicateur_abandons_sans_nouvelles: (ctx) => compte(ctx.indicateurs?.motifs?.sans_nouvelles),
+  indicateur_abandons_autre: (ctx) => compte(ctx.indicateurs?.motifs?.autre),
+  indicateur_inscrits_pole_emploi: (ctx) => compte(ctx.indicateurs?.prescripteurs?.pole_emploi),
+  indicateur_inscrits_mission_locale: (ctx) => compte(ctx.indicateurs?.prescripteurs?.mission_locale),
+  indicateur_inscrits_organisme_formation: (ctx) => compte(ctx.indicateurs?.prescripteurs?.of),
+  indicateur_inscrits_autres_prescripteurs: (ctx) => compte(ctx.indicateurs?.prescripteurs?.autres),
 
   // ── Document (4) ──
   // document_date et document_date_convocation partagent EXPLICITEMENT le

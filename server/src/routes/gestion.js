@@ -30,6 +30,7 @@ import {
 } from "../services/csvStagiaires.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, dependancesStagiaire, verifierSessionActive } from "../services/archive.js";
+import { lireComplementsStagiaire, DOMAINES_HANDICAP } from "../services/complementsStagiaire.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
 import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
@@ -391,7 +392,9 @@ router.get("/sessions/:id", requireAuth, wrap(async (req, res) => {
   const { rows: stagiaires } = await query(
     `SELECT i.id AS inscription_id, i.groupe_id, i.statut, i.date_inscription, i.date_abandon,
             i.prescripteur, i.dossier_complet, s.id, s.civilite, s.nom, s.prenom, s.email, s.telephone,
-            s.entreprise, s.financeur, s.situation_handicap, s.besoins_adaptation
+            s.entreprise, s.financeur, s.situation_handicap, s.besoins_adaptation, s.domaines_handicap,
+            s.date_naissance, s.adresse, s.code_postal, s.ville, s.profession, s.entreprise_adresse, s.entreprise_siret,
+            s.entreprise_ape, s.entreprise_effectifs, s.entreprise_responsable, s.entreprise_opca
      FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id
      WHERE i.session_id = $1 ORDER BY s.nom, s.prenom`,
     [id]
@@ -1171,7 +1174,12 @@ router.patch("/stagiaires/:id", requireRedacteur, wrap(async (req, res) => {
   // fix : un contributeur ne crée, ne remplace ni ne vide les champs réservés
   // (refus explicite, même pour null ou "") ; aucune écriture partielle.
   if (!estAdmin(req.user) && champsReservesEnvoyes(req.body).length) return res.status(403).json({ error: MSG_RESERVE_ADMIN });
-  const { civilite, nom, prenom, email, telephone, entreprise, financeur, situation_handicap, besoins_adaptation } = req.body || {};
+  const { civilite, nom, prenom, email, telephone, entreprise, financeur, situation_handicap, besoins_adaptation, domaines_handicap } = req.body || {};
+  const complements = lireComplementsStagiaire(req.body || {});
+  if (complements.erreur) return res.status(400).json({ error: complements.erreur });
+  if (domaines_handicap !== undefined && (!Array.isArray(domaines_handicap) || domaines_handicap.some((d) => !DOMAINES_HANDICAP.includes(d)))) {
+    return res.status(400).json({ error: "Domaine de handicap inconnu." });
+  }
   if (civilite !== undefined && civilite !== null && !CIVILITES.includes(civilite)) {
     return res.status(400).json({ error: "Civilité inconnue." });
   }
@@ -1192,6 +1200,8 @@ router.patch("/stagiaires/:id", requireRedacteur, wrap(async (req, res) => {
   if (financeur !== undefined) set("financeur", financeur?.trim() || null);
   if (situation_handicap !== undefined) set("situation_handicap", situation_handicap === true);
   if (besoins_adaptation !== undefined) set("besoins_adaptation", besoins_adaptation?.trim() || null);
+  if (domaines_handicap !== undefined) set("domaines_handicap", [...new Set(domaines_handicap)]);
+  for (const [col, val] of Object.entries(complements.champs)) set(col, val);
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });
   const { rows } = await query("UPDATE stagiaires SET " + sets.join(", ") + " WHERE id = $1 RETURNING *", params);
   if (!rows.length) return res.status(404).json({ error: "Stagiaire introuvable." });

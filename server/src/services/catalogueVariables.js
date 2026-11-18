@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.7";
+export const DICTIONNAIRE_VERSION = "1.8";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -38,6 +38,7 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.6", changement: "Ajout de 7 variables, créées avec les documents qui les utilisent : analyse du besoin du stagiaire (BES-01 à BES-05 : besoin_date_recueil, besoin_attentes, besoin_objectifs_personnels, besoin_prerequis_verifies, besoin_conclusion), STA-18 stagiaire_situation_handicap (accès restreint) et EVA-13 evaluation_seuil_reussite (ajoutée au bloc evaluations). Nouveau domaine « besoin ». Les noms et identifiants de la 1.5 sont inchangés." },
   { version: "1.7", changement: "Ajout du bloc {{#questionnaire_formation}} (BLK-11) : réponses du stagiaire au questionnaire de sa formation, une ligne par question, avec la question telle qu'elle était posée (question_libelle, question_reponse). Aucune variable ajoutée." },
   { version: "1.6", changement: "Résolveurs ajoutés pour des variables déjà au catalogue : organisme_* et signataire_* (paramètres de l'organisme et signataires), formation_objectifs_operationnels, formation_methodes_pedagogiques, formation_modalites_evaluation (fiche formation), financeur_nom et stagiaire_besoins_specifiques (accès restreint). Blocs : objectifs_formation et adaptations (accès restreint) désormais supportés ; evaluations complété (moment, résultat de validation, commentaire, seuil de réussite)." },
+  { version: "1.8", changement: "Données des documents A2C : STA-19 à STA-28 (profession, niveau issu du positionnement, domaines de handicap [restreinte], entreprise et son responsable/OPCA), PAR-08 (adresse du prescripteur), IND-05 à IND-24 (indicateurs de session : répondants et répartition de la satisfaction, absence, réussites/échecs, abandons et leurs catégories, prescripteurs). STA-06 à STA-10, PAR-02/04/05 et IND-01 à IND-04 deviennent calculables." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -143,6 +144,16 @@ const LIGNES = [
   ["STA-16", "stagiaire_besoins_specifiques", "Besoins spécifiques", "stagiaire", "texte", "Analyse besoins", "Bénéficiaire", "Besoins spécifiques du bénéficiaire. Donnée sensible : accès restreint.", { format: "texte_long", sensibilite: "restreinte" }],
   ["STA-17", "stagiaire_amenagements", "Aménagements retenus", "stagiaire", "texte", "Suivi adaptation", "Bénéficiaire", "Aménagements retenus pour le bénéficiaire. Donnée sensible : accès restreint.", { format: "texte_long", sensibilite: "restreinte" }],
   ["STA-18", "stagiaire_situation_handicap", "Situation de handicap déclarée", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Le bénéficiaire a déclaré une situation de handicap (Oui / Non). Donnée de santé : accès restreint.", { format: "enum", valeurs: ["oui", "non"], libelles: { oui: "Oui", non: "Non" }, sensibilite: "restreinte", depuis: "1.6", source_valeurs: "schéma Vigie (stagiaires.situation_handicap)" }],
+  ["STA-19", "stagiaire_profession", "Profession du stagiaire", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Profession du bénéficiaire.", { sensibilite: "personnelle", depuis: "1.8" }],
+  ["STA-20", "stagiaire_niveau_positionnement", "Niveau issu du positionnement", "stagiaire", "texte", "Analyse besoins", "Bénéficiaire", "Niveau retenu à l'issue du positionnement (Débutant / Intermédiaire / Autonome).", { format: "enum", valeurs: ["debutant", "intermediaire", "autonome"], libelles: { debutant: "Débutant", intermediaire: "Intermédiaire", autonome: "Autonome" }, sensibilite: "personnelle", depuis: "1.8", source_valeurs: "schéma Vigie (recueils_besoin.niveau_positionnement)" }],
+  ["STA-21", "stagiaire_domaines_handicap", "Domaines de handicap déclarés", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Domaines de handicap déclarés (moteur, visuel, auditif, psychique, déficience intellectuelle, maladie invalidante). Donnée de santé : accès restreint.", { format: "texte_long", sensibilite: "restreinte", depuis: "1.8" }],
+  ["STA-22", "stagiaire_entreprise_nom", "Entreprise du stagiaire", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Raison sociale de l'entreprise du bénéficiaire, le cas échéant.", { sensibilite: "personnelle", depuis: "1.8" }],
+  ["STA-23", "stagiaire_entreprise_adresse", "Adresse de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Adresse de l'entreprise.", { depuis: "1.8" }],
+  ["STA-24", "stagiaire_entreprise_siret", "SIRET de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "SIRET de l'entreprise.", { depuis: "1.8" }],
+  ["STA-25", "stagiaire_entreprise_ape", "Code APE de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Code APE de l'entreprise.", { depuis: "1.8" }],
+  ["STA-26", "stagiaire_entreprise_effectifs", "Effectifs de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Effectifs de l'entreprise.", { depuis: "1.8" }],
+  ["STA-27", "stagiaire_entreprise_responsable", "Responsable de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Nom du responsable (signataire) de l'entreprise.", { sensibilite: "personnelle", depuis: "1.8" }],
+  ["STA-28", "stagiaire_entreprise_opca", "OPCA de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "OPCA / opérateur de compétences de l'entreprise.", { depuis: "1.8" }],
   // ── Représentant légal et autorisations ───────────────────
   ["LEG-01", "representant_legal_nom", "Nom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Nom du représentant légal d'un bénéficiaire mineur.", { sensibilite: "personnelle" }],
   ["LEG-02", "representant_legal_prenom", "Prénom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Prénom du représentant légal.", { sensibilite: "personnelle" }],
@@ -226,6 +237,26 @@ const LIGNES = [
   ["IND-02", "indicateur_taux_assiduite", "Taux d'assiduité session", "indicateur", "nombre", "Présences", "Session", "Taux d'assiduité de la session.", { format: "pourcentage", calcule: true }],
   ["IND-03", "indicateur_taux_abandon", "Taux d'abandon session", "indicateur", "nombre", "Inscriptions", "Session", "Taux d'abandon de la session.", { format: "pourcentage", calcule: true }],
   ["IND-04", "indicateur_taux_atteinte_objectifs", "Taux d'atteinte des objectifs", "indicateur", "nombre", "Évaluations", "Session", "Taux d'atteinte des objectifs ; méthode de calcul à conserver dans un document de référence.", { format: "pourcentage", calcule: true }],
+  ["IND-05", "indicateur_nombre_repondants_satisfaction", "Répondants à la satisfaction", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses « à chaud » avec une note globale.", { calcule: true, depuis: "1.8" }],
+  ["IND-06", "indicateur_satisfaction_tres_satisfaits", "Très satisfaits (5)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses à 5 sur 5 (note ramenée sur 5).", { calcule: true, depuis: "1.8" }],
+  ["IND-07", "indicateur_satisfaction_satisfaits", "Satisfaits (4)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses à 4 sur 5.", { calcule: true, depuis: "1.8" }],
+  ["IND-08", "indicateur_satisfaction_neutres", "Ni satisfaits ni insatisfaits (3)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses à 3 sur 5.", { calcule: true, depuis: "1.8" }],
+  ["IND-09", "indicateur_satisfaction_peu_satisfaits", "Peu satisfaits (2)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses à 2 sur 5.", { calcule: true, depuis: "1.8" }],
+  ["IND-10", "indicateur_satisfaction_pas_du_tout_satisfaits", "Pas du tout satisfaits (1)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de réponses à 1 sur 5 ou moins.", { calcule: true, depuis: "1.8" }],
+  ["IND-11", "indicateur_taux_absence", "Taux d'absence session", "indicateur", "nombre", "Calcul de session", "Session", "Complément du taux d'assiduité (100 − assiduité).", { calcule: true, depuis: "1.8" }],
+  ["IND-12", "indicateur_nombre_reussites", "Objectifs atteints (nombre)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de stagiaires évalués ayant atteint l'objectif (QCM validé, ou score au moins égal au seuil, à défaut 5/10).", { calcule: true, depuis: "1.8" }],
+  ["IND-13", "indicateur_nombre_echecs", "Objectifs non atteints (nombre)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre de stagiaires évalués n'ayant pas atteint l'objectif.", { calcule: true, depuis: "1.8" }],
+  ["IND-14", "indicateur_nombre_abandons", "Abandons (nombre)", "indicateur", "nombre", "Calcul de session", "Session", "Nombre d'inscriptions en abandon.", { calcule: true, depuis: "1.8" }],
+  ["IND-15", "indicateur_abandons_personnel", "Abandons — raison personnelle", "indicateur", "nombre", "Calcul de session", "Session", "Abandons de catégorie « personnel ».", { calcule: true, depuis: "1.8" }],
+  ["IND-16", "indicateur_abandons_professionnel", "Abandons — raison professionnelle", "indicateur", "nombre", "Calcul de session", "Session", "Abandons de catégorie « professionnel ».", { calcule: true, depuis: "1.8" }],
+  ["IND-17", "indicateur_abandons_financement", "Abandons — financement", "indicateur", "nombre", "Calcul de session", "Session", "Abandons de catégorie « financement ».", { calcule: true, depuis: "1.8" }],
+  ["IND-18", "indicateur_abandons_reorientation", "Abandons — réorientation", "indicateur", "nombre", "Calcul de session", "Session", "Abandons de catégorie « réorientation ».", { calcule: true, depuis: "1.8" }],
+  ["IND-19", "indicateur_abandons_sans_nouvelles", "Abandons — sans nouvelles", "indicateur", "nombre", "Calcul de session", "Session", "Abandons de catégorie « sans nouvelles ».", { calcule: true, depuis: "1.8" }],
+  ["IND-20", "indicateur_abandons_autre", "Abandons — autre ou non précisé", "indicateur", "nombre", "Calcul de session", "Session", "Abandons d'une autre catégorie ou sans catégorie.", { calcule: true, depuis: "1.8" }],
+  ["IND-21", "indicateur_inscrits_pole_emploi", "Inscrits par Pôle Emploi", "indicateur", "nombre", "Calcul de session", "Session", "Inscrits adressés par Pôle Emploi.", { calcule: true, depuis: "1.8" }],
+  ["IND-22", "indicateur_inscrits_mission_locale", "Inscrits par la Mission Locale", "indicateur", "nombre", "Calcul de session", "Session", "Inscrits adressés par la Mission Locale.", { calcule: true, depuis: "1.8" }],
+  ["IND-23", "indicateur_inscrits_organisme_formation", "Inscrits par un organisme de formation", "indicateur", "nombre", "Calcul de session", "Session", "Inscrits adressés par un organisme de formation.", { calcule: true, depuis: "1.8" }],
+  ["IND-24", "indicateur_inscrits_autres_prescripteurs", "Inscrits par un autre prescripteur ou sans prescripteur", "indicateur", "nombre", "Calcul de session", "Session", "Autres inscrits.", { calcule: true, depuis: "1.8" }],
   // ── Intervenant ───────────────────────────────────────────
   ["INT-01", "intervenant_id", "Identifiant de l'intervenant", "intervenant", "texte", "Base Vigie", "Intervenant", "Identifiant interne de l'intervenant.", { format: "identifiant" }],
   ["INT-02", "intervenant_civilite", "Civilité de l'intervenant", "intervenant", "texte", "Fiche intervenant", "Intervenant", "Civilité de l'intervenant.", { format: "enum", ...CIVILITES }],
@@ -242,6 +273,7 @@ const LIGNES = [
   ["PAR-04", "prescripteur_email", "E-mail du contact", "partenaire", "texte", "Partenaire", "Partenaire", "Adresse e-mail du contact prescripteur.", { format: "email", sensibilite: "personnelle" }],
   ["PAR-05", "prescripteur_telephone", "Téléphone du contact", "partenaire", "texte", "Partenaire", "Partenaire", "Téléphone du contact prescripteur.", { format: "telephone", sensibilite: "personnelle" }],
   ["PAR-06", "financeur_nom", "Nom du financeur", "partenaire", "texte", "Convention / financement", "Formation/session", "Nom du financeur de la formation ou de la session."],
+  ["PAR-08", "prescripteur_adresse", "Adresse du prescripteur", "partenaire", "texte", "Partenaire", "Partenaire", "Adresse du prescripteur (structure).", { depuis: "1.8" }],
   ["PAR-07", "convention_reference", "Référence convention/notification", "partenaire", "texte", "Convention / financement", "Formation/session", "Référence de la convention ou de la notification de financement."],
   // ── Immersion ─────────────────────────────────────────────
   ["IMM-01", "immersion_structure_nom", "Structure d'accueil", "immersion", "texte", "Immersion", "Bénéficiaire + immersion", "Structure d'accueil de l'immersion (phase 4 si utilisée)."],

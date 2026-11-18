@@ -20,6 +20,7 @@ import { precontrolerGeneration } from "./precontroleGeneration.js";
 import { signatairePour } from "./parametresOrganisme.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
+import { chargerIndicateursSession } from "./indicateursSession.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
 import { planContenuTableaux, planStructureTableaux } from "./blocsTableaux.js";
 
@@ -276,7 +277,12 @@ async function cibles(modele, { session, groupe }) {
     `SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
             i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.groupe_id, i.statut,
             i.date_inscription, i.date_abandon, i.motif_abandon,
-            s.situation_handicap, s.besoins_adaptation,
+            s.situation_handicap, s.besoins_adaptation, s.domaines_handicap,
+            s.date_naissance, s.adresse, s.code_postal, s.ville, s.profession, s.entreprise_adresse, s.entreprise_siret,
+            s.entreprise_ape, s.entreprise_effectifs, s.entreprise_responsable, s.entreprise_opca,
+            pr.adresse AS prescripteur_adresse, pr.contact_nom AS prescripteur_contact_nom, pr.contact_fonction AS prescripteur_contact_fonction,
+            pr.contact_email AS prescripteur_contact_email, pr.contact_telephone AS prescripteur_contact_telephone,
+            rb.niveau_positionnement,
             rb.date_recueil AS besoin_date_recueil, rb.attentes AS besoin_attentes, rb.objectifs_personnels AS besoin_objectifs_personnels,
             rb.prerequis_verifies AS besoin_prerequis_verifies, rb.conclusion AS besoin_conclusion,
             r.date_evenement AS relance_derniere_date,
@@ -462,8 +468,10 @@ export async function contexteGeneration(sessionId, groupeId) {
   );
   session.nombre_inscrits = compte.inscrits;
   session.nombre_termines = compte.termines;
+  // Indicateurs de résultats de la session (satisfaction, assiduité, abandons, atteinte des objectifs…).
+  const indicateurs = await chargerIndicateursSession(sessionId, session.duree_heures_reelle ?? session.duree_heures_defaut ?? null);
   return {
-    session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
+    indicateurs, session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
     formation: { intitule: session.intitule, id: session.formation_id, code_interne: session.formation_code_interne },
     version: {
       duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,

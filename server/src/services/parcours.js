@@ -7,6 +7,7 @@ import { estDateValide } from "./dates.js";
 
 export const STATUTS_RECUEIL = ["a_faire", "realise", "non_applicable"];
 export const PREREQUIS = ["oui", "non", "partiel"];
+export const NIVEAUX_POSITIONNEMENT = ["debutant", "intermediaire", "autonome"];
 export const CONCLUSIONS = ["parcours_standard", "parcours_adapte", "reorientation", "a_preciser"];
 export const MAX_TEXTE = 2000;
 
@@ -35,6 +36,11 @@ export function lireRecueil(corps = {}) {
   const conc = texte(corps.conclusion);
   if (conc !== null && !CONCLUSIONS.includes(conc)) return { erreur: "Conclusion inconnue." };
   champs.conclusion = conc;
+  // Niveau issu du positionnement : absent du corps = valeur conservée (anciens clients).
+  champs.niveau_fourni = Object.prototype.hasOwnProperty.call(corps, "niveau_positionnement");
+  const niv = texte(corps.niveau_positionnement);
+  if (niv !== null && !NIVEAUX_POSITIONNEMENT.includes(niv)) return { erreur: "Niveau de positionnement inconnu." };
+  champs.niveau_positionnement = niv;
 
   if (corps.positionnement_id === undefined || corps.positionnement_id === null || corps.positionnement_id === "") {
     champs.positionnement_id = null;

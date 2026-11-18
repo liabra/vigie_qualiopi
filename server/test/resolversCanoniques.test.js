@@ -20,7 +20,7 @@ const RESERVEES_BLOC = [
 // séparément : pas d'approximation entre eux).
 const NON_RESOLUES_PAR_DECISION = [
   "stagiaire_amenagements", "relance_derniere_action",
-  "indicateur_taux_assiduite", "indicateur_taux_abandon", "groupe_code", "session_libelle",
+  "groupe_code", "session_libelle",
 ];
 
 // Contexte complet, représentatif de ce que documents.js assemble réellement.
@@ -42,17 +42,24 @@ const CTX = {
     besoin_date_recueil: "2026-01-03", besoin_attentes: "Apprendre à utiliser la messagerie", besoin_objectifs_personnels: "Être autonome",
     besoin_prerequis_verifies: "partiel", besoin_conclusion: "parcours_adapte", date_inscription: "2026-01-02", statut: "inscrit", groupe_nom: "Groupe A",
     prescripteur_nom: "Pôle Emploi", date_abandon: null, motif_abandon: null,
-    relance_derniere_date: "2026-01-10", heures_absence: 3.5 },
+    relance_derniere_date: "2026-01-10", heures_absence: 3.5,
+    date_naissance: "1980-06-15", adresse: "3 rue Test", code_postal: "97300", ville: "Cayenne", profession: "Aide-soignante",
+    niveau_positionnement: "debutant", domaines_handicap: ["moteur", "visuel"], entreprise: "Société Fictive", entreprise_adresse: "5 avenue Test",
+    entreprise_siret: "123 456 789 00010", entreprise_ape: "8899B", entreprise_effectifs: "12", entreprise_responsable: "Paul Exemple", entreprise_opca: "OPCO Fictif",
+    prescripteur_adresse: "9 place Test", prescripteur_contact_nom: "Anne Contact", prescripteur_contact_fonction: "Conseillère", prescripteur_contact_email: "a@pe.test", prescripteur_contact_telephone: "0594111111" },
+  indicateurs: { taux_satisfaction: 80, repondants: 5, niveaux: { 5: 1, 4: 3, 3: 1, 2: 0, 1: 0 }, taux_assiduite: 97, taux_absence: 3, taux_abandon: 10, abandons: 1,
+    motifs: { personnel: 1, professionnel: 0, financement: 0, reorientation: 0, sans_nouvelles: 0, autre: 0 }, taux_atteinte: 100, reussites: 4, echecs: 0,
+    prescripteurs: { pole_emploi: 2, mission_locale: 1, of: 0, autres: 1 } },
   assiduite: { heures_prevues: 380, heures_suivies: 376.5, heures_absence: 3.5, taux: 99, fiable: true },
   maintenant: new Date("2026-02-01T10:00:00Z"),
 };
 const canoniques = resoudreCanoniques(CTX);
 const vide = resoudreCanoniques({});
 
-test("invariant : exactement 171 clés, pilotées par le catalogue, aucune en trop", () => {
-  assert.equal(VARIABLES.length, 171, "source de vérité du catalogue");
-  assert.equal(Object.keys(canoniques).length, 171);
-  assert.equal(Object.keys(vide).length, 171, "même nombre de clés quel que soit ctx");
+test("invariant : exactement 202 clés, pilotées par le catalogue, aucune en trop", () => {
+  assert.equal(VARIABLES.length, 202, "source de vérité du catalogue");
+  assert.equal(Object.keys(canoniques).length, 202);
+  assert.equal(Object.keys(vide).length, 202, "même nombre de clés quel que soit ctx");
   for (const nom of Object.keys(canoniques)) assert.ok(variableCanonique(nom), `${nom} doit exister dans VARIABLES`);
   assert.deepEqual(Object.keys(canoniques).sort(), VARIABLES.map((v) => v.nom).sort());
 });
@@ -61,9 +68,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("66 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 66, "46 historiques + 9 organisme/signataire + 3 contenu formation + financeur + 2 restreintes + 5 besoin");
-  assert.equal(new Set(NOMS_RESOLUS).size, 66, "aucun doublon");
+test("110 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 110, "66 (v1.7) + 15 fiche stagiaire/entreprise + 5 prescripteur + 24 indicateurs de session");
+  assert.equal(new Set(NOMS_RESOLUS).size, 110, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -74,7 +81,7 @@ test("toute variable du catalogue reçoit exactement un résultat à trois statu
   }
 });
 
-test("les 66 variables supportées sont résolues depuis un contexte complet", () => {
+test("les 110 variables supportées sont résolues depuis un contexte complet", () => {
   const attendu = {
     organisme_nom: "Association Test", organisme_adresse_ligne1: "1 rue Exemple", organisme_adresse_ligne2: "Cité Test",
     organisme_code_postal: "97300", organisme_ville: "Cayenne", organisme_telephone: "0594000000", organisme_mobile: "0694000000",
@@ -100,6 +107,16 @@ test("les 66 variables supportées sont résolues depuis un contexte complet", (
     prescripteur_nom: "Pôle Emploi",
     document_date: "01/02/2026", document_date_convocation: "01/02/2026", document_date_attestation: "05/03/2026",
     document_duree_attestation: "380 h",
+    stagiaire_date_naissance: "15/06/1980", stagiaire_age: 45, stagiaire_adresse: "3 rue Test", stagiaire_code_postal: "97300", stagiaire_ville: "Cayenne",
+    stagiaire_profession: "Aide-soignante", stagiaire_niveau_positionnement: "Débutant", stagiaire_domaines_handicap: "Moteur, Visuel",
+    stagiaire_entreprise_nom: "Société Fictive", stagiaire_entreprise_adresse: "5 avenue Test", stagiaire_entreprise_siret: "123 456 789 00010",
+    stagiaire_entreprise_ape: "8899B", stagiaire_entreprise_effectifs: "12", stagiaire_entreprise_responsable: "Paul Exemple", stagiaire_entreprise_opca: "OPCO Fictif",
+    prescripteur_adresse: "9 place Test", prescripteur_contact_nom: "Anne Contact", prescripteur_contact_fonction: "Conseillère", prescripteur_email: "a@pe.test", prescripteur_telephone: "0594111111",
+    indicateur_taux_satisfaction: 80, indicateur_taux_assiduite: 97, indicateur_taux_absence: 3, indicateur_taux_abandon: 10, indicateur_taux_atteinte_objectifs: 100,
+    indicateur_nombre_repondants_satisfaction: 5, indicateur_satisfaction_tres_satisfaits: 1, indicateur_satisfaction_satisfaits: 3, indicateur_satisfaction_neutres: 1,
+    indicateur_satisfaction_peu_satisfaits: 0, indicateur_satisfaction_pas_du_tout_satisfaits: 0, indicateur_nombre_reussites: 4, indicateur_nombre_echecs: 0, indicateur_nombre_abandons: 1,
+    indicateur_abandons_personnel: 1, indicateur_abandons_professionnel: 0, indicateur_abandons_financement: 0, indicateur_abandons_reorientation: 0, indicateur_abandons_sans_nouvelles: 0, indicateur_abandons_autre: 0,
+    indicateur_inscrits_pole_emploi: 2, indicateur_inscrits_mission_locale: 1, indicateur_inscrits_organisme_formation: 0, indicateur_inscrits_autres_prescripteurs: 1,
   };
   for (const [nom, valeur] of Object.entries(attendu)) {
     assert.deepEqual(canoniques[nom], { statut: "resolu", valeur }, nom);
@@ -107,8 +124,8 @@ test("les 66 variables supportées sont résolues depuis un contexte complet", (
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les 64 attendus + les 2 abandon_* couverts = 66 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 66);
+  // Les attendus + les 2 abandon_* couverts = 110 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 110);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
@@ -116,9 +133,9 @@ test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors ca
   assert.ok(!Object.hasOwn(canoniques, "session_statut"), "l'ancien nom n'est plus une clé canonique");
 });
 
-test("DOC-3D : seules deux variables résolues sont restreintes, et le précontrôle les réserve aux administrateurs", () => {
+test("DOC-3D : seules trois variables résolues sont restreintes, et le précontrôle les réserve aux administrateurs", () => {
   const restreintes = NOMS_RESOLUS.filter((nom) => variableCanonique(nom).sensibilite === "restreinte").sort();
-  assert.deepEqual(restreintes, ["stagiaire_besoins_specifiques", "stagiaire_situation_handicap"]);
+  assert.deepEqual(restreintes, ["stagiaire_besoins_specifiques", "stagiaire_domaines_handicap", "stagiaire_situation_handicap"]);
 });
 
 test("0 et false sont des valeurs RÉSOLUES valides, jamais confondues avec absent", () => {
@@ -145,7 +162,7 @@ test("champ NULL/vide pour cette instance ⇒ « absent », jamais une chaîne v
   }
 });
 
-test("contexte vide : les 66 supportées sont « absent », les 105 autres « non_resoluble »", () => {
+test("contexte vide : les 110 supportées sont « absent », les 92 autres « non_resoluble »", () => {
   for (const nom of NOMS_RESOLUS) assert.equal(vide[nom].statut, "absent", nom);
   for (const v of VARIABLES) {
     if (!NOMS_RESOLUS.includes(v.nom)) assert.equal(vide[v.nom].statut, "non_resoluble", v.nom);

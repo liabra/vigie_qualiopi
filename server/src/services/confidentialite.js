@@ -7,7 +7,7 @@
 //  côté interface). Projection centralisée : une seule règle pour toutes
 //  les routes concernées.
 // ─────────────────────────────────────────────────────────────
-export const CHAMPS_RESERVES_ADMIN = ["situation_handicap", "besoins_adaptation"];
+export const CHAMPS_RESERVES_ADMIN = ["situation_handicap", "besoins_adaptation", "domaines_handicap"];
 export const MSG_RESERVE_ADMIN = "La situation de handicap et les besoins d'adaptation sont réservés à l'administrateur.";
 
 export const estAdmin = (user) => user?.role === "admin";

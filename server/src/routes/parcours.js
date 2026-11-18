@@ -83,7 +83,7 @@ router.get("/inscriptions/:id/recueil", requireAuth, wrap(async (req, res) => {
   if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
   const [{ rows: [recueil] }, { rows: positionnements }] = await Promise.all([
     query(
-      `SELECT inscription_id, statut, date_recueil, attentes, objectifs_personnels, prerequis_verifies, conclusion,
+      `SELECT inscription_id, statut, date_recueil, attentes, objectifs_personnels, prerequis_verifies, conclusion, niveau_positionnement,
               positionnement_id, mis_a_jour_le, u.nom AS realise_par_nom
        FROM recueils_besoin r LEFT JOIN utilisateurs u ON u.id = r.realise_par WHERE r.inscription_id = $1`, [id]),
     query(`SELECT ${COLONNES_POSITIONNEMENT} FROM resultats_qcm e WHERE e.inscription_id = $1 AND e.type = 'positionnement'
@@ -111,18 +111,19 @@ router.put("/inscriptions/:id/recueil", requireRedacteur, wrap(async (req, res) 
   const realisePar = champs.statut === "realise" ? req.user.id : null;
   const { rows: [r] } = await query(
     `INSERT INTO recueils_besoin (inscription_id, statut, date_recueil, attentes, objectifs_personnels,
-                                  prerequis_verifies, conclusion, positionnement_id, realise_par)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                                  prerequis_verifies, conclusion, positionnement_id, realise_par, niveau_positionnement)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $10::boolean THEN $11::text ELSE NULL END)
      ON CONFLICT (inscription_id) DO UPDATE SET
        statut = EXCLUDED.statut, date_recueil = EXCLUDED.date_recueil, attentes = EXCLUDED.attentes,
        objectifs_personnels = EXCLUDED.objectifs_personnels, prerequis_verifies = EXCLUDED.prerequis_verifies,
        conclusion = EXCLUDED.conclusion, positionnement_id = EXCLUDED.positionnement_id,
+       niveau_positionnement = CASE WHEN $10::boolean THEN EXCLUDED.niveau_positionnement ELSE recueils_besoin.niveau_positionnement END,
        realise_par = CASE WHEN EXCLUDED.statut = 'realise' THEN COALESCE(recueils_besoin.realise_par, EXCLUDED.realise_par) ELSE NULL END,
        mis_a_jour_le = now()
-     RETURNING inscription_id, statut, date_recueil, attentes, objectifs_personnels, prerequis_verifies, conclusion,
+     RETURNING inscription_id, statut, date_recueil, attentes, objectifs_personnels, prerequis_verifies, conclusion, niveau_positionnement,
                positionnement_id, mis_a_jour_le`,
     [id, champs.statut, champs.date_recueil, champs.attentes, champs.objectifs_personnels,
-     champs.prerequis_verifies, champs.conclusion, champs.positionnement_id, realisePar]
+     champs.prerequis_verifies, champs.conclusion, champs.positionnement_id, realisePar, champs.niveau_fourni, champs.niveau_positionnement]
   );
   res.json({ recueil: r });
 }));

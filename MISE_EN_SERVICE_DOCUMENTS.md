@@ -78,3 +78,47 @@ Branches empilées à partir de `origin/main` (8550bdd). Aucune n'est fusionnée
 - `{{formation_modalite}}` produit désormais « Présentiel / Distanciel / Mixte » (et non la valeur technique).
 - Modèles préparés : 7 fichiers (dont 2 propositions : questionnaire de satisfaction, dossier d'admission), rendus et
   contrôlés avec des données fictives.
+
+## Procédure définitive de mise en production (branche `livraison/consolidation`)
+
+### Vérifications faites avant la mise en production
+- **Migrations** : le lanceur applique, dans l'ordre des noms, les seuls fichiers absents de `schema_migrations`, chacun dans
+  sa transaction, sous verrou consultatif. Sur une production déjà à 040, il applique donc 026 à 031 puis 041 à 043.
+  026–027 et 029–031 créent des tables/colonnes nouvelles ; 028 ajoute deux colonnes et remplace l'index d'unicité des
+  documents générés (le libellé vide garde l'ancien comportement). Aucune migration 032–043 ne dépend de 026–031.
+  Cas couvert par un test (`migrationsReference.test.js`) : document déjà généré conservé, unicité par libellé, second
+  démarrage sans rejeu. Les signatures 026–031 ne servent qu'à établir une référence sur base sans historique.
+- **Paramètres initiaux** : le fichier `parametres_initiaux_A2C.json` (hors dépôt) a été contrôlé : champs attendus, validation
+  du service réussie, téléphones conformes aux décisions, aucun secret, signataires « Présidente » et « Référente Qualiopi ».
+- **Génération multiple** : deux libellés → deux documents ; même libellé → 409 puis remplacement confirmé (test PostgreSQL
+  réel et test d'interface).
+- **Modèles** : les 7 fichiers ont été rendus (LibreOffice) avec des données fictives : convention sur 2 pages, les autres sur 1.
+
+### Étapes (dans l'ordre)
+1. **Sauvegarde** de la base (script de sauvegarde chiffrée existant) et vérification qu'elle se restaure.
+2. **Fusion** de `livraison/consolidation` dans `main` (décision humaine). Railway déploie automatiquement ; au démarrage,
+   les migrations 026–031 puis 041–043 s'appliquent. En cas d'échec d'une migration, elle est annulée (transaction), le
+   démarrage s'arrête avec le nom du fichier : restaurer la sauvegarde si nécessaire, ne rien rejouer à la main.
+3. **Paramètres** : `npm run db:parametres-initiaux -- "<chemin du fichier JSON>"` (une seule fois, non destructif).
+   Contrôler ensuite Paramètres → Organisme et signataires (coordonnées, deux signataires actifs).
+4. **Modèles** : importer les `.docx` **sur copie** dans Google Docs ; Paramètres → Modèles → enregistrer chacun avec son type,
+   son usage et son signataire (convocation et attestation : Présidente ; autres : formateur concerné ou Référente Qualiopi).
+   Compte rendu prescripteur : cocher « Plusieurs documents par session » (impossible à modifier ensuite).
+   Garder l'attestation en mode **manuel** jusqu'à validation du seuil (80 %).
+5. **Questionnaire de satisfaction et dossier d'admission** : propositions à valider par A2C avant tout enregistrement.
+
+### Contrôles après déploiement
+- Journal de démarrage : « Migration appliquée » pour 026–031 et 041–043, aucune erreur ; second redémarrage sans rejeu.
+- Menus : « Variables documentaires » (v1.7, 171 variables), « Organisme et signataires » ; Formations → section « Contenu repris dans les documents ».
+- Générer une convocation et une convention pour une session réelle de test : aucune balise `{{…}}` restante, coordonnées et
+  signataire corrects, horaires et lieu de la session renseignés (sinon les phrases correspondantes restent vides).
+- Compte rendu prescripteur : deux générations avec deux libellés (deux fichiers), puis le même libellé (confirmation demandée).
+- Fiche d'analyse des besoins : refusée à un contributeur, produite par un administrateur uniquement.
+- Entretiens FSE-IA : ouvrir un entretien existant (tables 026/029/030 créées), vérifier la reprise d'un brouillon.
+- Documents déjà générés avant le déploiement : toujours présents et inchangés.
+
+### Précautions
+- Ne pas basculer d'autres modèles en génération automatique avant la recette ci-dessus.
+- Les données de santé (handicap, besoins, adaptations) ne sortent que pour un administrateur, jamais en génération automatique.
+- Retour arrière : restauration de la sauvegarde (les migrations sont additives, sans suppression de données, mais l'index
+  d'unicité des documents générés est remplacé par 028).

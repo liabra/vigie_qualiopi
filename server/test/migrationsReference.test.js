@@ -144,3 +144,42 @@ test("signature manquante : refus explicite, aucune migration rejouée ni enregi
     await pool.end();
   }
 });
+
+// Production réelle : historique renseigné jusqu'à 025 puis 032 à 040 (déployées avant la chaîne FSE-IA).
+// 026 à 031 arrivent APRÈS : le lanceur applique les fichiers manquants dans l'ordre des noms, sans rejouer le reste.
+test("historique présent, 032–040 déjà appliquées : 026–031 puis 041–043 appliquées, données conservées", async () => {
+  const pool = await nouvelleBase("prod_026_apres_032");
+  try {
+    const tous = (await fs.readdir(MIGRATIONS)).filter((f) => /^\d+_.+\.sql$/.test(f)).sort();
+    const deja = tous.filter((f) => f.slice(0, 3) <= "025" || (f.slice(0, 3) >= "032" && f.slice(0, 3) <= "040"));
+    await pool.query("CREATE TABLE schema_migrations (nom text PRIMARY KEY, applique_le timestamptz NOT NULL DEFAULT now())");
+    for (const f of deja) {
+      await pool.query(await fs.readFile(path.join(MIGRATIONS, f), "utf8"));
+      await pool.query("INSERT INTO schema_migrations (nom) VALUES ($1)", [f]);
+    }
+    // Données de production : un modèle, une formation, une session, un document déjà généré (avant 028 : pas de libellé).
+    const { rows: [mod] } = await pool.query("INSERT INTO modeles_documents (nom, drive_file_id, portee) VALUES ('Convocation réelle', 'PROD_CONV_1', 'session') RETURNING id");
+    const { rows: [f] } = await pool.query("INSERT INTO formations (intitule, code_interne) VALUES ('Formation réelle', 'REEL-1') RETURNING id");
+    await pool.query("INSERT INTO formation_versions (formation_id, numero) VALUES ($1, 1)", [f.id]);
+    const { rows: [s] } = await pool.query("INSERT INTO sessions (formation_id, formation_version_id, reference, date_debut, date_fin) SELECT $1, id, 'S-REEL', '2026-11-03', '2026-11-20' FROM formation_versions WHERE formation_id = $1 RETURNING id", [f.id]);
+    await pool.query("INSERT INTO documents_generes (modele_id, session_id, drive_file_id) VALUES ($1, $2, 'DOC_REEL_1')", [mod.id, s.id]);
+
+    setPoolFactory(() => pool);
+    const appliquees = await migrate(silence);
+    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql"]);
+    assert.deepEqual(await migrate(silence), [], "second démarrage : rien à rejouer");
+
+    // Document existant conservé, libellé vide ; modèle non multiple par défaut.
+    const { rows: [d] } = await pool.query("SELECT drive_file_id, libelle FROM documents_generes WHERE modele_id = $1", [mod.id]);
+    assert.deepEqual(d, { drive_file_id: "DOC_REEL_1", libelle: null });
+    assert.equal((await pool.query("SELECT generation_multiple FROM modeles_documents WHERE id = $1", [mod.id])).rows[0].generation_multiple, false);
+    // Unicité : même couple sans libellé refusé (comportement d'avant), libellés distincts acceptés, même libellé refusé.
+    const ins = (lib) => pool.query("INSERT INTO documents_generes (modele_id, session_id, drive_file_id, libelle) VALUES ($1, $2, 'X', $3)", [mod.id, s.id, lib]);
+    await assert.rejects(() => ins(null), /unicite|unique/i);
+    await ins("Prescripteur A"); await ins("Prescripteur B");
+    await assert.rejects(() => ins("Prescripteur A"), /unicite|unique/i);
+  } finally {
+    setPoolFactory(null);
+    await pool.end();
+  }
+});

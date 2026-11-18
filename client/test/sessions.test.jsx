@@ -264,6 +264,42 @@ test("génération : 409 « déjà générés » → confirmation → remplaceme
   assert.deepEqual(posts.map((p) => p.corps.remplacer), [false, true]);
 });
 
+test("génération multiple : libellé exigé, envoyé au serveur ; même libellé → confirmation de remplacement", async () => {
+  let n = 0;
+  const appels = await monter("/sessions/1/documents", "admin", {
+    "GET /api/modeles": { modeles: [{ id: 7, nom: "Compte rendu prescripteur", portee: "session", generation_multiple: true }, { id: 3, nom: "Attestation", portee: "stagiaire" }], marqueurs: [] },
+    "POST /api/generations": () => (++n === 1
+      ? { documents: 1, remplaces: 0, preuves: 1 }
+      : n === 2 ? [409, { error: "1 document(s) ont déjà été générés pour ce modèle sur cette session (« Prescripteur A »). Relancez en confirmant le remplacement pour les refaire." }]
+        : { documents: 1, remplaces: 1, preuves: 1 }),
+  });
+  await attendre(() => bouton("Générer un document"));
+  await cliquer(bouton("Générer un document"));
+  await attendre(() => champ("Modèle"));
+  assert.equal(champ("Libellé du document"), null, "pas de libellé pour un modèle ordinaire");
+  await saisir(champ("Modèle"), "7");
+  await attendre(() => champ("Libellé du document"));
+  await cliquer(bouton("Générer"));
+  await attendre(() => texte().includes("Indiquez un libellé"));
+  assert.equal(appels.filter((a) => a.chemin === "/api/generations").length, 0, "aucun appel sans libellé");
+  await saisir(champ("Libellé du document"), "Prescripteur A");
+  await cliquer(bouton("Générer"));
+  await attendre(() => texte().includes("1 document(s) généré(s)"));
+  await cliquer(bouton("Fermer"));
+  // Deuxième génération avec le même libellé : confirmation demandée avant tout remplacement.
+  await cliquer(bouton("Générer un document"));
+  await attendre(() => champ("Modèle"));
+  await saisir(champ("Modèle"), "7");
+  await attendre(() => champ("Libellé du document"));
+  await saisir(champ("Libellé du document"), "Prescripteur A");
+  await cliquer(bouton("Générer"));
+  await attendre(() => document.querySelector('[role="alertdialog"]')?.textContent.includes("déjà été générés"));
+  await cliquer(bouton("Remplacer les documents"));
+  await attendre(() => texte().includes("dont 1 remplacé(s)"));
+  const posts = appels.filter((a) => a.chemin === "/api/generations").map((a) => [a.corps.libelle, a.corps.remplacer]);
+  assert.deepEqual(posts, [["Prescripteur A", false], ["Prescripteur A", false], ["Prescripteur A", true]]);
+});
+
 test("générations automatiques : suivi par session, relance d'une tâche bloquée (administrateur)", async () => {
   const tache = (id, statut, extra = {}) => ({ id, modele: "Convocation auto", portee: "stagiaire", evenement: "inscription", statut, cree_le: "2026-11-13T12:00:00Z", ...extra });
   let relancee = false;

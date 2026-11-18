@@ -24,7 +24,8 @@ const COLONNES = `e.id, e.titre, e.type, e.session_id, e.introduction, e.jeton, 
   (SELECT count(*)::int FROM inscriptions i WHERE i.session_id = e.session_id AND i.statut <> 'abandon') AS inscrits`;
 const FROM = "FROM enquetes e JOIN sessions s ON s.id = e.session_id LEFT JOIN formations f ON f.id = s.formation_id LEFT JOIN utilisateurs ua ON ua.id = e.analysee_par";
 const ouverte = (e) => e.ouverte && (!e.date_fin || String(e.date_fin).slice(0, 10) >= aujourdhui());
-const enrichir = (e) => ({ ...e, active: ouverte(e), taux_reponse: e.inscrits && ["a_chaud", "a_froid"].includes(e.type) ? Math.round((e.reponses / e.inscrits) * 100) : null });
+const enrichir = (e) => ({ ...e, active: ouverte(e), taux_reponse: e.inscrits && ["a_chaud", "a_froid"].includes(e.type) ? Math.min(100, Math.round((e.reponses / e.inscrits) * 100)) : null });
+// (Lien anonyme : plus de réponses que d'inscrits reste possible — le taux est plafonné à 100 %.)
 
 async function questionsDe(id) {
   return (await query("SELECT id, ordre, libelle, type, options, obligatoire, globale FROM enquete_questions WHERE enquete_id = $1 ORDER BY ordre, id", [id])).rows;

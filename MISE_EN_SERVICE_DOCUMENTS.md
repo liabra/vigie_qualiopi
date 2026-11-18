@@ -149,3 +149,56 @@ Branche `livraison/donnees-documents-2` (issue de `main` à e286c50). Migrations
 3. Importer les modèles Word sur copie dans Google Docs et les enregistrer ; les modèles 09, 12, 13, 18 et 36 sont de portée
    **session**, les autres de portée **stagiaire** ; 19 (données de santé) n'est générable que par un administrateur.
 4. Contrôle : générer 08, 13 et 23 sur une session de test ; vérifier les taux sur des données connues.
+
+## Lot 8 — Vigie 2.0 : pilotage qualité (migrations 046 à 050)
+
+Branche `livraison/vigie-2-0` (contient le lot 7). Migrations **additives**, appliquées au démarrage.
+
+| Migration | Contenu |
+|---|---|
+| 046 | Mentions légales (SIRET, NDA, site web), référent handicap, durée de conservation ; rôle **auditeur** et date d'expiration des comptes ; journal des opérations sensibles |
+| 047 | Registres : tâches qualité (récurrence), risques (criticité), partenaires, ressources et moyens |
+| 048 | Préparation d'audit : campagnes, appréciation par indicateur, échantillon de sessions |
+| 049 | Enquêtes en ligne (lien public anonyme) ; réponses rangées dans `satisfactions` |
+| 050 | RGPD : date d'anonymisation d'une personne |
+
+### Nouveaux écrans
+- **Pilotage** : Tâches qualité (création automatique depuis les manques de preuves), Échéancier (toutes les dates), Risques,
+  Préparation d'audit (audit blanc, signaux par indicateur, échantillon tiré au sort et tracé, plan d'action, dossier ZIP),
+  Partenaires, Ressources et moyens.
+- **Qualité** : Enquêtes en ligne (modèles satisfaction à chaud, suivi à froid, partenaires ; synthèse ; analyse tracée) ;
+  tableau de bord enrichi d'un bloc « Pilotage ».
+- **Paramètres** : Comptes et accès (ajout d'utilisateurs sans variable serveur, auditeur externe 90 jours max, journal),
+  RGPD et conservation (durée, personnes au terme, export des données d'une personne, anonymisation confirmée),
+  Organisme (SIRET, NDA, site web, référent handicap → variables `{{organisme_siret}}`, `{{organisme_nda}}`, `{{referent_handicap_*}}`).
+- **Portail auditeur** : un compte « auditeur » ne voit que les dossiers d'audit partagés (référentiel, preuves, échantillon,
+  actions), jamais les appréciations internes ni les données des stagiaires — garde appliquée côté serveur à toute l'API.
+- **Questionnaire public** : `/repondre/<jeton>`, sans compte, adapté au téléphone.
+
+### Sécurité
+- Rôle auditeur : liste blanche serveur (`GET /api/me`, `GET /api/portail-audit/*`), expiration vérifiée à chaque requête.
+- Enquête publique : jeton aléatoire de 32 caractères, réponses validées question par question, débit limité par adresse,
+  aucune donnée interne exposée. Liens des ressources limités à http(s) ; CSV protégés contre l'injection de formules.
+- Exports (dossier d'audit, données d'une personne), partages et anonymisations journalisés.
+
+### Mise en service
+1. Après le déploiement : « Migration appliquée » pour 044 à 050.
+2. Paramètres → Organisme : saisir SIRET, NDA, référent handicap.
+3. Paramètres → RGPD : fixer la durée de conservation (5 ans par défaut).
+4. Tâches qualité → « Créer les tâches depuis les manques », puis attribuer des responsables.
+5. Créer une préparation d'audit (audit blanc) pour la prochaine échéance de certification.
+6. Pour chaque session : créer l'enquête « Satisfaction à chaud » et transmettre le lien en fin de formation ;
+   l'enquête « Suivi à froid » 3 à 6 mois après.
+
+### Couverture du cahier des charges 2.0
+| Lot | État |
+|---|---|
+| A — Pilotage des preuves | Tableau de bord, échéances, tâches avec responsables, historique, création depuis les manques. Le cycle de vie des preuves existant (valide / à réviser / expirée / obsolète, « à confirmer ») est conservé ; pas de responsable propre à la preuve (porté par la tâche liée). |
+| B — Amélioration continue | Réclamations, incidents, actions correctives (existants) + registre des risques relié aux actions et indicateurs. |
+| C — Audits | Campagnes, simulation par indicateur, échantillonnage tracé, export ZIP, historique, portail auditeur. |
+| D — Questionnaires | Constructeur, diffusion par lien, synthèse, analyse, export, alerte d'insatisfaction. Pas d'envoi d'e-mail ni de relance automatique (aucun service d'envoi configuré). |
+| E — Ressources et compétences | Ressources et moyens, partenaires ; compétences des stagiaires (lot 7) ; intervenants et justificatifs (existants). |
+| F — Gestion opérationnelle | Comptes et accès ; portail auditeur. Portails stagiaire / formateur / entreprise et envoi d'e-mails non réalisés. |
+| G — IA | Non réalisé (nécessiterait un service externe et une validation des usages de données). |
+| H — Interopérabilité | Exports CSV/ZIP/JSON ; pas d'API publique ni de multi-structures (hors périmètre immédiat). |
+| RGPD | Durée de conservation, export (droit d'accès), anonymisation (droit à l'effacement), registre simplifié, journal. |

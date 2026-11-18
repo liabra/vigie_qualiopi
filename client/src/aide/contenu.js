@@ -374,6 +374,104 @@ const AIDE = {
       },
     ],
   },
+  taches: {
+    titre: "Tâches qualité",
+    sections: [
+      { titre: "À quoi ça sert", lignes: [
+        "Une tâche dit ce qui doit être fait, par qui et pour quand : actualiser une preuve, relancer une enquête, préparer une réunion qualité.",
+        "Une tâche récurrente (mensuelle, trimestrielle…) terminée prépare automatiquement la suivante, à la même date du mois.",
+      ] },
+      { titre: "Créer les tâches depuis les manques", lignes: [
+        "Le bouton crée une tâche pour chaque indicateur applicable sans preuve et pour chaque preuve dont l'échéance est dépassée.",
+        "Il ne crée jamais de doublon : relancez-le autant que nécessaire.",
+      ] },
+    ],
+  },
+  echeancier: {
+    titre: "Échéancier",
+    sections: [
+      { titre: "Une seule vue des dates", lignes: [
+        "Tâches, actions qualité, preuves à réviser, sessions, risques à réévaluer, fins de convention et audits, regroupés par mois.",
+        "Les éléments en retard sont signalés en rouge. Chaque ligne ouvre sa fiche.",
+      ] },
+    ],
+  },
+  risques: {
+    titre: "Risques qualité",
+    sections: [
+      { titre: "Évaluer un risque", lignes: [
+        "Probabilité (1 rare à 4 fréquent) × impact (1 faible à 4 critique) = criticité de 1 à 16. À partir de 12, le risque est critique.",
+        "Décrivez les mesures de maîtrise, nommez un responsable et fixez une date de réévaluation : elle apparaît dans l'échéancier.",
+        "Un risque peut être relié à une action qualité et à des indicateurs.",
+      ] },
+    ],
+  },
+  partenaires: {
+    titre: "Partenaires",
+    sections: [
+      { titre: "Pourquoi les suivre", lignes: [
+        "Les indicateurs 23 à 27 attendent la preuve d'un réseau de partenaires et des actions menées avec eux.",
+        "Notez les conventions (avec leur date de fin, rappelée dans l'échéancier), le contact et les actions menées.",
+      ] },
+    ],
+  },
+  ressources: {
+    titre: "Ressources et moyens",
+    sections: [
+      { titre: "Supports et moyens techniques", lignes: [
+        "Supports pédagogiques : version et date d'actualisation, pour prouver qu'ils sont tenus à jour.",
+        "Salles, matériels et logiciels : état et date du dernier contrôle (indicateur 17).",
+      ] },
+    ],
+  },
+  preparationAudit: {
+    titre: "Préparation d'audit",
+    sections: [
+      { titre: "Comment s'en servir", lignes: [
+        "Créez une préparation (audit blanc, surveillance, renouvellement) : tous les indicateurs du référentiel actif sont listés.",
+        "Pour chaque indicateur, Vigie affiche des signaux factuels (aucune preuve, preuve à actualiser, action ouverte) ; vous portez l'appréciation.",
+        "Tirez un échantillon de sessions : le tirage est daté et tracé, comme le ferait l'auditeur.",
+        "« Créer les tâches du plan d'action » transforme chaque indicateur à améliorer ou non conforme en tâche.",
+      ] },
+      { titre: "Dossier et partage", lignes: [
+        "Le dossier ZIP contient un index lisible, les preuves (liens Drive), l'échantillon et les actions — sans aucun nom de stagiaire.",
+        "Le partage en lecture seule donne à un compte « auditeur » l'accès au référentiel, aux preuves et à l'échantillon, jamais à vos appréciations internes.",
+      ] },
+    ],
+  },
+  enquetes: {
+    titre: "Enquêtes en ligne",
+    sections: [
+      { titre: "Diffuser", lignes: [
+        "Créez l'enquête depuis un modèle (satisfaction à chaud, suivi à froid, partenaires), puis transmettez le lien : réponse anonyme, sans compte, sur téléphone ou ordinateur.",
+        "Les questions restent modifiables tant qu'aucune réponse n'est arrivée.",
+      ] },
+      { titre: "Exploiter (indicateurs 30 à 32)", lignes: [
+        "Les résultats sont calculés automatiquement ; la question de satisfaction globale alimente la synthèse et les indicateurs de session.",
+        "Rédigez l'analyse et les décisions : l'auditeur vérifie que les appréciations sont exploitées. Une alerte signale une enquête close non analysée.",
+      ] },
+    ],
+  },
+  comptes: {
+    titre: "Comptes et accès",
+    sections: [
+      { titre: "Rôles", lignes: [
+        "Administrateur : tout. Contributeur : saisie courante. Auditeur externe : lecture seule des dossiers d'audit partagés, pour 90 jours au plus.",
+        "La personne se connecte avec le compte Google correspondant à l'adresse enregistrée.",
+        "Vous ne pouvez pas réduire vos propres droits, et il reste toujours au moins un administrateur actif.",
+      ] },
+    ],
+  },
+  rgpd: {
+    titre: "RGPD et conservation",
+    sections: [
+      { titre: "Droits des personnes", lignes: [
+        "Droit d'accès : « Exporter » produit un fichier avec toutes les données détenues sur la personne.",
+        "Droit à l'effacement : « Anonymiser » efface l'identité, les coordonnées, les données de santé et les textes libres ; les statistiques restent, sans identité.",
+        "Les documents déjà générés dans Google Drive ne sont pas modifiés : supprimez-les dans Drive si nécessaire.",
+      ] },
+    ],
+  },
 };
 
 // Route → clé d'aide. Le préfixe le plus long l'emporte (les onglets d'une
@@ -400,6 +498,15 @@ const CLES = [
   ["/questionnaires", "questionnaires"],
   ["/versions", "versions"],
   ["/parametres/google", "parametres/google"],
+  ["/taches", "taches"],
+  ["/echeancier", "echeancier"],
+  ["/risques", "risques"],
+  ["/partenaires", "partenaires"],
+  ["/ressources", "ressources"],
+  ["/preparation-audit", "preparationAudit"],
+  ["/enquetes", "enquetes"],
+  ["/parametres/comptes", "comptes"],
+  ["/parametres/rgpd", "rgpd"],
 ];
 
 // Les routes de DÉTAIL sont reconnues comme leur écran parent.

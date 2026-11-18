@@ -121,7 +121,7 @@ export function RegistrePage({ nom, admin, actions }) {
       {succes && <Alert ton="success">{succes}</Alert>}
       {erreur && <Alert ton="error" titre="Action impossible.">{erreur}</Alert>}
       <div className="sess-vues" role="group" aria-label="Filtrer">
-        {[["ouverts", "En cours"], ["tous", "Tout"], ...(statut?.valeurs || []).map((v) => [v, statut.libelles[v]])].map(([v, l]) => (
+        {[["ouverts", "À traiter"], ["tous", "Tout"], ...(statut?.valeurs || []).map((v) => [v, statut.libelles[v]])].map(([v, l]) => (
           <button key={v} type="button" className={"sess-vue" + (filtre === v ? " sess-vue--active" : "")} aria-pressed={filtre === v} onClick={() => setFiltre(v)}>{l}</button>
         ))}
         {schema.champs.some((c) => c.nom === "responsable_id") && (

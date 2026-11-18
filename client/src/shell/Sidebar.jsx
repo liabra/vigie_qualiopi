@@ -44,7 +44,7 @@ export function Sidebar({ id, user, ouvert, onFermer, onLogout, onAide }) {
           <span aria-hidden="true">?</span>&nbsp; Aide
         </button>
         <p className="shell-compte__nom">{user.nom || user.email}</p>
-        <Badge ton={admin ? "info" : "neutral"}>{admin ? "Administrateur" : "Contributeur"}</Badge>
+        <Badge ton={admin ? "info" : "neutral"}>{admin ? "Administrateur" : user.role === "auditeur" ? "Auditeur (lecture seule)" : "Contributeur"}</Badge>
         <button type="button" className="ui-btn ui-btn--ghost ui-btn--compact shell-deconnexion" onClick={onLogout}>
           Déconnexion
         </button>

@@ -184,7 +184,7 @@ router.post("/campagnes-audit/:id/echantillon", requireAdmin, wrap(async (req, r
     const choix = [];
     const reste = candidates.map((r) => r.id);
     while (choix.length < nombre && reste.length) choix.push(reste.splice(crypto.randomInt(reste.length), 1)[0]);
-    const libelle = `Tirage aléatoire du ${new Date().toISOString().slice(0, 10)} (${choix.length} parmi ${candidates.length} sessions des 18 derniers mois)`;
+    const libelle = `Tirage aléatoire du ${new Date().toISOString().slice(0, 10).split("-").reverse().join("/")} (${choix.length} parmi ${candidates.length} sessions des 18 derniers mois)`;
     for (const s of choix) await query("INSERT INTO campagne_echantillon (campagne_id, session_id, motif, ajoute_par) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING", [id, s, libelle, req.user.id]);
     return res.json({ ajoutees: choix.length, echantillon: await echantillon(id) });
   }

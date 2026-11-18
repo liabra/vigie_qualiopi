@@ -105,6 +105,7 @@ export function CampagneAuditPage() {
         description={`${d.types[c.type]}${c.date_audit ? ` prévu le ${formaterDate(c.date_audit)}` : ""} — référentiel ${c.referentiel_code || ""} — ${d.statuts[c.statut]}`}
         actions={<>
           <a className="ui-btn ui-btn--secondary" href={`/api/campagnes-audit/${c.id}/export`} download>Télécharger le dossier (ZIP)</a>
+          <a className="ui-btn ui-btn--secondary" href={`/api/pdf/campagnes-audit/${c.id}`} download>PDF</a>
           {!archivee && <Button onClick={() => agir(() => api(`/api/campagnes-audit/${c.id}/taches`, { method: "POST", body: "{}" }), (r) => (r.crees ? `${r.crees} tâche(s) créée(s) dans le plan d'action.` : "Aucune nouvelle tâche : les indicateurs à traiter ont déjà la leur."))}>Créer les tâches du plan d'action</Button>}
         </>} />
       {message && <Alert ton={message.ton}>{message.texte}</Alert>}

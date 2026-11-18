@@ -117,7 +117,7 @@ export function RegistrePage({ nom, admin, actions }) {
   return (
     <>
       <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: schema.titre }]} titre={schema.titre} description={schema.description}
-        actions={<>{actions?.({ recharger: charger, notifier: setSucces })}{bouton}</>} />
+        actions={<>{actions?.({ recharger: charger, notifier: setSucces })}<a className="ui-btn ui-btn--secondary" href={`/api/pdf/registres/${nom}`} download>PDF</a>{bouton}</>} />
       {succes && <Alert ton="success">{succes}</Alert>}
       {erreur && <Alert ton="error" titre="Action impossible.">{erreur}</Alert>}
       <div className="sess-vues" role="group" aria-label="Filtrer">

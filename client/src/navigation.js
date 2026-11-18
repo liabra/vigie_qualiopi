@@ -19,6 +19,8 @@ export const NAVIGATION = [
       { to: "/formations", libelle: "Formations", admin: true },
       { to: "/intervenants", libelle: "Intervenants" },
       { to: "/justificatifs-intervenants", libelle: "Justificatifs des intervenants", admin: true },
+      { to: "/candidatures", libelle: "Candidatures", admin: true },
+      { to: "/acces-portails", libelle: "Accès aux portails", admin: true },
     ],
   },
   {
@@ -34,6 +36,7 @@ export const NAVIGATION = [
       { to: "/signalements-qualite", libelle: "Signalements", admin: true },
       { to: "/synthese-satisfactions", libelle: "Synthèse des satisfactions", admin: true },
       { to: "/enquetes", libelle: "Enquêtes en ligne", admin: true },
+      { to: "/preuves-pdf", libelle: "Preuves PDF" },
     ],
   },
   {
@@ -44,6 +47,7 @@ export const NAVIGATION = [
       { to: "/echeancier", libelle: "Échéancier" },
       { to: "/risques", libelle: "Risques" },
       { to: "/preparation-audit", libelle: "Préparation d'audit", admin: true },
+      { to: "/developpement-intervenants", libelle: "Développement des intervenants", admin: true },
       { to: "/partenaires", libelle: "Partenaires" },
       { to: "/ressources", libelle: "Ressources et moyens" },
     ],

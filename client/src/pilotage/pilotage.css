@@ -36,3 +36,15 @@
 .repondre__question textarea, .repondre__question input[type="number"], .repondre__question input[type="date"] { width: 100%; }
 .repondre__echelle { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .repondre__echelle label, .repondre__choix { display: inline-flex; gap: var(--space-1); align-items: center; min-height: 2.75rem; margin-right: var(--space-3); }
+
+/* Preuves PDF, candidatures, portails */
+.pdf-catalogue { list-style: none; padding: 0; display: grid; gap: var(--space-2); }
+.pdf-catalogue li { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.pdf-catalogue li p { margin: var(--space-1) 0 0; }
+.champ-piege { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.lien-portail { width: 100%; margin: var(--space-2) 0; }
+.texte-preserve { white-space: pre-wrap; }
+.espace__entete { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+.espace__formation h2 { font-size: var(--font-size-section-title); margin: 0 0 var(--space-2); }
+.espace__formation h3 { font-size: var(--font-size-body); margin: var(--space-3) 0 var(--space-1); }
+.espace__signalement { margin-top: var(--space-3); }

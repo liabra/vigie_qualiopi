@@ -57,7 +57,7 @@ test("admin : la navigation contient Formations et les Paramètres", async () =>
 test("contributeur : aucune entrée d'administration, pages réservées refusées proprement", async () => {
   await monter("/accueil", "contributeur");
   await attendre(() => liensNavigation().length > 0);
-  assert.deepEqual(liensNavigation(), ["Accueil", "Sessions", "Jeunes", "Intervenants", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Tâches qualité", "Échéancier", "Risques", "Partenaires", "Ressources et moyens", "Variables documentaires"]);
+  assert.deepEqual(liensNavigation(), ["Accueil", "Sessions", "Jeunes", "Intervenants", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Preuves PDF", "Tâches qualité", "Échéancier", "Risques", "Partenaires", "Ressources et moyens", "Variables documentaires"]);
   assert.ok(!document.querySelector("nav").textContent.includes("Paramètres"));
   await demonter();
   for (const chemin of ["/modeles", "/formations", "/prescripteurs", "/versions", "/parametres/google"]) {

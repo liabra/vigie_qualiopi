@@ -202,3 +202,23 @@ Branche `livraison/vigie-2-0` (contient le lot 7). Migrations **additives**, app
 | G — IA | Non réalisé (nécessiterait un service externe et une validation des usages de données). |
 | H — Interopérabilité | Exports CSV/ZIP/JSON ; pas d'API publique ni de multi-structures (hors périmètre immédiat). |
 | RGPD | Durée de conservation, export (droit d'accès), anonymisation (droit à l'effacement), registre simplifié, journal. |
+
+## Lot 9 — Preuves PDF, développement des intervenants, candidatures, portails (migrations 051 à 053)
+
+Branche `livraison/portails-candidatures` (contient aussi le garde-fou « mode test Drive »).
+
+- **Preuves PDF** (Qualité → Preuves PDF, et bouton « PDF » sur les registres, enquêtes et préparations d'audit) :
+  tableau des preuves par indicateur, plan d'amélioration, registre des réclamations (sans identité des réclamants),
+  veille, enquêtes, bilan de session (indicateurs), assiduité, plan de développement des intervenants, registres de pilotage,
+  auto-évaluation d'audit. Générateur PDF interne (aucune dépendance, polices standard, pagination et date de génération).
+- **Développement des intervenants** (Pilotage) : spécialités, diplômes, dernier entretien (signalé au-delà d'un an),
+  besoins, actions de développement avec évaluation de l'efficacité (indicateurs 21 et 22) ; PDF global et par intervenant.
+- **Candidatures en ligne** : formulaire public `/candidater` (formations ouvertes une à une, pièces attendues, consentement,
+  champ piège anti-robot, débit limité). Gestion : pièces reçues, notes, décision motivée, « Accepter et inscrire »
+  (fiche personne réutilisée si déjà connue, inscription créée).
+- **Portails** : lien personnel `/portail/<jeton>` (empreinte seule conservée, durée 1 à 365 jours, révocable) →
+  espace `/espace`. Stagiaire : formation, séances à venir, documents en PDF (export Drive), enquêtes, évaluations,
+  compétences, signalement d'une difficulté ou réclamation (devient un signalement qualité). Formateur : ses sessions et
+  groupes uniquement, suivi des séances, compétences des stagiaires, ressources, justificatifs, signalement d'incident.
+- **Mode test Drive** : `VIGIE_DRIVE_MODE_TEST=1` et `VIGIE_DRIVE_TEST_ROOT_ID` (dossier « test » vide à la racine du Drive)
+  pour tout essai local ; sur un poste local avec Google configuré, la génération est bloquée sans ce mode. Sans effet sur Railway.

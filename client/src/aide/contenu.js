@@ -374,6 +374,50 @@ const AIDE = {
       },
     ],
   },
+  preuvesPdf: {
+    titre: "Preuves PDF",
+    sections: [
+      { titre: "Pour l'auditeur", lignes: [
+        "Chaque document est produit à la demande à partir des données à jour, daté, paginé, au nom de l'organisme : prêt à déposer sur la plateforme de l'organisme certificateur.",
+        "Les registres (tâches, risques, partenaires, ressources), les enquêtes et les préparations d'audit ont aussi un bouton « PDF » sur leur page.",
+        "Les identités des réclamants et les données de santé ne figurent jamais dans ces documents.",
+      ] },
+    ],
+  },
+  developpement: {
+    titre: "Développement des intervenants",
+    sections: [
+      { titre: "Indicateurs 21 et 22", lignes: [
+        "Renseignez pour chaque intervenant ses spécialités, diplômes et habilitations, la date du dernier entretien et ses besoins de développement.",
+        "Ajoutez les actions (formations suivies ou prévues, tutorat, événements) et, une fois réalisées, ce qu'elles ont changé dans la pratique : c'est la preuve d'efficacité attendue.",
+        "Un entretien datant de plus d'un an est signalé « À planifier ».",
+      ] },
+    ],
+  },
+  candidatures: {
+    titre: "Candidatures",
+    sections: [
+      { titre: "Ouvrir une formation", lignes: [
+        "« Formations ouvertes et pièces attendues » : cochez les formations proposées dans le formulaire public et listez les pièces à fournir.",
+        "Diffusez le lien du formulaire (site, réseaux, prescripteurs). Le candidat choisit la formation et, s'il le souhaite, une session à venir.",
+      ] },
+      { titre: "Étudier et décider", lignes: [
+        "Cochez les pièces reçues, notez l'entretien, puis acceptez en choisissant la session : la personne est inscrite (sa fiche est réutilisée si elle est déjà connue).",
+        "Un refus ou une réorientation se motive : c'est la trace demandée pour l'accès à la formation.",
+      ] },
+    ],
+  },
+  accesPortails: {
+    titre: "Accès aux portails",
+    sections: [
+      { titre: "Espace stagiaire et espace formateur", lignes: [
+        "Un lien personnel ouvre l'espace sans compte Google. Il n'est affiché qu'une fois : copiez-le et transmettez-le par SMS ou e-mail personnel.",
+        "Le stagiaire voit sa formation, ses séances, ses documents (PDF), ses enquêtes, ses résultats et peut signaler une difficulté.",
+        "Le formateur voit ses sessions et ses groupes, saisit le suivi des séances et les compétences, consulte les ressources et signale un incident.",
+        "Désactivez un accès à tout moment : le lien cesse aussitôt de fonctionner.",
+      ] },
+    ],
+  },
   taches: {
     titre: "Tâches qualité",
     sections: [
@@ -498,6 +542,10 @@ const CLES = [
   ["/questionnaires", "questionnaires"],
   ["/versions", "versions"],
   ["/parametres/google", "parametres/google"],
+  ["/preuves-pdf", "preuvesPdf"],
+  ["/developpement-intervenants", "developpement"],
+  ["/candidatures", "candidatures"],
+  ["/acces-portails", "accesPortails"],
   ["/taches", "taches"],
   ["/echeancier", "echeancier"],
   ["/risques", "risques"],

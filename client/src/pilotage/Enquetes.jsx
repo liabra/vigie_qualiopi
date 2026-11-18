@@ -117,6 +117,7 @@ export function EnquetePage() {
         description={`${d.types[e.type]} — ${e.formation || ""} — session ${e.session_reference || ""} du ${formaterDate(e.date_debut)} au ${formaterDate(e.session_fin)}`}
         actions={<>
           {e.reponses > 0 && <a className="ui-btn ui-btn--secondary" href={`/api/enquetes/${e.id}/export`} download>Exporter (CSV)</a>}
+          <a className="ui-btn ui-btn--secondary" href={`/api/pdf/enquetes/${e.id}`} download>PDF</a>
           {e.active ? <Button onClick={() => patch({ ouverte: false }, "Enquête close.")}>Clore l'enquête</Button> : <Button onClick={() => patch({ ouverte: true, date_fin: null }, "Enquête rouverte.")}>Rouvrir</Button>}
         </>} />
       {message && <Alert ton={message.ton}>{message.texte}</Alert>}

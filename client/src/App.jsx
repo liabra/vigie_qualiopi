@@ -43,6 +43,10 @@ import { CampagneAuditPage, CampagnesAuditPage, PortailAuditPage } from "./pilot
 import { EnquetePage, EnquetesPage, RepondreEnquete } from "./pilotage/Enquetes.jsx";
 import { ComptesPage } from "./parametres/Comptes.jsx";
 import { RgpdPage } from "./parametres/Rgpd.jsx";
+import { PreuvesPdfPage } from "./pilotage/PreuvesPdf.jsx";
+import { DeveloppementPage } from "./intervenants/Developpement.jsx";
+import { CandidaterPage, CandidaturesPage } from "./candidatures/Candidatures.jsx";
+import { AccesPortailsPage, EspacePage, PortailConnexion } from "./portails/Portails.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -156,6 +160,16 @@ export default function App() {
   if (location.pathname.startsWith("/repondre/")) {
     return <Routes><Route path="/repondre/:jeton" element={<RepondreEnquete />} /></Routes>;
   }
+  // Pages publiques (sans compte) : formulaire de candidature, espaces stagiaire et formateur.
+  if (location.pathname === "/candidater" || location.pathname.startsWith("/portail/") || location.pathname === "/espace") {
+    return (
+      <Routes>
+        <Route path="/candidater" element={<CandidaterPage />} />
+        <Route path="/portail/:jeton" element={<PortailConnexion />} />
+        <Route path="/espace" element={<EspacePage />} />
+      </Routes>
+    );
+  }
 
   if (error) {
     return (
@@ -248,6 +262,10 @@ export default function App() {
         <Route path="preparation-audit/:campagneId" element={admin(<CampagneAuditPage />)} />
         <Route path="portail-audit" element={admin(<PortailAuditPage />)} />
         <Route path="portail-audit/:campagneId" element={admin(<PortailAuditPage />)} />
+        <Route path="preuves-pdf" element={<PreuvesPdfPage admin={isAdmin} />} />
+        <Route path="developpement-intervenants" element={admin(<DeveloppementPage />)} />
+        <Route path="candidatures" element={admin(<CandidaturesPage />)} />
+        <Route path="acces-portails" element={admin(<AccesPortailsPage />)} />
         <Route path="enquetes" element={admin(<EnquetesPage />)} />
         <Route path="enquetes/:enqueteId" element={admin(<EnquetePage />)} />
 

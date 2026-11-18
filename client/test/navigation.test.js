@@ -8,15 +8,15 @@ const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) =>
 
 test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
   assert.deepEqual(liens("admin"), [
-    "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions", "/enquetes",
-    "/taches", "/echeancier", "/risques", "/preparation-audit", "/partenaires", "/ressources",
+    "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/candidatures", "/acces-portails", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions", "/enquetes", "/preuves-pdf",
+    "/taches", "/echeancier", "/risques", "/preparation-audit", "/developpement-intervenants", "/partenaires", "/ressources",
     "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/comptes", "/parametres/rgpd", "/parametres/google", "/parametres/inventaire-drive",
   ]);
   assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));
 });
 
 test("contributeur : aucune entrée d'administration, aucun groupe Paramètres", () => {
-  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/taches", "/echeancier", "/risques", "/partenaires", "/ressources", "/variables-documentaires"]);
+  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/preuves-pdf", "/taches", "/echeancier", "/risques", "/partenaires", "/ressources", "/variables-documentaires"]);
   assert.ok(!navigationPour("contributeur").some((g) => g.titre === "Paramètres"));
 });
 

@@ -148,13 +148,15 @@ router.get("/developpement", requireAdmin, wrap(async (_req, res) => {
 
 const organisme = async () => (await query("SELECT nom FROM parametres_organisme WHERE id = 1")).rows[0]?.nom || "";
 const nomComplet = (i) => [i.prenom, i.nom].filter(Boolean).join(" ");
+const FONCTIONS = { formateur: "Formateur", referent_handicap: "Référent handicap", appui: "Appui", autre: "Autre" };
+const NATURES = { salarie: "Salarié", exterieur: "Intervenant extérieur", sous_traitant: "Sous-traitant", porte: "Portage salarial" };
 
 router.get("/pdf/developpement", requireAdmin, wrap(async (_req, res) => {
   const { actions, intervenants } = await planGlobal();
   const doc = new DocumentPdf({ titre: "Plan de développement des compétences des intervenants", organisme: await organisme(), sousTitre: "Indicateurs 21 et 22 — maintien et développement des compétences" });
   doc.titre("Synthèse par intervenant");
   doc.tableau(["Intervenant", "Fonction", "Dernier entretien", "Actions réalisées", "Actions prévues", "Besoins identifiés"],
-    intervenants.map((i) => [nomComplet(i), i.fonction || "", dateFr(i.date_dernier_entretien) || "Non renseigné", i.realisees, i.prevues, i.besoins_developpement || ""]), [2.2, 1.6, 1.2, 1, 1, 3]);
+    intervenants.map((i) => [nomComplet(i), FONCTIONS[i.fonction] || i.fonction || "", dateFr(i.date_dernier_entretien) || "Non renseigné", i.realisees, i.prevues, i.besoins_developpement || ""]), [2.2, 1.6, 1.2, 1, 1, 3]);
   doc.titre("Actions de développement");
   doc.tableau(["Intervenant", "Action", "Type", "Période", "Durée", "Statut", "Efficacité"],
     actions.map((a) => [nomComplet(a), `${a.intitule}${a.organisme ? ` (${a.organisme})` : ""}`, TYPES_DEVELOPPEMENT[a.type], [dateFr(a.date_debut), dateFr(a.date_fin)].filter(Boolean).join(" → "), a.duree_heures ? `${Number(a.duree_heures)} h` : "", STATUTS_DEVELOPPEMENT[a.statut], a.evaluation_efficacite || ""]),
@@ -168,7 +170,7 @@ router.get("/pdf/intervenants/:id/developpement", requireAdmin, wrap(async (req,
   const d = await dossierIntervenant(id);
   if (!d) return res.status(404).json({ error: "Intervenant introuvable." });
   const i = d.intervenant;
-  const doc = new DocumentPdf({ titre: `Compétences et développement — ${nomComplet(i)}`, organisme: await organisme(), sousTitre: [i.fonction, i.nature].filter(Boolean).join(" — ") });
+  const doc = new DocumentPdf({ titre: `Compétences et développement — ${nomComplet(i)}`, organisme: await organisme(), sousTitre: [FONCTIONS[i.fonction] || i.fonction, NATURES[i.nature] || i.nature].filter(Boolean).join(" — ") });
   doc.titre("Compétences");
   doc.champ("Spécialités", i.specialites).champ("Diplômes, certifications et habilitations", i.diplomes_certifications)
     .champ("Date du dernier entretien professionnel", dateFr(i.date_dernier_entretien) || "Non renseignée").champ("Besoins de développement identifiés", i.besoins_developpement);

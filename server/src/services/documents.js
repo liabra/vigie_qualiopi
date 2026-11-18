@@ -276,12 +276,16 @@ async function cibles(modele, { session, groupe }) {
     `SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
             i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.groupe_id, i.statut,
             i.date_inscription, i.date_abandon, i.motif_abandon,
+            s.situation_handicap, s.besoins_adaptation,
+            rb.date_recueil AS besoin_date_recueil, rb.attentes AS besoin_attentes, rb.objectifs_personnels AS besoin_objectifs_personnels,
+            rb.prerequis_verifies AS besoin_prerequis_verifies, rb.conclusion AS besoin_conclusion,
             r.date_evenement AS relance_derniere_date,
             COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
      FROM inscriptions i
      JOIN stagiaires s ON s.id = i.stagiaire_id
      LEFT JOIN prescripteurs pr ON pr.code = i.prescripteur
      LEFT JOIN groupes g ON g.id = i.groupe_id
+     LEFT JOIN recueils_besoin rb ON rb.inscription_id = i.id
      LEFT JOIN LATERAL (
        SELECT si.date_evenement FROM suivis_inscription si
        WHERE si.inscription_id = i.id AND si.type = 'relance'
@@ -318,7 +322,7 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
   if (ids.length && blocs.includes("evaluations")) {
     const evaluations = new Map();
     const { rows } = await query(
-      `SELECT inscription_id, intitule, date_passage, score, score_max
+      `SELECT inscription_id, intitule, date_passage, score, score_max, type, resultat, commentaire, seuil_reussite
        FROM resultats_qcm WHERE inscription_id = ANY($1::int[])
        ORDER BY inscription_id, date_passage, id`,
       [ids]
@@ -328,6 +332,22 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
       evaluations.get(r.inscription_id).push(r);
     }
     resultat.evaluations = evaluations;
+  }
+  // Adaptations du parcours (accès RESTREINT : le précontrôle exige un administrateur) : une requête
+  // pour toutes les cibles.
+  if (ids.length && blocs.includes("adaptations")) {
+    const adaptations = new Map();
+    const { rows } = await query(
+      `SELECT inscription_id, categorie, mesure, statut, date_decision, date_mise_en_oeuvre, bilan
+       FROM adaptations_parcours WHERE inscription_id = ANY($1::int[])
+       ORDER BY inscription_id, date_decision, id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!adaptations.has(r.inscription_id)) adaptations.set(r.inscription_id, []);
+      adaptations.get(r.inscription_id).push(r);
+    }
+    resultat.adaptations = adaptations;
   }
   // DOC-7B : séances de la SESSION (mêmes lignes pour toutes les cibles),
   // une seule requête, ordre date_seance, heure_debut, id.
@@ -379,7 +399,9 @@ export async function contexteGeneration(sessionId, groupeId) {
     `SELECT s.*, f.id AS formation_id, f.intitule, f.code_interne AS formation_code_interne,
             v.duree_heures_defaut, v.public_vise AS version_public_vise, v.prerequis AS version_prerequis,
             v.objectifs AS version_objectifs, v.modalite AS version_modalite,
-            v.accessibilite_handicap AS version_accessibilite_handicap
+            v.accessibilite_handicap AS version_accessibilite_handicap,
+            v.objectifs_operationnels AS version_objectifs_operationnels, v.methodes_pedagogiques AS version_methodes_pedagogiques,
+            v.modalites_evaluation AS version_modalites_evaluation
      FROM sessions s
      JOIN formations f ON f.id = s.formation_id
      LEFT JOIN formation_versions v ON v.id = s.formation_version_id
@@ -430,6 +452,8 @@ export async function contexteGeneration(sessionId, groupeId) {
       duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,
       prerequis: session.version_prerequis, objectifs: session.version_objectifs,
       modalite: session.version_modalite, accessibilite_handicap: session.version_accessibilite_handicap,
+      objectifs_operationnels: session.version_objectifs_operationnels || [], methodes_pedagogiques: session.version_methodes_pedagogiques,
+      modalites_evaluation: session.version_modalites_evaluation,
     },
     // Durée prévue réellement déclarée, à défaut celle de la version
     // figée : la source unique du calcul d'assiduité (lot L2).
@@ -633,6 +657,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
         ? {
             absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences?.get(stagiaire.inscription_id) : null) || [],
             evaluations: (stagiaire?.inscription_id != null ? lignesBlocs.evaluations?.get(stagiaire.inscription_id) : null) || [],
+            adaptations: (stagiaire?.inscription_id != null ? lignesBlocs.adaptations?.get(stagiaire.inscription_id) : null) || [],
+            objectifs_formation: (ctx.version?.objectifs_operationnels || []).map((libelle, i) => ({ code: `O${i + 1}`, libelle })),
             intervenants: lignesIntervenants || [],
             seances: lignesBlocs.seances || [],
             suivi_pedagogique: (stagiaire?.inscription_id != null ? lignesBlocs.suivi_pedagogique?.get(stagiaire.inscription_id) : null) || [],

@@ -4,7 +4,10 @@ import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSec
 import { useTitrePage } from "../pages/titre.js";
 
 export const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
-const VIDE = { intitule: "", code_interne: "", duree_heures_defaut: "", modalite: "presentiel", tarif_ht: "" };
+const VIDE = {
+  intitule: "", code_interne: "", duree_heures_defaut: "", modalite: "presentiel", tarif_ht: "",
+  objectifs: "", objectifs_operationnels: "", methodes_pedagogiques: "", modalites_evaluation: "",
+};
 
 // Nombre saisi (virgule acceptée) : vide, ou positif. Le serveur reste juge.
 function nombreInvalide(v) {
@@ -187,7 +190,9 @@ function PanneauFormation({ panneau, onFermer, onEnregistree }) {
     const f = panneau.formation;
     // Révision : on part de TOUTE la version courante (objectifs, public…),
     // pour que la nouvelle version ne perde aucun champ non affiché ici.
-    setValeurs(f ? { ...f, code_interne: f.code_interne || "", duree_heures_defaut: f.duree_heures_defaut ?? "", tarif_ht: f.tarif_ht ?? "", modalite: f.modalite || "presentiel" } : VIDE);
+    setValeurs(f ? { ...f, code_interne: f.code_interne || "", duree_heures_defaut: f.duree_heures_defaut ?? "", tarif_ht: f.tarif_ht ?? "", modalite: f.modalite || "presentiel",
+      objectifs: f.objectifs || "", objectifs_operationnels: (f.objectifs_operationnels || []).join("\n"),
+      methodes_pedagogiques: f.methodes_pedagogiques || "", modalites_evaluation: f.modalites_evaluation || "" } : VIDE);
     setErreurs({}); setErreurServeur(null); setEnCours(false);
   }, [panneau]);
 
@@ -263,6 +268,20 @@ function PanneauFormation({ panneau, onFermer, onEnregistree }) {
           </Field>
           <Field label="Tarif (€ HT)" facultatif erreur={erreurs.tarif_ht}>
             <input type="number" inputMode="decimal" min="0" step="0.01" value={valeurs.tarif_ht} onChange={champ("tarif_ht")} />
+          </Field>
+        </FormSection>
+        <FormSection titre="Contenu repris dans les documents" colonnes={1}>
+          <Field label="Objectifs de la formation (objectif général)" facultatif>
+            <textarea rows={2} maxLength={2000} value={valeurs.objectifs} onChange={champ("objectifs")} />
+          </Field>
+          <Field label="Objectifs opérationnels" facultatif aide="Un objectif par ligne : chaque ligne devient un paragraphe dans la convention ou le programme.">
+            <textarea rows={5} value={valeurs.objectifs_operationnels} onChange={champ("objectifs_operationnels")} />
+          </Field>
+          <Field label="Méthodes pédagogiques" facultatif>
+            <textarea rows={3} maxLength={4000} value={valeurs.methodes_pedagogiques} onChange={champ("methodes_pedagogiques")} />
+          </Field>
+          <Field label="Modalités d'évaluation" facultatif>
+            <textarea rows={3} maxLength={4000} value={valeurs.modalites_evaluation} onChange={champ("modalites_evaluation")} />
           </Field>
         </FormSection>
         <p className="ui-field__aide">

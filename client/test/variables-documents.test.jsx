@@ -17,8 +17,8 @@ const lignes = () => [...document.querySelectorAll("tbody tr")];
 
 test("page : tout utilisateur connecté (contributeur) voit les variables classées par domaine", async () => {
   await monter("/variables-documentaires", "contributeur", ROUTES);
-  await attendre(() => texte().includes("Dictionnaire v1.5"));
-  assert.ok(texte().includes("164 variables"));
+  await attendre(() => texte().includes(`Dictionnaire v${CATALOGUE.version}`));
+  assert.ok(texte().includes(`${CATALOGUE.variables.length} variables`));
   const domaines = titresDomaines();
   assert.equal(domaines[0], "Organisme", "ordre du dictionnaire");
   assert.ok(domaines.includes("Stagiaire / bénéficiaire") && domaines.includes("Blocs répétables"));
@@ -28,7 +28,7 @@ test("page : tout utilisateur connecté (contributeur) voit les variables class�
 
 test("page : menu « Documents » visible du contributeur, page sans action d'écriture", async () => {
   await monter("/variables-documentaires", "contributeur", ROUTES);
-  await attendre(() => texte().includes("Dictionnaire v1.5"));
+  await attendre(() => texte().includes(`Dictionnaire v${CATALOGUE.version}`));
   const liens = [...document.querySelectorAll("nav a")].map((a) => a.getAttribute("href"));
   assert.ok(liens.includes("/variables-documentaires"));
   assert.equal(document.querySelectorAll("tbody button").length, 0, "aucun bouton d'action dans les tableaux");
@@ -53,11 +53,11 @@ test("recherche : libellé, balise, accents et casse ignorés ; compteur ; aucun
 
 test("fonctions pures : filtre sans accent et regroupement dans l'ordre du dictionnaire", () => {
   const v = CATALOGUE.variables;
-  assert.equal(filtrerVariables(v, "").length, 164);
+  assert.equal(filtrerVariables(v, "").length, v.length);
   assert.deepEqual(filtrerVariables(v, "civilité du stagiaire").map((x) => x.nom), ["stagiaire_civilite"]);
   assert.deepEqual(filtrerVariables(v, "CIVILITE DU STAGIAIRE").map((x) => x.nom), ["stagiaire_civilite"]);
   const groupes = grouperParDomaine(v, CATALOGUE.domaines);
-  assert.equal(groupes.reduce((n, g) => n + g.variables.length, 0), 164);
+  assert.equal(groupes.reduce((n, g) => n + g.variables.length, 0), v.length);
   assert.deepEqual(groupes.map((g) => g.cle), Object.keys(CATALOGUE.domaines));
 });
 

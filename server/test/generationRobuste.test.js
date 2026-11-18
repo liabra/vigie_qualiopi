@@ -349,14 +349,14 @@ test("DOC-3C : lot de 3 stagiaires, une erreur bloquante au niveau du modèle em
 // modèle serait par ailleurs valide pour un admin.
 test("DOC-3C : contributeur + variable restreinte dans le modèle → refus, admin → autre blocage (non_resoluble)", async () => {
   baseSimulee().installer();
-  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_amenagements}}" });
   setDriveFactory(() => client);
   const rContrib = await generer(requete, CONTRIBUTEUR);
   assert.equal(rContrib.statut, 400);
   assert.equal(rContrib.corps.precontrole.erreurs[0].code, "VARIABLE_RESTREINTE_REFUSEE");
   assert.equal(trace.copies, 0);
 
-  const { trace: traceAdmin, client: clientAdmin } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  const { trace: traceAdmin, client: clientAdmin } = clientDriveSimule({ modeleTexte: "{{stagiaire_amenagements}}" });
   setDriveFactory(() => clientAdmin);
   const rAdmin = await generer(requete, ADMIN);
   assert.equal(rAdmin.statut, 400);

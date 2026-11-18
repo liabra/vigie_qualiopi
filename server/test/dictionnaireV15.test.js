@@ -19,14 +19,18 @@ const lire = (f) => JSON.parse(fs.readFileSync(path.join(ICI, "fixtures", f), "u
 const NOMS_V14 = lire("dictionnaire_v1_4_noms.json");
 const LIBELLES_V15 = lire("dictionnaire_v1_5_libelles.json");
 
-test("v1.5 : version annoncée et historique des évolutions", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.5");
+test("v1.5 puis 1.6 : version annoncée et historique des évolutions", () => {
+  assert.equal(DICTIONNAIRE_VERSION, "1.6");
   assert.ok(EVOLUTIONS.some((e) => e.version === "1.5" && /43 libellés/.test(e.changement)));
+  assert.ok(EVOLUTIONS.some((e) => e.version === "1.6" && /7 variables/.test(e.changement)));
 });
+
+const NOUVELLES_V16 = ["besoin_date_recueil", "besoin_attentes", "besoin_objectifs_personnels", "besoin_prerequis_verifies", "besoin_conclusion", "stagiaire_situation_handicap", "evaluation_seuil_reussite"];
 
 test("non-régression : les 164 noms techniques et identifiants de la v1.4 sont strictement conservés", () => {
   assert.equal(NOMS_V14.variables.length, 164);
-  assert.equal(VARIABLES.length, 164, "aucune variable ajoutée ni retirée par la 1.5");
+  assert.equal(VARIABLES.length, 164 + NOUVELLES_V16.length, "seules les 7 variables de la 1.6 s'ajoutent, aucune n'est retirée");
+  assert.deepEqual(VARIABLES.filter((v) => v.depuis === "1.6").map((v) => v.nom).sort(), [...NOUVELLES_V16].sort());
   const actuel = new Map(VARIABLES.map((v) => [v.nom, v.id]));
   for (const { id, nom } of NOMS_V14.variables) {
     assert.equal(actuel.get(nom), id, `variable conservée avec le même identifiant : ${nom}`);

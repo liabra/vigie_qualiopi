@@ -135,6 +135,28 @@ test("formations : réviser crée une nouvelle version sans perdre les champs no
   assert.equal(corps.intitule, "Aide à domicile");
 });
 
+test("formations : contenu repris dans les documents (objectifs opérationnels une ligne par objectif), relu et renvoyé", async () => {
+  const formation = { ...FORMATION, objectifs_operationnels: ["Utiliser un ordinateur", "Naviguer sur Internet"], methodes_pedagogiques: "Ateliers pratiques", modalites_evaluation: "Quiz" };
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [formation] },
+    "PUT /api/formations/7": { ok: true },
+  });
+  await attendre(() => texte().includes("Aide à domicile"));
+  await cliquer(bouton("Réviser"));
+  await attendre(() => champ("Objectifs opérationnels"));
+  assert.equal(champ("Objectifs opérationnels").value, "Utiliser un ordinateur\nNaviguer sur Internet");
+  assert.equal(champ("Méthodes pédagogiques").value, "Ateliers pratiques");
+  assert.equal(champ("Objectifs de la formation (objectif général)").value, "Objectifs existants");
+  await saisir(champ("Objectifs opérationnels"), "Utiliser un ordinateur\nNaviguer sur Internet\nÉcrire un message");
+  await saisir(champ("Modalités d'évaluation"), "Quiz et exercices");
+  await soumettre("form-formation");
+  await attendre(() => appels.some((a) => a.methode === "PUT"));
+  const corps = appels.find((a) => a.methode === "PUT").corps;
+  assert.equal(corps.objectifs_operationnels, "Utiliser un ordinateur\nNaviguer sur Internet\nÉcrire un message");
+  assert.equal(corps.modalites_evaluation, "Quiz et exercices");
+  assert.equal(corps.methodes_pedagogiques, "Ateliers pratiques", "champ non modifié conservé");
+});
+
 const FORMATION_ARCHIVEE = { ...FORMATION, id: 8, intitule: "Agent de propreté", code_interne: "APR", actif: false, nb_sessions: 0, nb_versions: 1 };
 
 test("formations : filtre actives / archivées (vue active par défaut)", async () => {

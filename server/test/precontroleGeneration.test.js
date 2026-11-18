@@ -75,10 +75,19 @@ test("variable restreinte : contributeur refusé, avant toute résolution de cet
 });
 
 test("variable restreinte : admin autorisé à tenter la résolution — ici non_resoluble (rien à protéger)", async () => {
-  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{stagiaire_besoins_specifiques}}") }) });
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{stagiaire_amenagements}}") }) });
   assert.equal(r.autorise, false);
-  assert.deepEqual(r.erreurs, [{ code: "CANONIQUE_NON_RESOLUBLE", nom: "stagiaire_besoins_specifiques", message: r.erreurs[0].message }]);
+  assert.deepEqual(r.erreurs, [{ code: "CANONIQUE_NON_RESOLUBLE", nom: "stagiaire_amenagements", message: r.erreurs[0].message }]);
   assert.ok(!r.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE"));
+});
+
+test("variable restreinte résoluble (besoins spécifiques, situation de handicap) : refusée au contributeur, autorisée à l'administrateur", async () => {
+  const texte = "{{stagiaire_besoins_specifiques}} {{stagiaire_situation_handicap}}";
+  const rContrib = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: false, clients: fauxClients({ document: docAvec(texte) }) });
+  assert.equal(rContrib.autorise, false);
+  assert.deepEqual(rContrib.erreurs.map((e) => [e.code, e.nom]).sort(), [["VARIABLE_RESTREINTE_REFUSEE", "stagiaire_besoins_specifiques"], ["VARIABLE_RESTREINTE_REFUSEE", "stagiaire_situation_handicap"]]);
+  const rAdmin = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec(texte) }) });
+  assert.equal(rAdmin.autorise, true, JSON.stringify(rAdmin.erreurs));
 });
 
 test("alias vers une variable restreinte : la sécurité porte sur la cible, pas sur le nom écrit (règle 5)", async () => {
@@ -120,10 +129,10 @@ test("bloc evaluations supporté (champs résolubles) : autorisé", async () => 
   assert.deepEqual(r.blocs, ["evaluations"]);
 });
 
-test("champ de bloc evaluations non résoluble → précontrôle bloqué (evaluation_moment)", async () => {
-  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#evaluations}}{{evaluation_moment}}{{/evaluations}}") }) });
+test("champ de bloc evaluations non résoluble → précontrôle bloqué (evaluation_niveau)", async () => {
+  const r = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec("{{#evaluations}}{{evaluation_niveau}}{{/evaluations}}") }) });
   assert.equal(r.autorise, false);
-  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "evaluations" && e.champ === "evaluation_moment"));
+  assert.ok(r.erreurs.some((e) => e.code === "BLOC_CHAMP_NON_RESOLUBLE" && e.bloc === "evaluations" && e.champ === "evaluation_niveau"));
 });
 
 test("bloc intervenants supporté (champs résolubles) : autorisé", async () => {
@@ -216,14 +225,15 @@ test("bloc inconnu → BLOC_INCONNU", async () => {
   assert.ok(r.erreurs.some((e) => e.code === "BLOC_INCONNU"));
 });
 
-test("bloc restreinte (adaptations) : contributeur refusé, admin bloqué (non supporté)", async () => {
+test("bloc restreinte (adaptations) : contributeur refusé, administrateur autorisé", async () => {
   const texte = "{{#adaptations}}{{adaptation_mesure}}{{/adaptations}}";
   const rContrib = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: false, clients: fauxClients({ document: docAvec(texte) }) });
   assert.ok(rContrib.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE" && e.nom === "adaptations"));
 
   const rAdmin = await precontrolerGeneration(MODELE, CTX, [cible(1)], { admin: true, clients: fauxClients({ document: docAvec(texte) }) });
-  assert.ok(rAdmin.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE" && e.nom === "adaptations"));
+  assert.ok(!rAdmin.erreurs.some((e) => e.code === "BLOC_NON_SUPPORTE"), "bloc adaptations supporté depuis la 1.6");
   assert.ok(!rAdmin.erreurs.some((e) => e.code === "VARIABLE_RESTREINTE_REFUSEE"));
+  assert.equal(rAdmin.autorise, true, JSON.stringify(rAdmin.erreurs));
 });
 
 test("syntaxe invalide / variable inconnue : reprises telles quelles depuis analyserModele, bloquantes", async () => {

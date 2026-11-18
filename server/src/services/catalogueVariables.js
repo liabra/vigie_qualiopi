@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.5";
+export const DICTIONNAIRE_VERSION = "1.6";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -35,6 +35,8 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.4", changement: "Ajout de SEA-11 {{seance_competences}} et SEA-12 {{seance_activites}} : compétences travaillées et activités/exercices d'une séance, stockées dans la table seances (DOC-7B)." },
   { version: "1.4", changement: "Ajout du bloc {{#suivi_pedagogique}} : une ligne par séance applicable au stagiaire, combinant les champs séance (seance_date, seance_competences, seance_activites) et le suivi individuel (suivi_accompagnement, suivi_difficultes, suivi_impressions, suivi_observations)." },
   { version: "1.5", changement: "Harmonisation de 43 libellés métier, sans aucun changement de nom technique : « attribut + de l'objet » (Nom du stagiaire, Adresse de l'organisme – ligne 1, Fonction de l'intervenant…), et plus aucun libellé en double dans le dictionnaire (Code postal, Ville, Téléphone, E-mail existaient pour plusieurs objets). Les libellés « Nom officiel de l'organisme » et « Durée officielle du parcours en heures » sont conservés." },
+  { version: "1.6", changement: "Ajout de 7 variables, créées avec les documents qui les utilisent : analyse du besoin du stagiaire (BES-01 à BES-05 : besoin_date_recueil, besoin_attentes, besoin_objectifs_personnels, besoin_prerequis_verifies, besoin_conclusion), STA-18 stagiaire_situation_handicap (accès restreint) et EVA-13 evaluation_seuil_reussite (ajoutée au bloc evaluations). Nouveau domaine « besoin ». Les noms et identifiants de la 1.5 sont inchangés." },
+  { version: "1.6", changement: "Résolveurs ajoutés pour des variables déjà au catalogue : organisme_* et signataire_* (paramètres de l'organisme et signataires), formation_objectifs_operationnels, formation_methodes_pedagogiques, formation_modalites_evaluation (fiche formation), financeur_nom et stagiaire_besoins_specifiques (accès restreint). Blocs : objectifs_formation et adaptations (accès restreint) désormais supportés ; evaluations complété (moment, résultat de validation, commentaire, seuil de réussite)." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -56,7 +58,7 @@ export const DOMAINES = Object.freeze({
   stagiaire: "Stagiaire / bénéficiaire", representant_legal: "Représentant légal et autorisations",
   phase: "Phase pédagogique", seance: "Séance", suivi: "Suivi (présences, absences, abandons, relances)",
   evaluation: "Évaluation", bilan: "Bilan", satisfaction: "Satisfaction", indicateur: "Indicateur de session",
-  intervenant: "Intervenant", partenaire: "Partenaire (prescripteur, financeur)", immersion: "Immersion",
+  besoin: "Analyse du besoin du stagiaire", intervenant: "Intervenant", partenaire: "Partenaire (prescripteur, financeur)", immersion: "Immersion",
   document: "Document",
 });
 
@@ -139,6 +141,7 @@ const LIGNES = [
   ["STA-15", "stagiaire_groupe_nom", "Groupe affecté", "stagiaire", "texte", "Affectation groupe", "Bénéficiaire", "Nom du groupe auquel le bénéficiaire est affecté (reprend groupe_nom).", { calcule: true }],
   ["STA-16", "stagiaire_besoins_specifiques", "Besoins spécifiques", "stagiaire", "texte", "Analyse besoins", "Bénéficiaire", "Besoins spécifiques du bénéficiaire. Donnée sensible : accès restreint.", { format: "texte_long", sensibilite: "restreinte" }],
   ["STA-17", "stagiaire_amenagements", "Aménagements retenus", "stagiaire", "texte", "Suivi adaptation", "Bénéficiaire", "Aménagements retenus pour le bénéficiaire. Donnée sensible : accès restreint.", { format: "texte_long", sensibilite: "restreinte" }],
+  ["STA-18", "stagiaire_situation_handicap", "Situation de handicap déclarée", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Le bénéficiaire a déclaré une situation de handicap (Oui / Non). Donnée de santé : accès restreint.", { format: "enum", valeurs: ["oui", "non"], libelles: { oui: "Oui", non: "Non" }, sensibilite: "restreinte", depuis: "1.6", source_valeurs: "schéma Vigie (stagiaires.situation_handicap)" }],
   // ── Représentant légal et autorisations ───────────────────
   ["LEG-01", "representant_legal_nom", "Nom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Nom du représentant légal d'un bénéficiaire mineur.", { sensibilite: "personnelle" }],
   ["LEG-02", "representant_legal_prenom", "Prénom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Prénom du représentant légal.", { sensibilite: "personnelle" }],
@@ -201,6 +204,13 @@ const LIGNES = [
   ["EVA-10", "evaluation_objectif_associe", "Objectif évalué", "evaluation", "texte", "Correspondance objectif-évaluation", "Évaluation", "Objectif évalué par l'évaluation."],
   ["EVA-11", "evaluation_moment", "Moment de l'évaluation", "evaluation", "texte", "Plan évaluation", "Évaluation", "Moment de l'évaluation dans le parcours (positionnement, intermédiaire, finale…). Distinct de sa méthode (evaluation_methode) et du résultat obtenu. Aucun resolver Vigie actuel : donnée non encore stockée.", { format: "enum", ...MOMENTS_EVALUATION, depuis: "1.1" }],
   ["EVA-12", "evaluation_resultat_validation", "Résultat de validation de l'évaluation", "evaluation", "texte", "Résultat évaluation", "Bénéficiaire + évaluation", "Résultat de validation binaire (validé / non validé), lorsque l'évaluation comporte un seuil de réussite. Distinct du niveau pédagogique atteint (evaluation_niveau). Aucun resolver Vigie actuel : donnée non encore stockée.", { format: "enum", ...RESULTAT_VALIDATION, sensibilite: "personnelle", depuis: "1.1" }],
+  ["EVA-13", "evaluation_seuil_reussite", "Seuil de réussite de l'évaluation", "evaluation", "nombre", "Paramétrage évaluation", "Évaluation", "Score à atteindre pour valider l'évaluation (même échelle que le score obtenu).", { depuis: "1.6" }],
+  // ── Analyse du besoin du stagiaire (recueil saisi dans l'onglet Accompagnement) ──
+  ["BES-01", "besoin_date_recueil", "Date du recueil du besoin", "besoin", "date", "Recueil du besoin", "Bénéficiaire", "Date à laquelle le besoin du bénéficiaire a été recueilli.", { format: "date", sensibilite: "personnelle", depuis: "1.6" }],
+  ["BES-02", "besoin_attentes", "Attentes du stagiaire", "besoin", "texte", "Recueil du besoin", "Bénéficiaire", "Attentes exprimées par le bénéficiaire lors du recueil du besoin.", { format: "texte_long", sensibilite: "personnelle", depuis: "1.6" }],
+  ["BES-03", "besoin_objectifs_personnels", "Objectifs personnels du stagiaire", "besoin", "texte", "Recueil du besoin", "Bénéficiaire", "Objectifs personnels du bénéficiaire pour cette formation.", { format: "texte_long", sensibilite: "personnelle", depuis: "1.6" }],
+  ["BES-04", "besoin_prerequis_verifies", "Vérification des prérequis", "besoin", "texte", "Recueil du besoin", "Bénéficiaire", "Résultat de la vérification des prérequis d'entrée.", { format: "enum", valeurs: ["oui", "partiel", "non"], libelles: { oui: "Oui", partiel: "Partiellement", non: "Non" }, sensibilite: "personnelle", depuis: "1.6", source_valeurs: "schéma Vigie (recueils_besoin.prerequis_verifies)" }],
+  ["BES-05", "besoin_conclusion", "Conclusion de l'analyse du besoin", "besoin", "texte", "Recueil du besoin", "Bénéficiaire", "Conclusion retenue à l'issue du recueil du besoin.", { format: "enum", valeurs: ["parcours_standard", "parcours_adapte", "reorientation", "a_preciser"], libelles: { parcours_standard: "Parcours standard", parcours_adapte: "Parcours adapté", reorientation: "Réorientation", a_preciser: "À préciser" }, sensibilite: "personnelle", depuis: "1.6", source_valeurs: "schéma Vigie (recueils_besoin.conclusion)" }],
   // ── Bilan ─────────────────────────────────────────────────
   ["BIL-01", "bilan_date", "Date du bilan", "bilan", "date", "Bilan", "Bénéficiaire/session", "Date du bilan.", { format: "date" }],
   ["BIL-02", "bilan_synthese", "Synthèse du bilan", "bilan", "texte", "Bilan", "Bénéficiaire/session", "Synthèse du bilan final ou intermédiaire.", { format: "texte_long", sensibilite: "personnelle" }],
@@ -293,7 +303,7 @@ const DEF_BLOCS = [
       local("seance_intervenants", "texte", "Nom(s) du ou des intervenants de la séance.")] },
   { id: "BLK-05", nom: "evaluations", libelle: "Évaluations et résultats", source: "stagiaire/phase -> évaluations", documents: "Livret, bilan intermédiaire, bilan final",
     champs: ["evaluation_intitule", "evaluation_moment", "evaluation_methode", "evaluation_date", "evaluation_score_obtenu", "evaluation_score_max", "evaluation_pourcentage",
-      "evaluation_resultat_validation", "evaluation_niveau", "evaluation_commentaire", "evaluation_objectif_associe"].map(ref) },
+      "evaluation_resultat_validation", "evaluation_niveau", "evaluation_commentaire", "evaluation_objectif_associe", "evaluation_seuil_reussite"].map(ref) },
   { id: "BLK-06", nom: "absences", libelle: "Absences", source: "stagiaire/session -> absences", documents: "Suivi assiduité, bilan",
     champs: [local("absence_date", "date", "Date de l'absence.", { format: "date" }),
       local("absence_duree_heures", "nombre", "Durée de l'absence en heures.", { format: "duree_heures" }),

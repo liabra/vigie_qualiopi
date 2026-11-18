@@ -60,7 +60,21 @@ const STATUTS_INSCRIPTION = ["inscrit", "en_cours", "termine", "abandon"];
 const CHAMPS_VERSION = [
   "objectifs", "prerequis", "public_vise", "duree_heures_defaut", "modalite",
   "certifiante", "code_rncp_rs", "tarif_ht", "accessibilite_handicap",
+  "objectifs_operationnels", "methodes_pedagogiques", "modalites_evaluation",
 ];
+// Champs ajoutés après coup : absents d'un envoi (ancien client), ils sont REPRIS de la version précédente
+// plutôt que remis à vide.
+const CHAMPS_VERSION_REPRIS = ["objectifs_operationnels", "methodes_pedagogiques", "modalites_evaluation"];
+const MAX_OBJECTIFS = 30;
+const MAX_OBJECTIF = 500;
+const MAX_TEXTE_VERSION = 4000;
+
+// Objectifs opérationnels : liste de textes, ou texte « un objectif par ligne ». Renvoie le tableau normalisé.
+export function lireObjectifs(valeur) {
+  if (valeur === undefined || valeur === null || valeur === "") return [];
+  const brut = Array.isArray(valeur) ? valeur : String(valeur).split(/\r?\n/);
+  return brut.map((o) => String(o ?? "").replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean);
+}
 
 // Horaire d'une session : texte libre, facultatif. La MÊME règle sert à la
 // création et à la correction — sinon un horaire saisi puis corrigé ne
@@ -140,6 +154,7 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
             v.id AS version_id, v.numero AS version_numero, v.duree_heures_defaut, v.modalite,
             v.objectifs, v.prerequis, v.public_vise,
             v.certifiante, v.code_rncp_rs, v.tarif_ht, v.accessibilite_handicap,
+            v.objectifs_operationnels, v.methodes_pedagogiques, v.modalites_evaluation,
             (SELECT count(*)::int FROM formation_versions fv WHERE fv.formation_id = f.id) AS nb_versions,
             (SELECT count(*)::int FROM sessions s WHERE s.formation_id = f.id) AS nb_sessions
      FROM formations f
@@ -155,6 +170,19 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
 // négative) est refusée AVANT l'écriture — sinon PostgreSQL répondrait par
 // une erreur de conversion, qu'on refuse de déguiser en 400 global.
 function erreurVersion(corps) {
+  if (corps?.objectifs_operationnels !== undefined && corps.objectifs_operationnels !== null
+      && !Array.isArray(corps.objectifs_operationnels) && typeof corps.objectifs_operationnels !== "string") {
+    return "Objectifs opérationnels : liste ou texte attendu.";
+  }
+  const objectifs = lireObjectifs(corps?.objectifs_operationnels);
+  if (objectifs.length > MAX_OBJECTIFS) return `Objectifs opérationnels : ${MAX_OBJECTIFS} au plus.`;
+  if (objectifs.some((o) => o.length > MAX_OBJECTIF)) return `Objectifs opérationnels : ${MAX_OBJECTIF} caractères au plus par objectif.`;
+  for (const c of ["methodes_pedagogiques", "modalites_evaluation"]) {
+    const v = corps?.[c];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string") return `Champ ${c} invalide : texte attendu.`;
+    if (v.length > MAX_TEXTE_VERSION) return `Champ ${c} : ${MAX_TEXTE_VERSION} caractères au plus.`;
+  }
   for (const c of ["duree_heures_defaut", "tarif_ht"]) {
     const v = corps?.[c];
     if (v === undefined || v === null || v === "") continue;
@@ -169,9 +197,16 @@ async function creerVersion(cx, formationId, corps, utilisateurId) {
     "SELECT COALESCE(max(numero), 0) + 1 AS suivant FROM formation_versions WHERE formation_id = $1",
     [formationId]
   );
+  const { rows: [precedente] } = await cx.query(
+    "SELECT objectifs_operationnels, methodes_pedagogiques, modalites_evaluation FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1",
+    [formationId]
+  );
   const valeurs = CHAMPS_VERSION.map((c) => {
-    const v = corps[c];
+    let v = corps[c];
+    if (v === undefined && precedente && CHAMPS_VERSION_REPRIS.includes(c)) v = precedente[c];
     if (c === "certifiante") return v === true;
+    if (c === "objectifs_operationnels") return lireObjectifs(v);
+    if (c === "methodes_pedagogiques" || c === "modalites_evaluation") return typeof v === "string" && v.trim() ? v.trim() : null;
     return v === "" || v === undefined ? null : v;
   });
   const { rows: [version] } = await cx.query(

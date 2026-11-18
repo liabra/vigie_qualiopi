@@ -155,14 +155,15 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 test("migrations 001→025 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 33, "33 migrations attendues");
+  assert.equal(noms.length, 34, "34 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
   assert.match(noms[24], /^025_/, "025 avant 032");
   assert.match(noms[25], /^032_/, "032 avant 033");
   assert.match(noms[26], /^033_/, "033 avant 036");
   assert.match(noms[30], /^039_/, "039 avant 040");
   assert.match(noms[31], /^040_/, "040 avant 041");
-  assert.match(noms[32], /^041_/, "finit par 041");
+  assert.match(noms[32], /^041_/, "041 avant 042");
+  assert.match(noms[33], /^042_/, "finit par 042");
   // Tables clés présentes.
   for (const t of ["referentiel_versions", "sessions", "preuves", "veille", "satisfactions", "signalements_qualite", "actions_qualite", "liens_preuves_qualite", "recueils_besoin", "adaptations_parcours", "suivis_inscription", "intervenants", "intervenants_sessions", "intervenants_groupes", "intervenants_formations", "intervenants_justificatifs", "intervenants_justificatifs_attendus", "preuves_confidentielles", "seances", "suivi_seance"]) {
     const { rowCount } = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name = $1", [t]);
@@ -174,7 +175,7 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 33);
+  assert.equal(rows[0].n, 34);
 });
 
 test("montée incrémentale : base arrêtée à 010, données conservées après 011→025", async () => {
@@ -202,7 +203,7 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "032", "033", "036", "037", "038", "039", "040", "041"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "032", "033", "036", "037", "038", "039", "040", "041", "042"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");

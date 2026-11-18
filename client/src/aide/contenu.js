@@ -131,6 +131,13 @@ const AIDE = {
           "Les sessions déjà créées conservent la version de formation qu'elles ont figée.",
         ],
       },
+      {
+        titre: "Contenu repris dans les documents",
+        lignes: [
+          "Objectifs, objectifs opérationnels (un par ligne), méthodes pédagogiques et modalités d'évaluation alimentent la convention, le programme et le bilan : saisissez-les une fois par version de formation.",
+          "Un champ laissé vide reste vide dans le document.",
+        ],
+      },
     ],
   },
   modeles: {

@@ -3,7 +3,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, cliquer, demonter, liensNavigation, monter, saisir, texte } from "./outils.jsx";
+import { attendre, cliquer, demonter, liensNavigation, liensRubriques, monter, saisir, texte } from "./outils.jsx";
 import { aujourdhuiISO } from "../src/qualite/format.js";
 import { filtrerIndicateurs, libelleActivite, lienObjet } from "../src/qualite/tableau-bord-format.js";
 
@@ -75,20 +75,19 @@ test("pur : liens vers les fiches, libellés d'activité, recherche et tri des i
 
 // ── Navigation et droits ─────────────────────────────────────
 
-test("navigation : « Tableau de bord qualité » en tête du groupe Qualité pour l'admin ; absent pour le contributeur", async () => {
-  await monter("/accueil", "admin");
-  await attendre(() => liensNavigation().length > 0);
-  const liens = liensNavigation();
-  const i = liens.indexOf("Tableau de bord qualité");
-  assert.ok(i >= 0);
-  assert.deepEqual(liens.slice(i, i + 8), ["Tableau de bord qualité", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Signalements", "Synthèse des satisfactions"]);
-  assert.ok(!liens.includes("Tableau de bord"), "ancien libellé retiré");
-  const lien = [...document.querySelectorAll("nav a")].find((a) => a.textContent.trim() === "Tableau de bord qualité");
+test("navigation : « Tableau de bord » rangé sous « Plus » dans Qualiopi pour l'admin ; absent pour le contributeur", async () => {
+  await monter("/qualiopi", "admin");
+  await attendre(() => liensRubriques().length > 0);
+  const liens = liensRubriques();
+  assert.deepEqual(liens.slice(0, 6), ["Indicateurs", "Réclamations", "Améliorations", "Veille", "Risques", "Audit"]);
+  assert.ok(liens.includes("Tableau de bord"));
+  const lien = [...document.querySelectorAll("nav a")].find((a) => a.textContent.trim() === "Tableau de bord");
   assert.equal(lien.getAttribute("href"), "/tableau-de-bord-qualite", "route conservée");
   await demonter();
-  await monter("/accueil", "contributeur");
+  await monter("/aujourdhui", "contributeur");
   await attendre(() => liensNavigation().length > 0);
-  assert.ok(!liensNavigation().includes("Tableau de bord qualité"));
+  assert.ok(!liensNavigation().includes("Qualiopi"));
+  assert.ok(!liensRubriques().includes("Tableau de bord"));
 });
 
 test("contributeur : accès direct bloqué AVANT tout appel à l'API", async () => {
@@ -104,7 +103,7 @@ test("KPI : actions, signalements et preuves (chiffres du serveur)", async () =>
   await attendre(() => tuile("Actions ouvertes") !== null);
   assert.equal(appelsTdb(appels).length, 1, "un seul appel agrégé");
   const fil = [...document.querySelectorAll('nav[aria-label="Fil d\'Ariane"] li')].map((li) => li.textContent.replace(/[›/]/g, "").trim());
-  assert.deepEqual(fil, ["Qualité", "Tableau de bord qualité"], "fil d'Ariane harmonisé");
+  assert.deepEqual(fil, ["Qualiopi", "Tableau de bord qualité"], "fil d'Ariane harmonisé");
   assert.equal(document.querySelector("h1").textContent, "Tableau de bord qualité");
   const attendu = {
     "Actions ouvertes": "3", "Actions en retard": "1", "Efficacité à vérifier": "1", "Actions clôturées": "4",

@@ -1,107 +1,138 @@
-// Navigation de Vigie : groupes de la barre latérale, fil d'Ariane et titre
-// de chaque page. Module PUR (aucun React) : testable seul.
+// Navigation de Vigie : 5 espaces dans la barre latérale, les rubriques de
+// l'espace courant en onglets, le fil d'Ariane et le titre de chaque page.
+// Module PUR (aucun React) : testable seul.
 //
 // La navigation ne fait que REFLÉTER les droits : le serveur reste seul
 // juge (requireAuth / requireRedacteur / requireAdmin). Une entrée `admin`
-// n'est jamais affichée à un contributeur.
+// n'est jamais affichée à un contributeur. Aucune adresse n'a été retirée :
+// chaque ancienne page reste joignable, rangée dans son espace.
 
-export const NAVIGATION = [
+export const ESPACES = [
   {
-    id: "accueil",
-    entrees: [{ to: "/accueil", libelle: "Accueil" }],
+    id: "aujourdhui",
+    libelle: "Aujourd'hui",
+    to: "/aujourdhui",
+    pages: [
+      { to: "/aujourdhui", libelle: "À faire" },
+      { to: "/taches", libelle: "Tâches" },
+      { to: "/echeancier", libelle: "Échéancier" },
+    ],
   },
   {
-    id: "formation",
-    titre: "Formation",
-    entrees: [
+    id: "formations",
+    libelle: "Formations",
+    to: "/sessions",
+    pages: [
       { to: "/sessions", libelle: "Sessions" },
       { to: "/jeunes", libelle: "Jeunes" },
-      { to: "/formations", libelle: "Formations", admin: true },
-      { to: "/intervenants", libelle: "Intervenants" },
-      { to: "/justificatifs-intervenants", libelle: "Justificatifs des intervenants", admin: true },
       { to: "/candidatures", libelle: "Candidatures", admin: true },
-      { to: "/acces-portails", libelle: "Accès aux portails", admin: true },
+      { to: "/enquetes", libelle: "Enquêtes", admin: true },
+      { to: "/synthese-satisfactions", libelle: "Satisfaction", admin: true },
+      { to: "/acces-portails", libelle: "Espaces en ligne", admin: true },
+      { to: "/formations", libelle: "Catalogue", admin: true },
     ],
   },
   {
-    id: "qualite",
-    titre: "Qualité",
-    entrees: [
-      { to: "/tableau-de-bord-qualite", libelle: "Tableau de bord qualité", admin: true },
-      { to: "/indicateurs", libelle: "Indicateurs" },
-      { to: "/preuves", libelle: "Preuves" },
-      { to: "/veille", libelle: "Veille" },
-      { to: "/audits", libelle: "Audits" },
-      { to: "/actions-qualite", libelle: "Actions qualité" },
-      { to: "/signalements-qualite", libelle: "Signalements", admin: true },
-      { to: "/synthese-satisfactions", libelle: "Synthèse des satisfactions", admin: true },
-      { to: "/enquetes", libelle: "Enquêtes en ligne", admin: true },
-      { to: "/preuves-pdf", libelle: "Preuves PDF" },
-    ],
-  },
-  {
-    id: "pilotage",
-    titre: "Pilotage",
-    entrees: [
-      { to: "/taches", libelle: "Tâches qualité" },
-      { to: "/echeancier", libelle: "Échéancier" },
-      { to: "/risques", libelle: "Risques" },
-      { to: "/preparation-audit", libelle: "Préparation d'audit", admin: true },
-      { to: "/developpement-intervenants", libelle: "Développement des intervenants", admin: true },
-      { to: "/partenaires", libelle: "Partenaires" },
-      { to: "/ressources", libelle: "Ressources et moyens" },
-    ],
-  },
-  {
-    id: "documents",
-    titre: "Documents",
-    entrees: [{ to: "/variables-documentaires", libelle: "Variables documentaires" }],
-  },
-  {
-    id: "parametres",
-    titre: "Paramètres",
+    id: "qualiopi",
+    libelle: "Qualiopi",
+    to: "/qualiopi",
     admin: true,
-    entrees: [
-      { to: "/modeles", libelle: "Modèles de documents" },
-      { to: "/prescripteurs", libelle: "Prescripteurs" },
-      { to: "/questionnaires", libelle: "Questionnaires de formation" },
-      { to: "/versions", libelle: "Versions du référentiel" },
+    pages: [
+      { to: "/qualiopi", libelle: "Indicateurs" },
+      { to: "/signalements-qualite", libelle: "Réclamations" },
+      { to: "/actions-qualite", libelle: "Améliorations" },
+      { to: "/veille", libelle: "Veille" },
+      { to: "/risques", libelle: "Risques" },
+      { to: "/preparation-audit", libelle: "Audit" },
+      // Rubriques secondaires : rangées sous « Plus ».
+      { to: "/preuves", libelle: "Toutes les preuves", plus: true },
+      { to: "/preuves-pdf", libelle: "Preuves PDF", plus: true },
+      { to: "/indicateurs", libelle: "Référentiel détaillé", plus: true },
+      { to: "/tableau-de-bord-qualite", libelle: "Tableau de bord", plus: true },
+      { to: "/audits", libelle: "Historique des audits", plus: true },
+      { to: "/partenaires", libelle: "Partenaires", plus: true },
+      { to: "/ressources", libelle: "Ressources et moyens", plus: true },
+      { to: "/portail-audit", libelle: "Vue de l'auditeur", plus: true },
+    ],
+  },
+  {
+    id: "equipe",
+    libelle: "Équipe",
+    to: "/equipe",
+    admin: true,
+    pages: [
+      { to: "/equipe", libelle: "Équipe" },
+      { to: "/intervenants", libelle: "Fiches" },
+      { to: "/justificatifs-intervenants", libelle: "Justificatifs" },
+      { to: "/developpement-intervenants", libelle: "Développement" },
+    ],
+  },
+  {
+    id: "reglages",
+    libelle: "Réglages",
+    to: "/reglages",
+    admin: true,
+    // Pas d'onglets : la page Réglages présente les rubriques en cartes ;
+    // chaque rubrique propose un lien de retour.
+    retour: true,
+    pages: [
+      { to: "/reglages", libelle: "Réglages" },
       { to: "/parametres/organisme", libelle: "Organisme et signataires" },
       { to: "/parametres/comptes", libelle: "Comptes et accès" },
-      { to: "/parametres/rgpd", libelle: "RGPD et conservation" },
       { to: "/parametres/google", libelle: "Google Drive" },
       { to: "/parametres/inventaire-drive", libelle: "Inventaire Drive" },
+      { to: "/modeles", libelle: "Modèles de documents" },
+      { to: "/variables-documentaires", libelle: "Variables documentaires" },
+      { to: "/versions", libelle: "Référentiel Qualiopi" },
+      { to: "/prescripteurs", libelle: "Prescripteurs" },
+      { to: "/questionnaires", libelle: "Questionnaires de formation" },
+      { to: "/parametres/rgpd", libelle: "Données personnelles" },
     ],
   },
 ];
 
-// Groupes et entrées visibles pour un rôle. Tout ce qui n'est pas « admin »
-// est ouvert aux deux rôles connus (admin, contributeur).
 // Auditeur externe : uniquement les dossiers d'audit partagés (le serveur l'impose aussi).
-export const NAVIGATION_AUDITEUR = [{ id: "audit", titre: "Audit", entrees: [{ to: "/portail-audit", libelle: "Dossiers d'audit" }] }];
+export const ESPACES_AUDITEUR = [
+  { id: "audit", libelle: "Dossiers d'audit", to: "/portail-audit", pages: [{ to: "/portail-audit", libelle: "Dossiers d'audit" }] },
+];
 
-export function navigationPour(role) {
-  if (role === "auditeur") return NAVIGATION_AUDITEUR;
+// Espaces et rubriques visibles pour un rôle. Tout ce qui n'est pas « admin »
+// est ouvert aux deux rôles connus (admin, contributeur) ; un rôle inconnu
+// est traité comme un contributeur (refus par défaut).
+export function espacesPour(role) {
+  if (role === "auditeur") return ESPACES_AUDITEUR;
   const admin = role === "admin";
-  return NAVIGATION
-    .filter((g) => admin || !g.admin)
-    .map((g) => ({ ...g, entrees: g.entrees.filter((e) => admin || !e.admin) }))
-    .filter((g) => g.entrees.length > 0);
+  return ESPACES
+    .filter((e) => admin || !e.admin)
+    .map((e) => ({ ...e, pages: e.pages.filter((p) => admin || !p.admin) }))
+    .filter((e) => e.pages.length > 0);
 }
 
-// Fil d'Ariane d'un chemin : [groupe?, page]. La page est l'entrée de
-// navigation dont le chemin est le préfixe le plus long (« /sessions/12 »
-// relève de « Sessions »). Chemin inconnu : null.
-export function contexteDe(pathname) {
+const correspond = (pathname, to) => pathname === to || pathname.startsWith(to + "/");
+
+// Rubrique d'un chemin : la page dont le chemin est le préfixe le plus long
+// (« /sessions/12 » relève de « Sessions »), dans les espaces donnés.
+function trouver(pathname, espaces) {
   let trouve = null;
-  for (const g of NAVIGATION) {
-    for (const e of g.entrees) {
-      const correspond = pathname === e.to || pathname.startsWith(e.to + "/");
-      if (correspond && (!trouve || e.to.length > trouve.entree.to.length)) trouve = { groupe: g, entree: e };
+  for (const espace of espaces) {
+    for (const page of espace.pages) {
+      if (correspond(pathname, page.to) && (!trouve || page.to.length > trouve.page.to.length)) trouve = { espace, page };
     }
   }
-  if (!trouve) return null;
-  return { groupe: trouve.groupe.titre || null, page: trouve.entree.libelle, to: trouve.entree.to };
+  return trouve;
+}
+
+// Espace et rubrique courants pour un rôle (null hors navigation).
+export function positionDe(pathname, role) {
+  return trouver(pathname, espacesPour(role));
+}
+
+// Fil d'Ariane d'un chemin : [espace, page]. Chemin inconnu : null.
+export function contexteDe(pathname) {
+  const t = trouver(pathname, [...ESPACES, ...ESPACES_AUDITEUR]);
+  if (!t) return null;
+  const memeNom = t.espace.libelle === t.page.libelle;
+  return { groupe: memeNom ? null : t.espace.libelle, page: t.page.libelle, to: t.page.to };
 }
 
 // Après une connexion Google, le serveur renvoie toujours vers « / ». On

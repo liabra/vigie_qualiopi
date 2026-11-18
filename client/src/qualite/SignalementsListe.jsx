@@ -103,7 +103,7 @@ export function SignalementsListe() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Signalements" }]}
+        fil={[{ libelle: "Qualiopi" }, { libelle: "Signalements" }]}
         titre="Signalements"
         description="Réclamations, incidents et non-conformités : suivez leur traitement, sans exposer les données du réclamant."
         actions={nouveau}

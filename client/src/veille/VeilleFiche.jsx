@@ -47,7 +47,7 @@ export function VeilleFiche({ veilleId, admin }) {
   if (introuvable) {
     return (
       <>
-        <PageHeader fil={[{ libelle: "Qualité" }, { libelle: "Veille", to: "/veille" }, { libelle: "Veille introuvable" }]} titre="Veille introuvable" />
+        <PageHeader fil={[{ libelle: "Qualiopi" }, { libelle: "Veille", to: "/veille" }, { libelle: "Veille introuvable" }]} titre="Veille introuvable" />
         <EmptyState titre="Cette veille n'existe pas ou n'existe plus." action={<Button variante="primary" to="/veille">Voir toute la veille</Button>}>
           Vérifiez le lien utilisé.
         </EmptyState>
@@ -65,7 +65,7 @@ export function VeilleFiche({ veilleId, admin }) {
   return (
     <div className="veille-fiche">
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Veille", to: "/veille" }, { libelle: v.titre }]}
+        fil={[{ libelle: "Qualiopi" }, { libelle: "Veille", to: "/veille" }, { libelle: v.titre }]}
         titre={v.titre}
         actions={admin && <Button to={`/veille/${v.id}/modifier`}>Modifier</Button>}
       />

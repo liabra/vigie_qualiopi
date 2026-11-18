@@ -8,18 +8,19 @@ import { attendre, cliquer, demonter, liensNavigation, monter, texte } from "./o
 
 afterEach(demonter);
 
-test("« / » redirige vers /accueil pour un utilisateur connecté", async () => {
+test("« / » redirige vers /aujourdhui pour un utilisateur connecté", async () => {
   await monter("/");
-  await attendre(() => window.location.pathname === "/accueil");
-  await attendre(() => document.querySelector("h1")?.textContent === "Vue d'ensemble A2C");
-  assert.equal(document.title, "Vue d'ensemble A2C — Vigie Qualiopi");
+  await attendre(() => window.location.pathname === "/aujourdhui");
+  await attendre(() => document.querySelector("h1")?.textContent === "Aujourd'hui");
+  assert.equal(document.title, "Aujourd'hui — Vigie Qualiopi");
 });
 
 test("/sessions affiche la liste des sessions", async () => {
   await monter("/sessions");
   await attendre(() => texte().includes("SESS-TEST"));
   assert.equal(document.querySelector("h1").textContent, "Sessions");
-  assert.equal(document.querySelector('a[aria-current="page"]').textContent, "Sessions", "entrée active");
+  assert.equal(document.querySelector('nav[aria-label="Navigation principale"] a[aria-current="page"]').textContent, "Formations", "espace actif");
+  assert.equal(document.querySelector('nav[aria-label="Rubriques : Formations"] a[aria-current="page"]').textContent, "Sessions", "rubrique active");
 });
 
 test("lien direct /sessions/1 : la session s'ouvre (pas de retour au référentiel)", async () => {
@@ -44,23 +45,25 @@ test("session inexistante ou identifiant invalide : état « Session introuvable
   await attendre(() => texte().includes("Session introuvable"));
 });
 
-test("admin : la navigation contient Formations et les Paramètres", async () => {
-  await monter("/accueil", "admin");
+test("admin : 5 espaces ; la page Réglages mène à chaque rubrique", async () => {
+  await monter("/reglages", "admin");
   await attendre(() => liensNavigation().length > 0);
-  const liens = liensNavigation();
-  for (const l of ["Formations", "Modèles de documents", "Prescripteurs", "Versions du référentiel", "Google Drive"]) {
-    assert.ok(liens.includes(l), l);
+  assert.deepEqual(liensNavigation(), ["Aujourd'hui", "Formations", "Qualiopi", "Équipe", "Réglages"]);
+  await attendre(() => document.querySelector("h1")?.textContent === "Réglages");
+  for (const href of ["/parametres/organisme", "/parametres/comptes", "/parametres/google", "/modeles", "/versions", "/prescripteurs", "/questionnaires", "/parametres/rgpd"]) {
+    assert.ok(document.querySelector(`main a[href="${href}"]`), href);
   }
-  assert.ok(texte().includes("Paramètres"));
+  await demonter();
+  await monter("/parametres/google", "admin");
+  await attendre(() => document.querySelector('nav[aria-label="Retour : Réglages"] a[href="/reglages"]'));
 });
 
-test("contributeur : aucune entrée d'administration, pages réservées refusées proprement", async () => {
-  await monter("/accueil", "contributeur");
+test("contributeur : seulement Aujourd'hui et Formations, pages réservées refusées proprement", async () => {
+  await monter("/aujourdhui", "contributeur");
   await attendre(() => liensNavigation().length > 0);
-  assert.deepEqual(liensNavigation(), ["Accueil", "Sessions", "Jeunes", "Intervenants", "Indicateurs", "Preuves", "Veille", "Audits", "Actions qualité", "Preuves PDF", "Tâches qualité", "Échéancier", "Risques", "Partenaires", "Ressources et moyens", "Variables documentaires"]);
-  assert.ok(!document.querySelector("nav").textContent.includes("Paramètres"));
+  assert.deepEqual(liensNavigation(), ["Aujourd'hui", "Formations"]);
   await demonter();
-  for (const chemin of ["/modeles", "/formations", "/prescripteurs", "/versions", "/parametres/google"]) {
+  for (const chemin of ["/modeles", "/formations", "/prescripteurs", "/versions", "/parametres/google", "/qualiopi", "/equipe", "/reglages"]) {
     await monter(chemin, "contributeur");
     await attendre(() => texte().includes("Cette page est réservée aux administrateurs."));
     await demonter();
@@ -76,15 +79,20 @@ test("adresse inconnue : page « Page introuvable » dans la coque", async () =>
 test("navigation par le menu puis retour arrière du navigateur", async () => {
   await monter("/sessions");
   await attendre(() => texte().includes("SESS-TEST"));
-  const veille = [...document.querySelectorAll("nav a")].find((a) => a.textContent === "Veille");
+  const qualiopi = [...document.querySelectorAll('nav[aria-label="Navigation principale"] a')].find((a) => a.textContent === "Qualiopi");
+  await cliquer(qualiopi);
+  await attendre(() => window.location.pathname === "/qualiopi");
+  const veille = [...document.querySelectorAll('nav[aria-label="Rubriques : Qualiopi"] a')].find((a) => a.textContent === "Veille");
   await cliquer(veille);
   await attendre(() => window.location.pathname === "/veille");
   await attendre(() => document.querySelector("h1")?.textContent === "Veille");
   await act(async () => { window.history.back(); });
+  await attendre(() => window.location.pathname === "/qualiopi");
+  await act(async () => { window.history.back(); });
   await attendre(() => window.location.pathname === "/sessions");
   await attendre(() => texte().includes("SESS-TEST"));
   await act(async () => { window.history.forward(); });
-  await attendre(() => window.location.pathname === "/veille");
+  await attendre(() => window.location.pathname === "/qualiopi");
 });
 
 test("ouvrir une session depuis la liste change l'URL", async () => {

@@ -76,7 +76,7 @@ export function QuestionnairesPage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Questionnaires de formation" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Questionnaires de formation" }]}
         titre="Questionnaires de formation"
         description="Questions de positionnement propres à chaque formation. Les réponses se saisissent dans le dossier d'accompagnement de chaque stagiaire (onglet Accompagnement de la session)."
       />

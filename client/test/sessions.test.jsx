@@ -129,7 +129,7 @@ test("détail : en-tête complet, fil d'Ariane, onglets et vue d'ensemble", asyn
   for (const x of ["SESS-TEST", "En cours", "du 01/09/2026 au 15/12/2026", "35 h", "9h–17h", "Lyon", "M. Durand"]) assert.ok(t.includes(x), x);
   assert.deepEqual(
     [...document.querySelectorAll('nav[aria-label="Fil d\'Ariane"] li')].map((l) => l.textContent),
-    ["Formation", "Sessions", "SESS-TEST"],
+    ["Formations", "Sessions", "SESS-TEST"],
   );
   const onglets = [...document.querySelectorAll('nav[aria-label="Sections de la session"] a')];
   assert.deepEqual(onglets.map((a) => a.childNodes[0].textContent), ["Vue d'ensemble", "Stagiaires", "Planning", "Accompagnement", "Assiduité", "Évaluations", "Satisfaction", "Documents"]);

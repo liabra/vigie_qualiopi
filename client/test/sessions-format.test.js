@@ -59,3 +59,16 @@ test("synthèses : stagiaires actifs, dossiers incomplets hors abandons, taux fi
   });
   assert.deepEqual(s, { totalHeures: 10, nbAbsences: 3, fiables: 2, sousSeuil: 1, nonCalcules: 1, depassements: 1 });
 });
+
+test("prochaine étape : une seule chose à faire, dans l'ordre fixe", async () => {
+  const { prochaineEtape } = await import("../src/sessions/format.js");
+  const base = { session: { id: 4, statut: "en_cours", date_fin: "2026-12-15" }, stagiaires: [{ statut: "inscrit", dossier_complet: true }],
+    documents: [{ id: 1 }], satisfactions: { agregation: { reponses: 0 } }, evaluations: { agregation: { total: 0 } } };
+  assert.equal(prochaineEtape({ ...base, stagiaires: [] }, "2026-11-18").to, "/sessions/4/stagiaires");
+  assert.equal(prochaineEtape({ ...base, stagiaires: [{ statut: "inscrit", dossier_complet: false }, { statut: "abandon", dossier_complet: false }] }, "2026-11-18").texte, "compléter 1 dossier stagiaire.");
+  assert.equal(prochaineEtape({ ...base, documents: [] }, "2026-11-18").to, "/sessions/4/documents");
+  assert.equal(prochaineEtape(base, "2026-11-18"), null, "session en cours, rien d'urgent");
+  assert.equal(prochaineEtape(base, "2026-12-20").to, "/sessions/4/satisfaction", "terminée : satisfaction d'abord");
+  assert.equal(prochaineEtape({ ...base, satisfactions: { agregation: { reponses: 3 } } }, "2026-12-20").to, "/sessions/4/evaluations");
+  assert.equal(prochaineEtape({ ...base, session: { ...base.session, archivee_le: "2026-12-30" } }, "2026-12-31"), null, "archivée : rien");
+});

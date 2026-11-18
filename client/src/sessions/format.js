@@ -132,3 +132,23 @@ export function syntheseAssiduite(absences) {
     depassements: fiches.filter((f) => f.assiduite?.depassement).length,
   };
 }
+
+// « Prochaine étape » d'une session : UNE chose à faire, la plus utile,
+// déduite des données déjà chargées (aucun appel en plus). PUR. Ordre fixe :
+// inscrire, compléter les dossiers, générer les documents, puis — session
+// terminée — recueillir la satisfaction et saisir les évaluations.
+export function prochaineEtape(donnees, aujourdhui) {
+  const s = donnees?.session;
+  if (!s || s.archivee_le || s.statut === "annulee") return null;
+  const base = `/sessions/${s.id}`;
+  const synthese = syntheseStagiaires(donnees.stagiaires);
+  if (synthese.actifs === 0) return { texte: "inscrire les premiers stagiaires.", to: `${base}/stagiaires`, action: "Inscrire" };
+  if (synthese.dossiersIncomplets > 0) {
+    return { texte: `compléter ${synthese.dossiersIncomplets} dossier${synthese.dossiersIncomplets > 1 ? "s" : ""} stagiaire${synthese.dossiersIncomplets > 1 ? "s" : ""}.`, to: `${base}/stagiaires`, action: "Compléter" };
+  }
+  if ((donnees.documents || []).length === 0) return { texte: "générer les documents de la session (conventions, convocations…).", to: `${base}/documents`, action: "Générer" };
+  const terminee = s.statut === "terminee" || (s.date_fin && String(s.date_fin).slice(0, 10) < aujourdhui);
+  if (terminee && !(donnees.satisfactions?.agregation?.reponses > 0)) return { texte: "recueillir la satisfaction de fin de formation.", to: `${base}/satisfaction`, action: "Ouvrir" };
+  if (terminee && !(donnees.evaluations?.agregation?.total > 0)) return { texte: "saisir les évaluations des acquis.", to: `${base}/evaluations`, action: "Saisir" };
+  return null;
+}

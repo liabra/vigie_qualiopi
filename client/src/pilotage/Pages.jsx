@@ -56,7 +56,7 @@ export function EcheancierPage() {
   }
   return (
     <>
-      <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: "Échéancier" }]} titre="Échéancier"
+      <PageHeader fil={[{ libelle: "Aujourd'hui" }, { libelle: "Échéancier" }]} titre="Échéancier"
         description="Toutes les dates à tenir, quel que soit le module : tâches, actions, preuves à réviser, sessions, risques à réévaluer, conventions et audits." />
       {erreur && <Alert ton="error" titre="L'échéancier n'a pas pu être chargé.">{erreur}</Alert>}
       {donnees?.en_retard > 0 && <Alert ton="warning" titre={`${donnees.en_retard} élément(s) en retard`}>Tâches et actions qualité dont l'échéance est dépassée.</Alert>}

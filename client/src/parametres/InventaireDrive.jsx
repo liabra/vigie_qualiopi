@@ -136,7 +136,7 @@ export function InventaireDrivePage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Inventaire Drive" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Inventaire Drive" }]}
         titre="Inventaire Drive des modèles"
         description="Lecture seule : rien n'est enregistré ni modifié, ni dans Vigie, ni sur Google Drive. Les propositions sont à valider."
         actions={<Button variante="primary" onClick={lancer} disabled={chargement}>{inventaire ? "Relancer l'inventaire" : "Lancer l'inventaire"}</Button>}

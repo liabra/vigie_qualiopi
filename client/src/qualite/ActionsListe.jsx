@@ -91,7 +91,7 @@ export function ActionsListe({ admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: admin ? "Actions qualité" : "Mes actions qualité" }]}
+        fil={[{ libelle: "Qualiopi" }, { libelle: admin ? "Actions qualité" : "Mes actions qualité" }]}
         titre={admin ? "Actions qualité" : "Mes actions qualité"}
         description="Suivez les actions d'amélioration, leur réalisation et leur efficacité."
         actions={nouvelle}

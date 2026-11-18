@@ -21,7 +21,7 @@ export function CandidaturesPage() {
   const lien = `${window.location.origin}/candidater`;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Formation" }, { libelle: "Candidatures" }]} titre="Candidatures"
+      <PageHeader fil={[{ libelle: "Formations" }, { libelle: "Candidatures" }]} titre="Candidatures"
         description="Demandes reçues par le formulaire en ligne : étude du dossier, pièces reçues, décision motivée et inscription à une session."
         actions={<Button onClick={() => setReglages(true)}>Formations ouvertes et pièces attendues</Button>} />
       {succes && <Alert ton="success">{succes}</Alert>}

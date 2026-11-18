@@ -9,7 +9,7 @@ export function PageIntrouvable() {
       <PageHeader titre="Page introuvable" />
       <EmptyState
         titre="Cette adresse ne correspond à aucune page de Vigie."
-        action={<Button variante="primary" to="/accueil">Revenir à l'accueil</Button>}
+        action={<Button variante="primary" to="/aujourdhui">Revenir à « Aujourd'hui »</Button>}
       >
         Vérifiez le lien, ou utilisez le menu pour retrouver la page recherchée.
       </EmptyState>

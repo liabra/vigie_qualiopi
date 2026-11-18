@@ -233,7 +233,7 @@ export function EntretienFormulaire() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Jeunes", to: "/jeunes" }, { libelle: nomComplet(jeune), to: `/jeunes/${jeuneId}` }, { libelle: "Entretien" }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Jeunes", to: "/jeunes" }, { libelle: nomComplet(jeune), to: `/jeunes/${jeuneId}` }, { libelle: "Entretien" }]}
         titre={`Entretien initial — ${nomComplet(jeune)}`}
         description={lectureSeule
           ? `Entretien validé le ${new Date(entretien.valide_le).toLocaleDateString("fr-FR")} : lecture seule.`

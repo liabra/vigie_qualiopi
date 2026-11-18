@@ -222,3 +222,25 @@ Branche `livraison/portails-candidatures` (contient aussi le garde-fou « mode t
   groupes uniquement, suivi des séances, compétences des stagiaires, ressources, justificatifs, signalement d'incident.
 - **Mode test Drive** : `VIGIE_DRIVE_MODE_TEST=1` et `VIGIE_DRIVE_TEST_ROOT_ID` (dossier « test » vide à la racine du Drive)
   pour tout essai local ; sur un poste local avec Google configuré, la génération est bloquée sans ce mode. Sans effet sur Railway.
+
+## Lot 10 — Interface simplifiée : 5 espaces (aucune migration)
+
+Branche `refonte/interface-simplifiee`. Aucune donnée ni droit modifié : seule la façon d'accéder aux écrans change.
+Toutes les anciennes adresses restent valides (`/accueil` renvoie vers `/aujourdhui`).
+
+- **Menu à 5 entrées** : Aujourd'hui, Formations, Qualiopi, Équipe, Réglages. Les rubriques de l'espace courant
+  s'affichent en onglets en haut de la page ; les moins fréquentes sont rangées sous « Plus ». Réglages présente ses
+  rubriques en cartes, chacune avec un lien « Tous les réglages ». Le contributeur ne voit que Aujourd'hui et Formations
+  (les autres pages restent protégées par le serveur comme avant).
+- **Aujourd'hui** (`GET /api/pilotage/aujourdhui`) : une seule liste « En retard / Cette semaine / Plus tard » rassemblant
+  tâches, actions d'amélioration, suivi des sessions, réclamations, enquêtes de fin, candidatures, justificatifs, entretiens
+  annuels, preuves, risques, audit, veille et conventions de partenaires. Une tâche se coche sur place. Périmètre
+  contributeur appliqué par le serveur : ses tâches (et celles sans responsable), ses actions, le suivi des sessions.
+  Aucune donnée nominative de stagiaire.
+- **Formations** : sessions regroupées par formation ; dans une session, bandeau « Prochaine étape » (inscrire, compléter
+  les dossiers, générer les documents, puis satisfaction et évaluations une fois la session terminée).
+- **Qualiopi** : pour chaque indicateur, « ce qui est attendu », « ce que vous avez » (preuves enregistrées) et « ce qui
+  manque » ; filtre « seulement ce qui reste à compléter ».
+- **Équipe** : liste des intervenants avec leur état (justificatif manquant, entretien à planifier…) et, sur une même
+  fiche, justificatifs, compétences et développement, lien de l'espace formateur.
+- Aide et tutoriel mis à jour (le contributeur a un parcours en 5 étapes, sans écran hors de son menu).

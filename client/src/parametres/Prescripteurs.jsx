@@ -46,7 +46,7 @@ export function PrescripteursPage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Prescripteurs" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Prescripteurs" }]}
         titre="Prescripteurs"
         description="Liste proposée lors de l'inscription d'un stagiaire. Désactiver un prescripteur ne modifie pas les inscriptions existantes."
         actions={prescripteurs?.length > 0 && nouveau}

@@ -85,7 +85,7 @@ export function VersionsPage({ onChange }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Versions du référentiel" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Versions du référentiel" }]}
         titre="Versions du référentiel"
         description="Plusieurs versions coexistent : une seule est active et sert partout (indicateurs, preuves, veille, modèles)."
         actions={versions && preparer}

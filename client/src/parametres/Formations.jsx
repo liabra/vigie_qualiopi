@@ -70,7 +70,7 @@ export function FormationsPage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Formations" }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Formations" }]}
         titre="Formations"
         description="Catalogue des formations. Réviser une formation crée une nouvelle version ; les sessions existantes gardent la leur."
         actions={formations?.length > 0 && nouvelle}

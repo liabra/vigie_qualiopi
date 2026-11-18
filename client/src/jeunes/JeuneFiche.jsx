@@ -44,7 +44,7 @@ export function JeuneFiche() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Jeunes", to: "/jeunes" }, { libelle: nomComplet(jeune) }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Jeunes", to: "/jeunes" }, { libelle: nomComplet(jeune) }]}
         titre={nomComplet(jeune)}
         description={jeune.email || jeune.telephone ? [jeune.email, jeune.telephone].filter(Boolean).join(" · ") : "Aucune coordonnée renseignée."}
         actions={<Button variante="primary" onClick={commencer} disabled={enCours}>{enCours ? "Préparation…" : "Commencer un entretien"}</Button>}

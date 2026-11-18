@@ -18,7 +18,7 @@ export function CampagnesAuditPage() {
   const nouvelle = <Button variante="primary" onClick={() => setCreation(true)}>+ Nouvelle préparation</Button>;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: "Préparation d'audit" }]} titre="Préparation d'audit"
+      <PageHeader fil={[{ libelle: "Qualiopi" }, { libelle: "Préparation d'audit" }]} titre="Préparation d'audit"
         description="Passez chaque indicateur en revue comme le ferait l'auditeur, tirez un échantillon de sessions, produisez le dossier et partagez-le en lecture seule." actions={nouvelle} />
       {erreur && <Alert ton="error" titre="Chargement impossible.">{erreur}</Alert>}
       {!donnees && !erreur && <LoadingState texte="Chargement…" />}
@@ -101,7 +101,7 @@ export function CampagneAuditPage() {
   const compte = (a) => d.indicateurs.filter((r) => r.appreciation === a).length;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: "Préparation d'audit", to: "/preparation-audit" }, { libelle: c.titre }]} titre={c.titre}
+      <PageHeader fil={[{ libelle: "Qualiopi" }, { libelle: "Préparation d'audit", to: "/preparation-audit" }, { libelle: c.titre }]} titre={c.titre}
         description={`${d.types[c.type]}${c.date_audit ? ` prévu le ${formaterDate(c.date_audit)}` : ""} — référentiel ${c.referentiel_code || ""} — ${d.statuts[c.statut]}`}
         actions={<>
           <a className="ui-btn ui-btn--secondary" href={`/api/campagnes-audit/${c.id}/export`} download>Télécharger le dossier (ZIP)</a>

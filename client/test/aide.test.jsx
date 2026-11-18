@@ -24,7 +24,7 @@ const ouvrirAide = async () => { await cliquer(boutonAide()); await attendre(() 
 const fermer = async () => { await cliquer(document.querySelector('.ui-drawer__tete button[aria-label="Fermer le panneau"]')); };
 
 test("bouton Aide : visible en permanence dans la barre latérale, accessible au clavier", async () => {
-  await monter("/accueil");
+  await monter("/aujourdhui");
   await attendre(() => boutonAide());
   assert.ok(boutonAide(), "bouton « ? Aide » présent");
   assert.equal(boutonAide().tagName, "BUTTON", "un vrai bouton, atteignable au clavier");
@@ -50,13 +50,13 @@ test("aide adaptée à la route : Preuves", async () => {
 });
 
 test("guide : l'admin voit les paramètres, le contributeur non", async () => {
-  await monter("/accueil", "admin");
+  await monter("/aujourdhui", "admin");
   await ouvrirAide();
   await cliquer(bouton("Guide complet"));
   await attendre(() => texte().includes("Paramètres admin"));
   await demonter();
 
-  await monter("/accueil", "contributeur");
+  await monter("/aujourdhui", "contributeur");
   await ouvrirAide();
   await cliquer(bouton("Guide complet"));
   await attendre(() => texte().includes("Sessions"));
@@ -64,7 +64,7 @@ test("guide : l'admin voit les paramètres, le contributeur non", async () => {
 });
 
 test("guide : recherche simple", async () => {
-  await monter("/accueil", "admin");
+  await monter("/aujourdhui", "admin");
   await ouvrirAide();
   await cliquer(bouton("Guide complet"));
   await attendre(() => texte().includes("Paramètres admin"));
@@ -74,7 +74,7 @@ test("guide : recherche simple", async () => {
 });
 
 test("tutoriel : Suivant / Précédent, puis Terminer marque localStorage", async () => {
-  await monter("/accueil");
+  await monter("/aujourdhui");
   await ouvrirAide();
   await cliquer(bouton("Découvrir Vigie"));
   await attendre(() => titreDrawer()?.includes("(1/7)"));
@@ -97,7 +97,7 @@ test("tutoriel : Suivant / Précédent, puis Terminer marque localStorage", asyn
 });
 
 test("premier usage : le tutoriel s'ouvre automatiquement, quittable d'un clic", async () => {
-  await monter("/accueil", "admin", {}, { premierUsage: true });
+  await monter("/aujourdhui", "admin", {}, { premierUsage: true });
   await attendre(() => titreDrawer()?.includes("(1/7)"));
   await fermer();
   await attendre(() => !document.querySelector(".ui-drawer"));
@@ -105,7 +105,7 @@ test("premier usage : le tutoriel s'ouvre automatiquement, quittable d'un clic",
 });
 
 test("relancer le tutoriel depuis l'aide", async () => {
-  await monter("/accueil");
+  await monter("/aujourdhui");
   await ouvrirAide();
   await cliquer(bouton("Découvrir Vigie"));
   await attendre(() => titreDrawer()?.includes("(1/7)"));
@@ -119,7 +119,7 @@ test("localStorage indisponible : l'application continue, sans tutoriel bloquant
   });
   try {
     assert.equal(tutorielTermine(), true, "tutorielTermine() est sûr quand le stockage échoue");
-    await monter("/accueil", "admin", {}, { premierUsage: true });
+    await monter("/aujourdhui", "admin", {}, { premierUsage: true });
     await attendre(() => document.querySelector("main"));
     assert.ok(!document.querySelector(".ui-drawer"), "aucun tutoriel : l'application continue normalement");
   } finally {

@@ -87,7 +87,7 @@ export function VariablesDocumentsPage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Documents" }, { libelle: "Variables documentaires" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Variables documentaires" }]}
         titre="Variables documentaires"
         description="Les données que Vigie sait insérer dans un document. Écrivez la balise {{…}} dans le modèle Google Docs : elle est remplacée à la génération."
       />

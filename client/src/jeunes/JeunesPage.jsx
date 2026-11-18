@@ -61,7 +61,7 @@ export function JeunesPage({ admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Jeunes" }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Jeunes" }]}
         titre="Jeunes"
         description="Enregistrez et retrouvez les jeunes avant leur inscription à une formation. Les entretiens restent des brouillons tant qu'ils ne sont pas validés."
         actions={ajouter}

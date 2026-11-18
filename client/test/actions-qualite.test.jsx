@@ -3,7 +3,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, bouton, champ, cliquer, demonter, dialogue, liensNavigation, monter, saisir, texte, touche } from "./outils.jsx";
+import { attendre, bouton, champ, cliquer, demonter, dialogue, liensNavigation, liensRubriques, monter, saisir, texte, touche } from "./outils.jsx";
 import { filtrerActions } from "../src/qualite/format.js";
 
 let natifs = 0;
@@ -27,14 +27,14 @@ const ACTIONS = [
 ];
 const avecActions = () => ({ "GET /api/actions-qualite": { actions: ACTIONS, total: 2 } });
 
-test("menu : « Actions qualité » visible pour l'admin et le contributeur", async () => {
-  await monter("/accueil", "admin");
-  await attendre(() => document.querySelector("main"));
-  assert.ok(liensNavigation().includes("Actions qualité"));
+test("menu : « Améliorations » dans Qualiopi pour l'admin ; le contributeur retrouve ses actions dans « Aujourd'hui »", async () => {
+  await monter("/qualiopi", "admin");
+  await attendre(() => liensRubriques().length > 0);
+  assert.ok(liensRubriques().includes("Améliorations"));
   await demonter();
-  await monter("/accueil", "contributeur");
-  await attendre(() => document.querySelector("main"));
-  assert.ok(liensNavigation().includes("Actions qualité"));
+  await monter("/aujourdhui", "contributeur");
+  await attendre(() => liensNavigation().length > 0);
+  assert.deepEqual(liensNavigation(), ["Aujourd'hui", "Formations"]);
 });
 
 test("route : l'admin voit « Actions qualité », le contributeur « Mes actions qualité »", async () => {

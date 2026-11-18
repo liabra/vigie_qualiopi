@@ -28,7 +28,7 @@ export function PreuvesPdfPage({ admin }) {
   }, [admin]);
   return (
     <>
-      <PageHeader fil={[{ libelle: "Qualité" }, { libelle: "Preuves PDF" }]} titre="Preuves PDF"
+      <PageHeader fil={[{ libelle: "Qualiopi" }, { libelle: "Preuves PDF" }]} titre="Preuves PDF"
         description="Chaque document est produit à partir des données à jour, daté et paginé, au nom de l'organisme : prêt à déposer sur la plateforme de l'organisme certificateur." />
       {erreur && <Alert ton="error">{erreur}</Alert>}
       {!catalogue && !erreur && <LoadingState texte="Chargement…" />}

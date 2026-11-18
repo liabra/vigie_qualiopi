@@ -9,7 +9,10 @@ import Preuves from "./Preuves.jsx";
 import AuditsHistory from "./AuditsHistory.jsx";
 import { AppShell } from "./shell/AppShell.jsx";
 import { Alert, Button, LoadingState } from "./ui/index.js";
-import { Accueil } from "./pages/Accueil.jsx";
+import { Aujourdhui } from "./pages/Aujourdhui.jsx";
+import { Qualiopi } from "./pages/Qualiopi.jsx";
+import { Equipe } from "./pages/Equipe.jsx";
+import { Reglages } from "./pages/Reglages.jsx";
 import { EcranExistant } from "./pages/EcranExistant.jsx";
 import { PageIntrouvable } from "./pages/PageIntrouvable.jsx";
 import { RequireAdmin } from "./pages/AccesReserve.jsx";
@@ -70,14 +73,14 @@ const stockage = {
   effacer() { try { window.sessionStorage.removeItem(CLE_RETOUR); } catch { /* ignoré */ } },
 };
 
-// « / » : l'accueil, ou la page demandée avant la connexion Google (le
+// « / » : « Aujourd'hui », ou la page demandée avant la connexion Google (le
 // serveur renvoie toujours vers « / » après OAuth).
 // Lecture à l'initialisation (idempotente, rejouable par StrictMode),
 // effacement après le rendu.
 function RedirectionAccueil() {
   const [retour] = useState(() => stockage.lire());
   useEffect(() => { stockage.effacer(); }, []);
-  return <Navigate to={cheminRetourValide(retour) ? retour : "/accueil"} replace />;
+  return <Navigate to={cheminRetourValide(retour) ? retour : "/aujourdhui"} replace />;
 }
 
 // /sessions/:sessionId[/onglet] : identifiant numérique converti ; toute
@@ -210,7 +213,12 @@ export default function App() {
     <Routes>
       <Route element={<AppShell user={user} onLogout={logout} flash={flash} onFlashVu={() => setFlash(null)} />}>
         <Route index element={<RedirectionAccueil />} />
-        <Route path="accueil" element={<Accueil user={user} />} />
+        <Route path="aujourdhui" element={<Aujourdhui user={user} />} />
+        {/* Ancienne adresse de l'accueil : remplacée par « Aujourd'hui ». */}
+        <Route path="accueil" element={<Navigate to="/aujourdhui" replace />} />
+        <Route path="qualiopi" element={admin(<Qualiopi />)} />
+        <Route path="equipe" element={admin(<Equipe />)} />
+        <Route path="reglages" element={admin(<Reglages />)} />
 
         <Route path="sessions" element={<SessionsListe admin={isAdmin} />} />
         <Route path="jeunes" element={<JeunesPage admin={isAdmin} />} />

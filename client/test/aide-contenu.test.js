@@ -17,7 +17,10 @@ test("aideDe : contenu adapté à la route, préfixe le plus long gagnant", () =
   assert.equal(aideDe("/prescripteurs").titre, "Prescripteurs");
   assert.equal(aideDe("/versions").titre, "Versions du référentiel");
   assert.equal(aideDe("/parametres/google").titre, "Google Drive");
-  assert.equal(aideDe("/accueil").titre, "Accueil");
+  assert.equal(aideDe("/aujourdhui").titre, "Aujourd'hui");
+  assert.equal(aideDe("/qualiopi").titre, "Qualiopi");
+  assert.equal(aideDe("/equipe").titre, "Équipe");
+  assert.equal(aideDe("/reglages").titre, "Réglages");
   assert.equal(aideDe("/route-inconnue"), null);
 });
 
@@ -47,20 +50,12 @@ test("etapesTutoriel : 5 à 7 étapes, ordre stable, contenu présent", () => {
   }
 });
 
-test("etapesTutoriel : chaque étape porte sa route cible (parcours guidé)", () => {
-  const attendues = [
-    "/accueil", // Bienvenue
-    "/accueil", // Navigation
-    "/sessions", // Les sessions
-    "/preuves", // Les preuves
-    "/veille", // La veille
-    "/accueil", // L'Accueil
-    "/accueil", // Où retrouver l'aide
-  ];
-  for (const role of ["admin", "contributeur"]) {
-    const e = etapesTutoriel(role);
-    assert.deepEqual(e.map((s) => s.route), attendues, role);
-  }
+test("etapesTutoriel : chaque étape porte sa route cible (parcours guidé), selon le rôle", () => {
+  assert.deepEqual(etapesTutoriel("admin").map((s) => s.route),
+    ["/aujourdhui", "/aujourdhui", "/sessions", "/qualiopi", "/veille", "/aujourdhui", "/aujourdhui"]);
+  // Contributeur : jamais une étape hors de son menu (ni Qualiopi ni veille).
+  assert.deepEqual(etapesTutoriel("contributeur").map((s) => s.route),
+    ["/aujourdhui", "/aujourdhui", "/sessions", "/aujourdhui", "/aujourdhui"]);
 });
 
 test("rechercherGuide : filtre insensible à la casse et aux accents", () => {

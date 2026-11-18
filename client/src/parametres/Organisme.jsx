@@ -202,7 +202,7 @@ export function OrganismePage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Organisme et signataires" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Organisme et signataires" }]}
         titre="Organisme et signataires"
         description="Coordonnées et signataires utilisés dans les documents générés. Rien n'est écrit en dur dans les modèles."
       />

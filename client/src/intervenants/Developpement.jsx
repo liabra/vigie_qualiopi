@@ -17,7 +17,7 @@ export function DeveloppementPage() {
   useEffect(() => { charger(); }, [charger]);
   return (
     <>
-      <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: "Développement des intervenants" }]} titre="Développement des compétences des intervenants"
+      <PageHeader fil={[{ libelle: "Équipe" }, { libelle: "Développement des intervenants" }]} titre="Développement des compétences des intervenants"
         description="Indicateurs 21 et 22 : compétences, entretiens, formations suivies ou prévues et efficacité. Un entretien de plus d'un an est signalé."
         actions={<LienPdf href="/api/pdf/developpement">PDF du plan de développement</LienPdf>} />
       {erreur && <Alert ton="error">{erreur}</Alert>}
@@ -45,7 +45,7 @@ export function DeveloppementPage() {
 
 const ACTION_VIDE = { intitule: "", type: "formation", organisme: "", competence_visee: "", date_debut: "", date_fin: "", duree_heures: "", statut: "prevue", evaluation_efficacite: "", lien_preuve: "" };
 
-function DossierDeveloppement({ id, onFermer }) {
+export function DossierDeveloppement({ id, onFermer }) {
   const [d, setD] = useState(null);
   const [fiche, setFiche] = useState(null);
   const [action, setAction] = useState(null); // null | objet en édition

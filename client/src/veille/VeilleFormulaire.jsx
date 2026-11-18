@@ -37,7 +37,7 @@ export function VeilleFormulaire({ veilleId = null }) {
       .catch((e) => { if (e.status === 404 || e.status === 400) setIntrouvable(true); else setErreurServeur(e.message); });
   }, [veilleId, modification]);
 
-  const fil = [{ libelle: "Qualité" }, { libelle: "Veille", to: "/veille" },
+  const fil = [{ libelle: "Qualiopi" }, { libelle: "Veille", to: "/veille" },
     ...(modification && origine ? [{ libelle: origine.titre, to: `/veille/${veilleId}` }] : []),
     { libelle: modification ? "Modifier" : "Nouvelle veille" }];
 

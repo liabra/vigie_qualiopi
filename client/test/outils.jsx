@@ -108,15 +108,9 @@ export function routesParDefaut(role) {
     "GET /api/sessions?etat=archivees": { sessions: [], total: 0 },
     "GET /api/sessions/1/intervenants": { archivee: false, historique: { session: "M. Durand", groupes: [] }, session: [], groupes: {} },
     "GET /api/intervenants": { intervenants: [], total: 0 },
-    "GET /api/pilotage/accueil": {
-      aujourdhui: "2026-10-01", role: role || "admin",
-      sessions: { en_cours: 1, a_venir: [], en_cours_liste: [], inscrits_actifs: 2, dossiers_incomplets: 0, recueils_a_faire: 0, mesures_prevues: 0 },
-      sessions_suivi: [], priorites: { lignes: [], reste: 0, voir_davantage: null },
-      ...(role === "admin"
-        ? { qualite: { actions_ouvertes: 0, actions_en_retard: 0, efficacite_a_verifier: 0, reclamations_en_cours: 0, reclamations_en_retard: 0, signalements_a_traiter: 0 },
-            preuves: { perimees: 0, bientot: 0, a_confirmer: 0 }, justificatifs: { manquants: 0, bientot: 0, perimes: 0, intervenants: 0 },
-            satisfaction: { reponses: 0 }, veille_actions: 0, dernier_audit: null }
-        : { mes_actions: { ouvertes: 0, en_retard: 0, liste: [] } }),
+    "GET /api/pilotage/aujourdhui": {
+      aujourdhui: "2026-10-01", role: role === "admin" ? "admin" : "contributeur",
+      groupes: { retard: [], semaine: [], plus_tard: [] }, compteurs: { retard: 0, semaine: 0, plus_tard: 0 }, seances: [],
     },
     "POST /auth/logout": { ok: true },
     "GET /api/sessions/999": [404, { error: "Session introuvable." }],
@@ -193,6 +187,8 @@ export async function attendre(condition, delai = 2000) {
 export const texte = () => document.body.textContent;
 export const liensNavigation = () =>
   [...document.querySelectorAll('nav[aria-label="Navigation principale"] a')].map((a) => a.textContent.trim());
+export const liensRubriques = () =>
+  [...document.querySelectorAll('nav[aria-label^="Rubriques"] a, nav[aria-label^="Autres rubriques"] a')].map((a) => a.textContent.trim());
 export const boutons = () => [...document.querySelectorAll("button, a")].map((b) => b.textContent.trim());
 export const bouton = (libelle) => [...document.querySelectorAll("button, a")].find((b) => b.textContent.trim() === libelle);
 export const dialogue = () => document.querySelector('[role="dialog"], [role="alertdialog"]');

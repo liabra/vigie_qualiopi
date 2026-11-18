@@ -56,10 +56,10 @@ test("connexion : serveur injoignable ⇒ message sans détail technique, bouton
   assert.ok(bouton("Réessayer"));
 });
 
-test("connexion : un chemin de retour externe mémorisé est ignoré (retour à l'accueil)", async () => {
+test("connexion : un chemin de retour externe mémorisé est ignoré (retour à « Aujourd'hui »)", async () => {
   window.sessionStorage.setItem("vq_retour_apres_connexion", "//site-externe.example/piege");
   await monter("/", "admin");
-  await attendre(() => window.location.pathname === "/accueil");
+  await attendre(() => window.location.pathname === "/aujourdhui");
   assert.equal(window.location.host, "localhost");
 });
 

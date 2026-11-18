@@ -226,7 +226,7 @@ export function ModelesPage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Modèles de documents" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Modèles de documents" }]}
         titre="Modèles de documents"
         description="Un modèle est un Google Doc ou Sheet existant sur le Drive. La génération en fait une copie et y remplace les marqueurs ; le modèle d'origine n'est jamais modifié."
         actions={donnees && (

@@ -28,7 +28,7 @@ export function RgpdPage() {
   }
   return (
     <>
-      <PageHeader fil={[{ libelle: "Paramètres" }, { libelle: "RGPD et conservation" }]} titre="RGPD et conservation"
+      <PageHeader fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "RGPD et conservation" }]} titre="RGPD et conservation"
         description="Durée de conservation, personnes arrivées au terme, droit d'accès (export) et droit à l'effacement (anonymisation)." />
       {succes && <Alert ton="success">{succes}</Alert>}
       {erreur && <Alert ton="error">{erreur}</Alert>}

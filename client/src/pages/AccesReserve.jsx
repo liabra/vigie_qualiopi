@@ -11,7 +11,7 @@ export function AccesReserve() {
       <PageHeader titre="Accès réservé" />
       <EmptyState
         titre="Cette page est réservée aux administrateurs."
-        action={<Button variante="primary" to="/accueil">Revenir à l'accueil</Button>}
+        action={<Button variante="primary" to="/aujourdhui">Revenir à « Aujourd'hui »</Button>}
       >
         Si vous pensez devoir y accéder, adressez-vous à un administrateur de Vigie.
       </EmptyState>

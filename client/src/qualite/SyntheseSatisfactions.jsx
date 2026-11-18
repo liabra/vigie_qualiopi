@@ -58,7 +58,7 @@ export function SyntheseSatisfactions() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Synthèse des satisfactions" }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Synthèse des satisfactions" }]}
         titre="Synthèse des satisfactions"
         description="Les retours des parties prenantes, toutes sessions confondues. Les moyennes ne mélangent jamais des échelles différentes."
         actions={provenance && <Button variante="primary" onClick={() => { setCreee(null); setAction(true); }}>Créer une action qualité</Button>}

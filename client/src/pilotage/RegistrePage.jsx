@@ -116,7 +116,7 @@ export function RegistrePage({ nom, admin, actions }) {
   if (!schema) return erreur ? <Alert ton="error" titre="Le registre n'a pas pu être chargé.">{erreur}</Alert> : <LoadingState texte="Chargement…" />;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Pilotage" }, { libelle: schema.titre }]} titre={schema.titre} description={schema.description}
+      <PageHeader fil={[{ libelle: nom === "taches" ? "Aujourd'hui" : "Qualiopi" }, { libelle: schema.titre }]} titre={schema.titre} description={schema.description}
         actions={<>{actions?.({ recharger: charger, notifier: setSucces })}<a className="ui-btn ui-btn--secondary" href={`/api/pdf/registres/${nom}`} download>PDF</a>{bouton}</>} />
       {succes && <Alert ton="success">{succes}</Alert>}
       {erreur && <Alert ton="error" titre="Action impossible.">{erreur}</Alert>}

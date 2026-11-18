@@ -10,15 +10,54 @@
 // ─────────────────────────────────────────────────────────────
 
 const AIDE = {
-  accueil: {
-    titre: "Accueil",
+  aujourdhui: {
+    titre: "Aujourd'hui",
     sections: [
       {
-        titre: "Le poste de pilotage",
+        titre: "Une seule liste",
         lignes: [
-          "L'administrateur voit la « Vue d'ensemble A2C », le contributeur « Mon espace de travail » : chacun ne voit que ce que son rôle permet.",
-          "« À traiter en priorité » liste au plus 10 points concrets, dans un ordre fixe : retards qualité d'abord, puis péremptions, dossiers stagiaires, recueils du besoin, mesures pédagogiques et échéances à venir. Chaque ligne ouvre l'écran concerné.",
-          "Aucun taux de conformité ni score n'est calculé : seulement des faits vérifiables. Le tableau de bord qualité détaillé reste dans le menu Qualité.",
+          "Tout ce qui est à faire est rassemblé ici, quelle que soit son origine : tâches, actions d'amélioration, dossiers stagiaires, réclamations, enquêtes, candidatures, justificatifs, entretiens, preuves, risques et audit.",
+          "La liste est rangée en trois groupes : « En retard », « Cette semaine » (ce qui n'a pas de date est à traiter maintenant) et « Plus tard » (jusqu'à deux mois).",
+          "Une tâche se coche directement ici. Tout le reste s'ouvre avec le bouton de la ligne, à l'endroit où il se traite ; la ligne disparaît une fois le point réglé.",
+          "Le contributeur ne voit que ses tâches (et celles sans responsable), ses actions qualité et le suivi des sessions.",
+        ],
+      },
+    ],
+  },
+  qualiopi: {
+    titre: "Qualiopi",
+    sections: [
+      {
+        titre: "Indicateur par indicateur",
+        lignes: [
+          "Choisissez un indicateur à gauche : à droite, ce qui est attendu, ce que vous avez (les preuves enregistrées) et ce qui manque.",
+          "« Afficher seulement ce qui reste à compléter » ne garde que les indicateurs qui ne sont pas encore maîtrisés.",
+          "Les autres rubriques (réclamations, améliorations, veille, risques, audit) sont dans les onglets ; les rubriques moins fréquentes sont sous « Plus ».",
+        ],
+      },
+    ],
+  },
+  equipe: {
+    titre: "Équipe",
+    sections: [
+      {
+        titre: "Une fiche par intervenant",
+        lignes: [
+          "La liste signale ce qui demande votre attention : justificatif manquant ou périmé, entretien annuel à planifier.",
+          "La fiche réunit les justificatifs (indicateur 21), les compétences et le développement (indicateur 22) et le lien vers l'espace formateur.",
+          "Pour ajouter un intervenant ou modifier son identité, utilisez l'onglet « Fiches ».",
+        ],
+      },
+    ],
+  },
+  reglages: {
+    titre: "Réglages",
+    sections: [
+      {
+        titre: "Ce qu'on règle une fois",
+        lignes: [
+          "Organisme, comptes, Google Drive, modèles de documents, référentiel, prescripteurs, questionnaires et données personnelles : une carte par rubrique.",
+          "Chaque rubrique s'ouvre sur sa page ; « Tous les réglages » ramène ici.",
         ],
       },
     ],
@@ -521,7 +560,10 @@ const AIDE = {
 // Route → clé d'aide. Le préfixe le plus long l'emporte (les onglets d'une
 // session relèvent tous de « session »).
 const CLES = [
-  ["/accueil", "accueil"],
+  ["/aujourdhui", "aujourdhui"],
+  ["/qualiopi", "qualiopi"],
+  ["/equipe", "equipe"],
+  ["/reglages", "reglages"],
   ["/sessions", "sessions"],
   ["/indicateurs", "indicateurs"],
   ["/preuves", "preuves"],
@@ -683,37 +725,37 @@ export function rechercherGuide(role, q) {
 
 const ETAPES = [
   {
-    id: "bienvenue", titre: "Bienvenue dans Vigie", route: "/accueil",
+    id: "bienvenue", titre: "Bienvenue dans Vigie", route: "/aujourdhui",
     admin: "Vigie aide A2C à rester prêt pour un audit Qualiopi : formations, sessions, stagiaires, preuves et veille réglementaire au même endroit.",
     contributeur: "Vigie aide A2C à rester prêt pour un audit Qualiopi : formations, sessions, stagiaires, preuves et veille réglementaire au même endroit.",
   },
   {
-    id: "navigation", titre: "Navigation", route: "/accueil",
-    admin: "Le menu de gauche donne accès à l'Accueil, aux Sessions et à tout ce qui concerne la qualité (indicateurs, preuves, veille, audits). Les paramètres se règlent en bas de ce menu.",
-    contributeur: "Le menu de gauche donne accès à l'Accueil, aux Sessions et à tout ce qui concerne la qualité (indicateurs, preuves, veille, audits).",
+    id: "navigation", titre: "Navigation", route: "/aujourdhui",
+    admin: "Le menu de gauche a cinq entrées : Aujourd'hui, Formations, Qualiopi, Équipe et Réglages. Dans chacune, les rubriques sont présentées en onglets en haut de la page.",
+    contributeur: "Le menu de gauche a deux entrées : Aujourd'hui (ce qui est à faire) et Formations (sessions et jeunes).",
   },
   {
     id: "sessions", titre: "Les sessions", route: "/sessions",
-    admin: "Une session de formation se crée dans « Sessions », puis se remplit : stagiaires, absences, évaluations, satisfaction et documents, onglet par onglet.",
-    contributeur: "Dans « Sessions », ouvrez une session pour gérer les stagiaires : absences, évaluations, satisfaction et documents, onglet par onglet.",
+    admin: "Une session de formation se crée dans « Formations », puis se remplit : stagiaires, absences, évaluations, satisfaction et documents, onglet par onglet.",
+    contributeur: "Dans « Formations », ouvrez une session pour gérer les stagiaires : absences, évaluations, satisfaction et documents, onglet par onglet.",
   },
   {
-    id: "preuves", titre: "Les preuves", route: "/preuves",
-    admin: "Chaque indicateur Qualiopi doit être appuyé par des preuves. Vous les suivez dans « Preuves », par indicateur ou en liste complète, avec leurs statuts et leurs échéances.",
-    contributeur: "Les preuves de conformité se consultent dans « Preuves », par indicateur ou en liste complète.",
+    id: "preuves", titre: "Qualiopi", route: "/qualiopi", seulementAdmin: true,
+    admin: "Chaque indicateur Qualiopi doit être appuyé par des preuves. Dans « Qualiopi », choisissez un indicateur : ce qui est attendu, ce que vous avez et ce qui manque.",
+    contributeur: "Les indicateurs Qualiopi et leurs preuves sont suivis par l'administrateur ; vos tâches qualité apparaissent dans « Aujourd'hui ».",
   },
   {
-    id: "veille", titre: "La veille", route: "/veille",
+    id: "veille", titre: "La veille", route: "/veille", seulementAdmin: true,
     admin: "La veille réglementaire se traite en trois temps : S'informer, Analyser, puis Agir. Une rupture réglementaire peut rendre des preuves caduques.",
     contributeur: "La veille réglementaire se consulte en trois temps : S'informer, Analyser, puis Agir.",
   },
   {
-    id: "accueil", titre: "L'Accueil", route: "/accueil",
-    admin: "L'Accueil vous montre ce qui demande votre attention : sessions en cours, prochaines sessions et alertes.",
-    contributeur: "L'Accueil vous montre ce qui demande votre attention : sessions en cours, prochaines sessions et alertes.",
+    id: "accueil", titre: "Aujourd'hui", route: "/aujourdhui",
+    admin: "« Aujourd'hui » rassemble en une liste tout ce qui est en retard, à faire cette semaine ou plus tard, avec le bouton pour le traiter.",
+    contributeur: "« Aujourd'hui » rassemble en une liste vos tâches, vos actions et le suivi des sessions, avec le bouton pour les traiter.",
   },
   {
-    id: "aide", titre: "Où retrouver l'aide", route: "/accueil",
+    id: "aide", titre: "Où retrouver l'aide", route: "/aujourdhui",
     admin: "Le bouton « ? Aide » en bas du menu ouvre cette aide à tout moment : aide de la page courante, guide complet et relance de ce tutoriel.",
     contributeur: "Le bouton « ? Aide » en bas du menu ouvre cette aide à tout moment : aide de la page courante, guide complet et relance de ce tutoriel.",
   },
@@ -721,7 +763,8 @@ const ETAPES = [
 
 export function etapesTutoriel(role) {
   const admin = role === "admin";
-  return ETAPES.map((e) => ({ id: e.id, titre: e.titre, route: e.route, texte: admin ? e.admin : e.contributeur }));
+  // Une étape hors du menu du rôle n'est jamais montrée (contributeur : ni Qualiopi ni veille).
+  return ETAPES.filter((e) => admin || !e.seulementAdmin).map((e) => ({ id: e.id, titre: e.titre, route: e.route, texte: admin ? e.admin : e.contributeur }));
 }
 
 // ─────────────────────────────────────────────────────────────

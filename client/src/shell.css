@@ -57,6 +57,25 @@
   color: var(--color-primary); font-weight: var(--font-weight-semibold);
 }
 
+/* Espaces (5 entrées) : plus hauts, avec icône. */
+.shell-nav__lien--espace { gap: var(--space-3); min-height: 2.75rem; font-size: 0.975rem; }
+.shell-nav__icone { flex: none; }
+
+/* Rubriques de l'espace courant (onglets) et menu « Plus ». */
+.shell-sous-nav { display: flex; align-items: flex-end; gap: var(--space-1); border-bottom: 1px solid var(--color-border); min-width: 0; }
+.shell-sous-nav__onglets { border-bottom: 0; flex: 0 1 auto; min-width: 0; }
+.shell-plus { position: relative; flex: none; }
+.shell-plus > summary { list-style: none; cursor: pointer; }
+.shell-plus > summary::-webkit-details-marker { display: none; }
+.shell-plus__liste {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 15rem;
+  list-style: none; margin: 0; padding: var(--space-1);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-float);
+  display: grid; gap: 2px;
+}
+.shell-plus__liste .ui-onglets__lien { display: flex; width: 100%; box-sizing: border-box; border-bottom: 0; margin: 0; border-radius: var(--radius-sm); }
+.shell-retour a { display: inline-flex; align-items: center; min-height: 2.75rem; font-weight: var(--font-weight-medium); }
+
 .shell-sidebar__pied {
   display: grid; gap: var(--space-2); justify-items: start;
   padding: var(--space-4); border-top: 1px solid var(--color-border);

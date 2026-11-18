@@ -3,7 +3,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, bouton, champ, cliquer, demonter, liensNavigation, monter, saisir, texte } from "./outils.jsx";
+import { attendre, bouton, champ, cliquer, demonter, liensNavigation, liensRubriques, monter, saisir, texte } from "./outils.jsx";
 
 let natifs = 0;
 beforeEach(() => {
@@ -40,14 +40,14 @@ const compteur = (libelle) => {
   return el ? el.querySelector(".qualite-compteur__n").textContent.trim() : null;
 };
 
-test("menu : « Signalements » visible pour l'admin, absent pour le contributeur", async () => {
-  await monter("/accueil", "admin");
-  await attendre(() => liensNavigation().length > 0);
-  assert.ok(liensNavigation().includes("Signalements"));
+test("menu : « Réclamations » dans Qualiopi pour l'admin ; absent pour le contributeur", async () => {
+  await monter("/qualiopi", "admin");
+  await attendre(() => liensRubriques().length > 0);
+  assert.ok(liensRubriques().includes("Réclamations"));
   await demonter();
-  await monter("/accueil", "contributeur");
+  await monter("/aujourdhui", "contributeur");
   await attendre(() => liensNavigation().length > 0);
-  assert.ok(!liensNavigation().includes("Signalements"), "entrée admin uniquement");
+  assert.ok(!liensNavigation().includes("Qualiopi") && !liensRubriques().includes("Réclamations"), "entrée admin uniquement");
 });
 
 test("route admin : la liste de signalements se charge", async () => {

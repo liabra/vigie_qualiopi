@@ -56,7 +56,7 @@ export function GoogleDrivePage() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Paramètres" }, { libelle: "Google Drive" }]}
+        fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Google Drive" }]}
         titre="Google Drive"
         description="Vigie utilise Google Drive pour les modèles, les preuves et les documents générés."
       />

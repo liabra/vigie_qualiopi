@@ -9,8 +9,9 @@ import { AideInfobulle } from "../aide/index.js";
 import { useTitrePage } from "../pages/titre.js";
 import { FormulaireSession, erreursSession, valeursDepuisSession } from "./FormulaireSession.jsx";
 import {
-  STATUTS_SESSION, dureePrevue, formaterHeures, formaterPeriode, incoherencesStatut, syntheseStagiaires, titreSession,
+  STATUTS_SESSION, dureePrevue, formaterHeures, formaterPeriode, incoherencesStatut, prochaineEtape, syntheseStagiaires, titreSession,
 } from "./format.js";
+import { aujourdhuiISO } from "../qualite/format.js";
 import { VueEnsemble } from "./VueEnsemble.jsx";
 import { OngletStagiaires } from "./OngletStagiaires.jsx";
 import { OngletAssiduite } from "./OngletAssiduite.jsx";
@@ -128,7 +129,7 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
   if (introuvable) {
     return (
       <>
-        <PageHeader fil={[{ libelle: "Formation" }, { libelle: "Sessions", to: "/sessions" }, { libelle: "Session introuvable" }]} titre="Session introuvable" />
+        <PageHeader fil={[{ libelle: "Formations" }, { libelle: "Sessions", to: "/sessions" }, { libelle: "Session introuvable" }]} titre="Session introuvable" />
         <EmptyState titre="Cette session n'existe pas ou n'existe plus." action={<Button variante="primary" to="/sessions">Voir toutes les sessions</Button>}>
           Vérifiez le lien utilisé.
         </EmptyState>
@@ -148,11 +149,12 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
   const Contenu = ONGLETS[onglet] || VueEnsemble;
   const archivee = !!session.archivee_le;
   const ctx = { donnees, annexes, admin, peutSaisir, recharger, notifier, base, archivee };
+  const etape = prochaineEtape(donnees, aujourdhuiISO());
 
   return (
     <div className="sess-detail">
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Sessions", to: "/sessions" }, { libelle: titreSession(session) }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Sessions", to: "/sessions" }, { libelle: titreSession(session) }]}
         titre={session.formation}
         actions={admin && (
           <>
@@ -202,6 +204,13 @@ export function SessionDetail({ sessionId, onglet = "apercu", admin, peutSaisir,
           {b.texte}
         </Alert>
       ))}
+
+      {etape && (
+        <div className="sess-etape" role="status">
+          <p><strong>Prochaine étape :</strong> {etape.texte}</p>
+          {etape.to !== (onglet === "apercu" ? base : `${base}/${onglet}`) && <Button compact variante="primary" to={etape.to}>{etape.action}</Button>}
+        </div>
+      )}
 
       <Tabs
         label="Sections de la session"

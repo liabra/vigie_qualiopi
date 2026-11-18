@@ -17,7 +17,7 @@ export function AccesPortailsPage() {
   useEffect(() => { charger(); }, [charger]);
   return (
     <>
-      <PageHeader fil={[{ libelle: "Formation" }, { libelle: "Accès aux portails" }]} titre="Accès aux portails"
+      <PageHeader fil={[{ libelle: "Formations" }, { libelle: "Accès aux portails" }]} titre="Accès aux portails"
         description="Un lien personnel donne à un stagiaire ou à un formateur l'accès à son espace, sans compte Google. Le lien n'est affiché qu'une fois ; il expire et se désactive à tout moment."
         actions={<Button variante="primary" onClick={() => { setLien(null); setCreation(true); }}>+ Créer un accès</Button>} />
       {lien && (

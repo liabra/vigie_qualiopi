@@ -53,7 +53,7 @@ export function IntervenantsPage({ admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Intervenants" }]}
+        fil={[{ libelle: "Équipe" }, { libelle: "Intervenants" }]}
         titre="Intervenants"
         description="Formateurs et intervenants d'A2C : une fiche par personne, réutilisée dans les sessions et les groupes."
         actions={admin && <Button variante="primary" onClick={() => setFiche("nouvelle")}>Nouvel intervenant</Button>}

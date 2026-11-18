@@ -26,11 +26,11 @@ test("page : tout utilisateur connecté (contributeur) voit les variables class�
   assert.ok(texte().includes("Nom officiel de l'organisme"), "libellé conservé");
 });
 
-test("page : menu « Documents » visible du contributeur, page sans action d'écriture", async () => {
+test("page : consultable par le contributeur (lien direct), hors de son menu, sans action d'écriture", async () => {
   await monter("/variables-documentaires", "contributeur", ROUTES);
   await attendre(() => texte().includes(`Dictionnaire v${CATALOGUE.version}`));
   const liens = [...document.querySelectorAll("nav a")].map((a) => a.getAttribute("href"));
-  assert.ok(liens.includes("/variables-documentaires"));
+  assert.ok(!liens.includes("/variables-documentaires"), "rangé dans Réglages (administrateur)");
   assert.equal(document.querySelectorAll("tbody button").length, 0, "aucun bouton d'action dans les tableaux");
   assert.ok(!document.querySelector("form"), "lecture seule : aucun formulaire");
 });

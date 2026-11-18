@@ -52,9 +52,9 @@ export function SessionsListe({ admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Formation" }, { libelle: "Sessions" }]}
+        fil={[{ libelle: "Formations" }, { libelle: "Sessions" }]}
         titre="Sessions"
-        description="Gestion des sessions de formation"
+        description="Gestion des sessions de formation, regroupées par formation"
         actions={admin && etat === "actives" && <Button variante="primary" onClick={() => setCreation(true)}>+ Nouvelle session</Button>}
       />
       {err && <Alert ton="error" titre="Les sessions n'ont pas pu être chargées." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
@@ -116,45 +116,52 @@ export function SessionsListe({ admin }) {
               action={<Button onClick={() => setParams(new URLSearchParams())}>Effacer les filtres</Button>}
             />
           ) : (
-            <table className="sess-table">
-              <caption className="visually-hidden">Sessions ({affichees.length})</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Session</th>
-                  <th scope="col">Formation</th>
-                  <th scope="col">Dates</th>
-                  <th scope="col">Lieu</th>
-                  <th scope="col">Statut</th>
-                  <th scope="col" className="sess-num">Inscrits</th>
-                  <th scope="col"><span className="visually-hidden">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {affichees.map((s) => {
-                  const st = STATUTS_SESSION[s.statut] || { libelle: s.statut, ton: "neutral" };
-                  return (
-                    <tr key={s.id}>
-                      <td data-label="Session" className="sess-table__principal">
-                        <Link to={`/sessions/${s.id}`}>{titreSession(s)}</Link>
-                        {s.horaire && <span className="sess-secondaire">{s.horaire}</span>}
-                      </td>
-                      <td data-label="Formation">{s.formation}</td>
-                      <td data-label="Dates">{formaterPeriode(s.date_debut, s.date_fin)}</td>
-                      <td data-label="Lieu">{s.lieu || "—"}</td>
-                      <td data-label="Statut">
-                        {etat === "archivees"
-                          ? <Badge ton="warning">Archivée</Badge>
-                          : <Badge ton={st.ton}>{st.libelle}</Badge>}
-                      </td>
-                      <td data-label="Inscrits" className="sess-num">{s.nb_inscrits}</td>
-                      <td className="sess-table__actions">
-                        <Button compact to={`/sessions/${s.id}`} aria-label={`Ouvrir la session ${titreSession(s)}`}>Ouvrir</Button>
-                      </td>
+            // Regroupées par formation (ordre de la liste conservé) : on voit
+            // d'un coup d'œil chaque formation et ses sessions.
+            grouperParFormation(affichees).map((g) => (
+              <section key={g.formation} className="sess-groupe" aria-labelledby={`formation-${g.cle}`}>
+                <h2 id={`formation-${g.cle}`} className="sess-groupe__titre">
+                  {g.formation} <span className="sess-groupe__nombre">· {g.sessions.length} session{g.sessions.length > 1 ? "s" : ""}</span>
+                </h2>
+                <table className="sess-table">
+                  <caption className="visually-hidden">Sessions de {g.formation} ({g.sessions.length})</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Session</th>
+                      <th scope="col">Dates</th>
+                      <th scope="col">Lieu</th>
+                      <th scope="col">Statut</th>
+                      <th scope="col" className="sess-num">Inscrits</th>
+                      <th scope="col"><span className="visually-hidden">Actions</span></th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {g.sessions.map((s) => {
+                      const st = STATUTS_SESSION[s.statut] || { libelle: s.statut, ton: "neutral" };
+                      return (
+                        <tr key={s.id}>
+                          <td data-label="Session" className="sess-table__principal">
+                            <Link to={`/sessions/${s.id}`}>{titreSession(s)}</Link>
+                            {s.horaire && <span className="sess-secondaire">{s.horaire}</span>}
+                          </td>
+                          <td data-label="Dates">{formaterPeriode(s.date_debut, s.date_fin)}</td>
+                          <td data-label="Lieu">{s.lieu || "—"}</td>
+                          <td data-label="Statut">
+                            {etat === "archivees"
+                              ? <Badge ton="warning">Archivée</Badge>
+                              : <Badge ton={st.ton}>{st.libelle}</Badge>}
+                          </td>
+                          <td data-label="Inscrits" className="sess-num">{s.nb_inscrits}</td>
+                          <td className="sess-table__actions">
+                            <Button compact to={`/sessions/${s.id}`} aria-label={`Ouvrir la session ${titreSession(s)}`}>Ouvrir</Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+            ))
           )}
         </section>
       )}
@@ -168,6 +175,17 @@ export function SessionsListe({ admin }) {
       )}
     </>
   );
+}
+
+// Sessions groupées par formation, dans l'ordre de la liste (PUR).
+export function grouperParFormation(sessions) {
+  const groupes = new Map();
+  for (const s of sessions) {
+    const cle = s.formation || "Sans formation";
+    if (!groupes.has(cle)) groupes.set(cle, { formation: cle, cle: groupes.size + 1, sessions: [] });
+    groupes.get(cle).sessions.push(s);
+  }
+  return [...groupes.values()];
 }
 
 // Panneau « Nouvelle session » : mêmes champs et mêmes contrôles qu'avant.

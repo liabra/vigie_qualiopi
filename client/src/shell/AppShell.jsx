@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar.jsx";
+import { SousNavigation } from "./SousNavigation.jsx";
 import { Alert, ConfirmDialog } from "../ui/index.js";
 import { dialogueMetierEnCours } from "../ui/dialogue.js";
 import { AideDrawer, Tutoriel, marquerTutorielTermine, tutorielTermine } from "../aide/index.js";
@@ -84,6 +85,7 @@ export function AppShell({ user, onLogout, flash, onFlashVu }) {
       <main id="contenu" ref={principal} className="shell-principal" tabIndex={-1}>
         <div className="shell-contenu">
           {flash && <Alert ton={flash.type === "erreur" ? "error" : "success"}>{flash.texte}</Alert>}
+          <SousNavigation role={user.role} />
           <Outlet />
         </div>
       </main>

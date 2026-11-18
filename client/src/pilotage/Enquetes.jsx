@@ -18,7 +18,7 @@ export function EnquetesPage() {
   const nouvelle = <Button variante="primary" onClick={() => setCreation(true)}>+ Nouvelle enquête</Button>;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Qualité" }, { libelle: "Enquêtes en ligne" }]} titre="Enquêtes en ligne"
+      <PageHeader fil={[{ libelle: "Formations" }, { libelle: "Enquêtes en ligne" }]} titre="Enquêtes en ligne"
         description="Satisfaction à chaud, suivi à froid, avis des partenaires : un lien (ou QR code) à transmettre, des réponses anonymes, une synthèse calculée et l'analyse tracée." actions={nouvelle} />
       {erreur && <Alert ton="error" titre="Chargement impossible.">{erreur}</Alert>}
       {!donnees && !erreur && <LoadingState texte="Chargement…" />}
@@ -113,7 +113,7 @@ export function EnquetePage() {
   const patch = (corps, texte) => agir(() => api(`/api/enquetes/${e.id}`, { method: "PATCH", body: JSON.stringify(corps) }), texte);
   return (
     <>
-      <PageHeader fil={[{ libelle: "Qualité" }, { libelle: "Enquêtes en ligne", to: "/enquetes" }, { libelle: e.titre }]} titre={e.titre}
+      <PageHeader fil={[{ libelle: "Formations" }, { libelle: "Enquêtes en ligne", to: "/enquetes" }, { libelle: e.titre }]} titre={e.titre}
         description={`${d.types[e.type]} — ${e.formation || ""} — session ${e.session_reference || ""} du ${formaterDate(e.date_debut)} au ${formaterDate(e.session_fin)}`}
         actions={<>
           {e.reponses > 0 && <a className="ui-btn ui-btn--secondary" href={`/api/enquetes/${e.id}/export`} download>Exporter (CSV)</a>}

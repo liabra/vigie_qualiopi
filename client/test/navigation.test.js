@@ -1,45 +1,66 @@
-// Navigation : ce qu'un rôle voit, le fil d'Ariane, et le chemin de retour
-// après connexion (jamais une URL externe ni l'API).
+// Navigation : les 5 espaces et leurs rubriques par rôle, l'espace courant,
+// le fil d'Ariane, et le chemin de retour après connexion (jamais une URL
+// externe ni l'API).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cheminRetourValide, contexteDe, navigationPour } from "../src/navigation.js";
+import { ESPACES, cheminRetourValide, contexteDe, espacesPour, positionDe } from "../src/navigation.js";
 
-const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) => e.to));
+const espaces = (role) => espacesPour(role).map((e) => e.libelle);
+const rubriques = (role, id) => espacesPour(role).find((e) => e.id === id)?.pages.map((p) => p.to);
 
-test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
-  assert.deepEqual(liens("admin"), [
-    "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/candidatures", "/acces-portails", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions", "/enquetes", "/preuves-pdf",
-    "/taches", "/echeancier", "/risques", "/preparation-audit", "/developpement-intervenants", "/partenaires", "/ressources",
-    "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/comptes", "/parametres/rgpd", "/parametres/google", "/parametres/inventaire-drive",
-  ]);
-  assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));
+test("admin : 5 espaces, dans l'ordre", () => {
+  assert.deepEqual(espaces("admin"), ["Aujourd'hui", "Formations", "Qualiopi", "Équipe", "Réglages"]);
 });
 
-test("contributeur : aucune entrée d'administration, aucun groupe Paramètres", () => {
-  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/preuves-pdf", "/taches", "/echeancier", "/risques", "/partenaires", "/ressources", "/variables-documentaires"]);
-  assert.ok(!navigationPour("contributeur").some((g) => g.titre === "Paramètres"));
+test("contributeur : seulement « Aujourd'hui » et « Formations », sans rubrique d'administration", () => {
+  assert.deepEqual(espaces("contributeur"), ["Aujourd'hui", "Formations"]);
+  assert.deepEqual(rubriques("contributeur", "formations"), ["/sessions", "/jeunes"]);
+  assert.deepEqual(rubriques("contributeur", "aujourdhui"), ["/aujourdhui", "/taches", "/echeancier"]);
 });
 
-test("rôle inconnu : traité comme non administrateur", () => {
-  assert.ok(!liens(undefined).includes("/modeles"));
+test("rôle inconnu : traité comme un contributeur (refus par défaut)", () => {
+  assert.deepEqual(espaces(undefined), ["Aujourd'hui", "Formations"]);
+  assert.deepEqual(espaces("pirate"), ["Aujourd'hui", "Formations"]);
 });
 
-test("fil d'Ariane : préfixe le plus long, sous-pages de session comprises", () => {
-  assert.deepEqual(contexteDe("/sessions/12/assiduite"), { groupe: "Formation", page: "Sessions", to: "/sessions" });
-  assert.deepEqual(contexteDe("/parametres/google"), { groupe: "Paramètres", page: "Google Drive", to: "/parametres/google" });
-  assert.deepEqual(contexteDe("/variables-documentaires"), { groupe: "Documents", page: "Variables documentaires", to: "/variables-documentaires" });
+test("auditeur : seulement les dossiers d'audit", () => {
+  assert.deepEqual(espacesPour("auditeur").flatMap((e) => e.pages.map((p) => p.to)), ["/portail-audit"]);
+});
+
+test("aucune ancienne page n'est perdue : chaque adresse d'avant est rangée dans un espace", () => {
+  const toutes = ESPACES.flatMap((e) => e.pages.map((p) => p.to));
+  for (const ancienne of ["/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/candidatures", "/acces-portails",
+    "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions",
+    "/enquetes", "/preuves-pdf", "/taches", "/echeancier", "/risques", "/preparation-audit", "/developpement-intervenants", "/partenaires", "/ressources",
+    "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/comptes",
+    "/parametres/rgpd", "/parametres/google", "/parametres/inventaire-drive"]) {
+    assert.ok(toutes.includes(ancienne), ancienne);
+  }
+  assert.equal(new Set(toutes).size, toutes.length, "une adresse n'appartient qu'à un espace");
+});
+
+test("espace courant : préfixe le plus long, sous-pages comprises, selon le rôle", () => {
+  assert.equal(positionDe("/sessions/12/assiduite", "admin").espace.id, "formations");
+  assert.equal(positionDe("/sessions/12/assiduite", "admin").page.to, "/sessions");
+  assert.equal(positionDe("/actions-qualite/4", "admin").espace.id, "qualiopi");
+  assert.equal(positionDe("/indicateurs/non-applicables", "admin").page.to, "/indicateurs");
+  assert.equal(positionDe("/parametres/google", "admin").espace.id, "reglages");
+  assert.equal(positionDe("/actions-qualite/4", "contributeur"), null, "hors du menu du contributeur");
+  assert.equal(positionDe("/sessionsX", "admin"), null, "pas de faux préfixe");
+});
+
+test("fil d'Ariane : [espace, rubrique] ; l'espace n'est pas répété quand il porte le même nom", () => {
+  assert.deepEqual(contexteDe("/sessions/12/assiduite"), { groupe: "Formations", page: "Sessions", to: "/sessions" });
+  assert.deepEqual(contexteDe("/parametres/google"), { groupe: "Réglages", page: "Google Drive", to: "/parametres/google" });
+  assert.deepEqual(contexteDe("/preuves"), { groupe: "Qualiopi", page: "Toutes les preuves", to: "/preuves" });
+  assert.deepEqual(contexteDe("/reglages"), { groupe: null, page: "Réglages", to: "/reglages" });
   assert.equal(contexteDe("/nimporte-quoi"), null);
-  assert.equal(contexteDe("/sessionsX"), null, "pas de faux préfixe");
 });
 
 test("retour après connexion : seulement un chemin interne à l'application", () => {
-  for (const ok of ["/sessions/1", "/veille?statut=a_analyser", "/parametres/google"]) assert.equal(cheminRetourValide(ok), true, ok);
+  for (const ok of ["/sessions/1", "/veille?statut=a_analyser", "/parametres/google", "/aujourdhui"]) assert.equal(cheminRetourValide(ok), true, ok);
   for (const ko of [null, "", "/", "/?erreur=x", "//exemple.com", "https://exemple.com", "/\\exemple.com",
     "/api/me", "/auth/google/login", "/api", "sessions/1"]) {
     assert.equal(cheminRetourValide(ko), false, String(ko));
   }
-});
-
-test("auditeur : seulement les dossiers d'audit", () => {
-  assert.deepEqual(liens("auditeur"), ["/portail-audit"]);
 });

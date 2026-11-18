@@ -86,7 +86,7 @@ export function SignalementFiche({ signalementId }) {
     } finally { setEnCours(false); }
   }
 
-  const fil = (dernier) => [{ libelle: "Qualité" }, { libelle: "Signalements", to: "/signalements-qualite" }, { libelle: dernier }];
+  const fil = (dernier) => [{ libelle: "Qualiopi" }, { libelle: "Signalements", to: "/signalements-qualite" }, { libelle: dernier }];
   if (introuvable) {
     return (
       <>

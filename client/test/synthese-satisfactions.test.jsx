@@ -4,7 +4,7 @@
 import "./dom.mjs";
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { attendre, bouton, cliquer, demonter, dialogue, liensNavigation, monter, saisir, texte } from "./outils.jsx";
+import { attendre, bouton, cliquer, demonter, dialogue, liensNavigation, liensRubriques, monter, saisir, texte } from "./outils.jsx";
 import { aujourdhuiISO } from "../src/qualite/format.js";
 import { libelleProvenanceSynthese, moyenneSurEchelle, requeteSynthese } from "../src/qualite/satisfaction-format.js";
 
@@ -51,14 +51,14 @@ test("pur : requête de filtres, moyenne liée à son échelle, provenance lisib
   assert.equal(libelleProvenanceSynthese({ du: "2026-01-01", au: "2026-06-30", type: null }), "Synthèse du 01/01/2026 au 30/06/2026 — tous publics");
 });
 
-test("navigation : entrée admin « Synthèse des satisfactions » ; contributeur sans entrée, accès direct bloqué sans appel", async () => {
-  await monter("/accueil", "admin");
-  await attendre(() => liensNavigation().length > 0);
-  assert.ok(liensNavigation().includes("Synthèse des satisfactions"));
+test("navigation : rubrique admin « Satisfaction » dans Formations ; contributeur sans rubrique, accès direct bloqué sans appel", async () => {
+  await monter("/sessions", "admin");
+  await attendre(() => liensRubriques().length > 0);
+  assert.ok(liensRubriques().includes("Satisfaction"));
   await demonter();
-  await monter("/accueil", "contributeur");
-  await attendre(() => liensNavigation().length > 0);
-  assert.ok(!liensNavigation().includes("Synthèse des satisfactions"));
+  await monter("/sessions", "contributeur");
+  await attendre(() => liensRubriques().length > 0);
+  assert.ok(!liensRubriques().includes("Satisfaction"));
   await demonter();
   const appels = await monter("/synthese-satisfactions", "contributeur", { [URL]: SYNTHESE() });
   await attendre(() => texte().includes("Cette page est réservée aux administrateurs."));

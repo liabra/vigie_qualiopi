@@ -51,7 +51,7 @@ export function VeilleListe({ admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Veille" }]}
+        fil={[{ libelle: "Qualiopi" }, { libelle: "Veille" }]}
         titre="Veille"
         description="Suivi réglementaire, pédagogique et qualité"
         actions={nouvelle}

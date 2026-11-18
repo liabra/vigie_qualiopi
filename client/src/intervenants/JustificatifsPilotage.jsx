@@ -21,7 +21,7 @@ export function JustificatifsPilotage() {
 
   return (
     <>
-      <PageHeader fil={[{ libelle: "Formation" }, { libelle: "Justificatifs des intervenants" }]} titre="Justificatifs des intervenants"
+      <PageHeader fil={[{ libelle: "Équipe" }, { libelle: "Justificatifs des intervenants" }]} titre="Justificatifs des intervenants"
         description="Pièces attendues manquantes et documents à renouveler, pour les intervenants actifs." />
       {err && <Alert ton="error" titre="La synthèse n'a pas pu être chargée." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
       {!d && !err && <LoadingState texte="Chargement…" />}

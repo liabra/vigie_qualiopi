@@ -26,7 +26,7 @@ export function ComptesPage({ moi }) {
   const nouveau = <Button variante="primary" onClick={() => { setSucces(null); setPanneau({}); }}>+ Ajouter un compte</Button>;
   return (
     <>
-      <PageHeader fil={[{ libelle: "Paramètres" }, { libelle: "Comptes et accès" }]} titre="Comptes et accès"
+      <PageHeader fil={[{ libelle: "Réglages", to: "/reglages" }, { libelle: "Comptes et accès" }]} titre="Comptes et accès"
         description="La connexion se fait avec un compte Google : enregistrez ici l'adresse autorisée et son rôle." actions={nouveau} />
       {succes && <Alert ton="success">{succes}</Alert>}
       {erreur && <Alert ton="error" titre="Chargement impossible.">{erreur}</Alert>}

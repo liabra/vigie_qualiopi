@@ -71,7 +71,7 @@ export function ActionFiche({ actionId, admin }) {
   if (introuvable) {
     return (
       <>
-        <PageHeader fil={[{ libelle: "Qualité" }, { libelle: "Actions qualité", to: "/actions-qualite" }, { libelle: "Action introuvable" }]} titre="Action introuvable" />
+        <PageHeader fil={[{ libelle: "Qualiopi" }, { libelle: "Actions qualité", to: "/actions-qualite" }, { libelle: "Action introuvable" }]} titre="Action introuvable" />
         <EmptyState titre="Cette action n'existe pas ou n'existe plus." action={<Button variante="primary" to="/actions-qualite">Voir les actions qualité</Button>} />
       </>
     );
@@ -90,7 +90,7 @@ export function ActionFiche({ actionId, admin }) {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: "Qualité" }, { libelle: "Actions qualité", to: "/actions-qualite" }, { libelle: action.titre }]}
+        fil={[{ libelle: "Qualiopi" }, { libelle: "Actions qualité", to: "/actions-qualite" }, { libelle: action.titre }]}
         titre={action.titre}
         actions={modifiable && <Button onClick={() => setDialogue("modifier")}>Modifier</Button>}
       />

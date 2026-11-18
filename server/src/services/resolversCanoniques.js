@@ -63,7 +63,7 @@ const RESOLVEURS_CANONIQUES = {
   formation_public_vise: (ctx) => texte(ctx.version?.public_vise),
   formation_prerequis: (ctx) => texte(ctx.version?.prerequis),
   formation_objectif_general: (ctx) => texte(ctx.version?.objectifs),
-  formation_modalite: (ctx) => texte(ctx.version?.modalite),
+  formation_modalite: (ctx) => enumeration("formation_modalite", ctx.version?.modalite), // libellé lisible (Présentiel…)
   formation_accessibilite: (ctx) => texte(ctx.version?.accessibilite_handicap),
   // Contenu documentaire de la version de formation (migration 042) : objectifs opérationnels = une ligne
   // par objectif (chaque ligne devient un paragraphe dans le document), méthodes, modalités d'évaluation.

@@ -86,7 +86,7 @@ test("les 66 variables supportées sont résolues depuis un contexte complet", (
     besoin_prerequis_verifies: "Partiellement", besoin_conclusion: "Parcours adapté",
     formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
     formation_duree_heures: 400, formation_public_vise: "Demandeurs d'emploi", formation_prerequis: "Aucun",
-    formation_objectif_general: "Accompagner vers l'emploi", formation_modalite: "presentiel",
+    formation_objectif_general: "Accompagner vers l'emploi", formation_modalite: "Présentiel",
     formation_accessibilite: "Locaux accessibles",
     session_id: 1, session_date_debut: "05/01/2026", session_date_fin: "05/03/2026",
     session_horaires: "8h30–12h00", session_lieu: "Cayenne", session_duree_heures: 380, session_statut_code: "en_cours",

@@ -1570,6 +1570,9 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   if (req.body?.generation_multiple === true && modele.portee === "stagiaire") {
     return res.status(400).json({ error: "Un modèle de portée « stagiaire » ne peut pas autoriser plusieurs documents par session." });
   }
+  if (req.body?.generation_multiple === true && modele.mode_generation !== "manuel") { // fix : jamais de libellé inventé en automatique
+    return res.status(400).json({ error: "Plusieurs documents par session : réservé à la génération manuelle (un libellé est demandé à chaque génération)." });
+  }
 
   const cx = await getPool().connect();
   try {

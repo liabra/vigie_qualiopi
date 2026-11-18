@@ -194,16 +194,19 @@ function GenerationsAutomatiques({ sessionId, admin, archivee, nbDocuments, rech
 // désactivé pendant l'appel (anti double soumission, en plus de la garde
 // serveur). Le résultat détaillé s'affiche dans le panneau.
 function DrawerGeneration({ ouvert, session, groupes, modeles, onFermer, onGenere }) {
-  const [v, setV] = useState({ modele_id: "", groupe_id: "" });
+  const [v, setV] = useState({ modele_id: "", groupe_id: "", libelle: "" });
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [resultat, setResultat] = useState(null);
   const [remplacement, setRemplacement] = useState(null); // message 409
   const utiles = (modeles || []).filter((m) => ["session", "groupe", "stagiaire"].includes(m.portee));
-  useEffect(() => { if (ouvert) { setV({ modele_id: "", groupe_id: "" }); setErreur(null); setResultat(null); setRemplacement(null); } }, [ouvert]);
+  const choisi = utiles.find((m) => String(m.id) === String(v.modele_id));
+  const multiple = choisi?.generation_multiple === true;
+  useEffect(() => { if (ouvert) { setV({ modele_id: "", groupe_id: "", libelle: "" }); setErreur(null); setResultat(null); setRemplacement(null); } }, [ouvert]);
 
   async function generer(remplacer = false) {
     if (!v.modele_id) return setErreur("Choisissez un modèle.");
+    if (multiple && !v.libelle.trim()) return setErreur("Indiquez un libellé pour distinguer ce document (le prescripteur concerné, par exemple).");
     setEnCours(true); setErreur(null); setResultat(null); setRemplacement(null);
     try {
       const r = await api("/api/generations", {
@@ -211,6 +214,7 @@ function DrawerGeneration({ ouvert, session, groupes, modeles, onFermer, onGener
         body: JSON.stringify({
           modele_id: Number(v.modele_id), session_id: session.id,
           groupe_id: v.groupe_id ? Number(v.groupe_id) : null, remplacer,
+          ...(multiple ? { libelle: v.libelle.trim() } : {}),
         }),
       });
       setResultat(r);
@@ -244,6 +248,11 @@ function DrawerGeneration({ ouvert, session, groupes, modeles, onFermer, onGener
                 {utiles.map((m) => <option key={m.id} value={m.id}>{m.nom} — {PORTEES[m.portee] || m.portee}</option>)}
               </select>
             </Field>
+            {multiple && (
+              <Field label="Libellé du document" aide="Distingue ce document des autres générés pour la même session (200 caractères maximum). Un même libellé remplace le document précédent, après confirmation.">
+                <input type="text" maxLength={200} value={v.libelle} onChange={(e) => setV({ ...v, libelle: e.target.value })} disabled={enCours} />
+              </Field>
+            )}
             <Field label="Groupe visé" facultatif>
               <select value={v.groupe_id} onChange={(e) => setV({ ...v, groupe_id: e.target.value })} disabled={enCours}>
                 <option value="">Toute la session</option>

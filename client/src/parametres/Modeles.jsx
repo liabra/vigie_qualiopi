@@ -97,7 +97,7 @@ const TYPES_FICHIER = {
 const VIDE = {
   nom: "", lien: "", portee: "stagiaire", description: "", indicateur_ids: [],
   type_document: "", mode_generation: "manuel", condition_generation: "", declencheur: "", condition_code: "",
-  signataire_mode: "aucun", signataire_id: "",
+  signataire_mode: "aucun", signataire_id: "", generation_multiple: false,
 };
 // Signataire du document : jamais écrit en dur dans le modèle (Paramètres → Organisme et signataires).
 export const MODES_SIGNATAIRE = { aucun: "Aucun signataire", fixe: "Signataire fixe", formateur: "Formateur concerné" };
@@ -398,6 +398,7 @@ function valeursDe(modele) {
     condition_generation: modele.condition_generation || "",
     declencheur: modele.declencheur || "",
     condition_code: modele.condition_code || "",
+    generation_multiple: modele.generation_multiple === true,
     signataire_mode: modele.signataire_mode || "aucun",
     signataire_id: modele.signataire_id ? String(modele.signataire_id) : "",
   };
@@ -459,6 +460,8 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
       signataire_id: valeurs.signataire_mode === "fixe" ? Number(valeurs.signataire_id) : null,
       indicateurs: numeros,
     };
+    // Plusieurs documents par session : choix à la création seulement, jamais pour un usage « par stagiaire ».
+    if (!modele && valeurs.generation_multiple && valeurs.portee !== "stagiaire" && valeurs.mode_generation === "manuel") corps.generation_multiple = true;
     if (!modele) corps.lien = valeurs.lien;
     else if (valeurs.lien.trim() && valeurs.lien.trim() !== (modele.drive_url || "").trim()) corps.lien = valeurs.lien;
 
@@ -507,6 +510,12 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
               {Object.entries(PORTEES).map(([v, p]) => <option key={v} value={v}>{p.long}</option>)}
             </select>
           </Field>
+          {!modele && valeurs.portee !== "stagiaire" && valeurs.mode_generation === "manuel" && (
+            <Field label="Plusieurs documents par session" facultatif
+              aide="Pour un compte rendu produit plusieurs fois (un par prescripteur, par exemple) : chaque génération porte alors un libellé. Choix définitif, fait à la création.">
+              <label><input type="checkbox" checked={valeurs.generation_multiple} onChange={(e) => setValeurs({ ...valeurs, generation_multiple: e.target.checked })} /> Autoriser plusieurs documents indépendants pour une même session</label>
+            </Field>
+          )}
           <Field label="Mode de génération" aide="Manuelle : lancée depuis la session. Automatique : produite au moment choisi. Conditionnelle : produite au moment choisi, pour les seuls stagiaires concernés.">
             <select value={valeurs.mode_generation} onChange={champ("mode_generation")}>
               {Object.entries(MODES_GENERATION).map(([v, l]) => <option key={v} value={v}>{l}</option>)}

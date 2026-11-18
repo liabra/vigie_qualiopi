@@ -8,7 +8,8 @@
 // ─────────────────────────────────────────────────────────────
 import { Router } from "express";
 import { query } from "../db.js";
-import { requireAuth } from "../session.js";
+import { requireAuth, requireRedacteur } from "../session.js";
+import { elementsAujourdhui } from "../services/aujourdhui.js";
 import { dateMetierAujourdhui } from "../services/dates.js";
 import { estAdmin } from "../services/confidentialite.js";
 import { alertesJustificatifs } from "../services/justificatifs.js";
@@ -95,6 +96,12 @@ router.get("/pilotage/accueil", requireAuth, wrap(async (req, res) => {
   }
   donnees.priorites = prioritesPilotage(donnees, admin);
   res.json(donnees);
+}));
+
+// « Aujourd'hui » : la liste unique de ce qui est à faire (périmètre du rôle
+// appliqué par le SERVICE, jamais par l'écran).
+router.get("/pilotage/aujourdhui", requireRedacteur, wrap(async (req, res) => {
+  res.json(await elementsAujourdhui(req.user, dateMetierAujourdhui()));
 }));
 
 export default router;

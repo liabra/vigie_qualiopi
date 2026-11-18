@@ -218,7 +218,7 @@ test("génération : grille des compétences (X par colonne) et liste des inscri
   const liste = await modele("{{#inscrits_session}}<{{inscrit_nom_complet}}|{{inscrit_statut}}|{{inscrit_prescripteur}}|{{inscrit_heures_absence}}|{{inscrit_taux_absence}}|{{inscrit_dossier_complet}}>{{/inscrits_session}}", { portee: "session" });
   ok(await api("POST", "/api/generations", { modele_id: liste, session_id: F.session }, C()));
   const [doc] = await documents(F.session, liste);
-  assert.match(doc.texte, /<Test Alpha\|Inscrit\|Pôle Emploi\|2 h\|10\|Non>/, "taux d'absence = 2/20");
+  assert.match(doc.texte, /<Test Alpha\|Inscrit\|Pôle Emploi\|2 h\|10 %\|Non>/, "taux d'absence = 2/20");
   assert.match(doc.texte, /<Test Bravo\|Abandon\|[^|]*\|0 h\|\|Non>/, "abandon : taux non calculable, vide");
   assert.equal((doc.texte.match(/</g) || []).length, 4, "les 4 inscrits, abandon compris");
 });

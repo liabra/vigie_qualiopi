@@ -122,3 +122,30 @@ Branches empilées à partir de `origin/main` (8550bdd). Aucune n'est fusionnée
 - Les données de santé (handicap, besoins, adaptations) ne sortent que pour un administrateur, jamais en génération automatique.
 - Retour arrière : restauration de la sauvegarde (les migrations sont additives, sans suppression de données, mais l'index
   d'unicité des documents générés est remplacé par 028).
+
+## Lot 7 — données complémentaires des documents A2C (dictionnaire v1.8, migrations 044 et 045)
+
+Branche `livraison/donnees-documents-2` (issue de `main` à e286c50). Migrations **additives** ; à appliquer au démarrage comme les précédentes.
+
+- **044** : fiche stagiaire (date de naissance, adresse, code postal, ville, profession), entreprise (adresse, SIRET, APE, effectifs,
+  responsable, OPCA), domaines de handicap (donnée de santé, **administrateur seulement**), niveau issu du positionnement
+  (recueil du besoin), coordonnées du prescripteur (adresse, contact, fonction, e-mail, téléphone).
+- **045** : acquisition des compétences par stagiaire (acquis / en cours / pas acquis).
+- **Indicateurs de session** calculés selon le document « Méthodes de calcul » d'A2C (variables `indicateur_*`) : satisfaction
+  (réponses « à chaud », satisfait = 4 ou 5 sur 5), présence (heures suivies / prévues, abandons exclus), objectifs atteints
+  (dernier QCM de chaque stagiaire : validé, ou score ≥ seuil, à défaut 5/10), abandons et leurs catégories, prescripteurs.
+  Sans donnée, l'indicateur reste vide (jamais 0 % inventé). Les catégories d'abandon sont celles de Vigie (personnel,
+  professionnel, financement, réorientation, sans nouvelles, autre), qui diffèrent des cinq colonnes de l'ancien tableur.
+- **Nouveaux blocs** : `{{#competences_stagiaire}}` (grille avec X par colonne) et `{{#inscrits_session}}` (liste des inscrits
+  d'une session, abandons compris) : permettent les tableaux « une ligne par stagiaire », impossibles dans Google Sheets.
+- **Écrans** : Dossier du stagiaire (coordonnées, entreprise, domaines de handicap pour l'administrateur), Accompagnement
+  (niveau de positionnement, nouvelle section « Acquisition des compétences »), Prescripteurs (coordonnées du contact).
+- **Modèles** (hors dépôt, dossier « 5 - Modèles complets ») : 10 documents rendus et vérifiés avec le moteur réel ; les anciens
+  classeurs 09, 12, 23 et 36 sont refaits en documents Word pour utiliser les blocs.
+
+### Mise en service
+1. Fusionner `livraison/donnees-documents-2` (après recette), vérifier au démarrage « Migration appliquée » pour 044 et 045.
+2. Saisir les coordonnées des prescripteurs (Paramètres → Prescripteurs → Modifier).
+3. Importer les modèles Word sur copie dans Google Docs et les enregistrer ; les modèles 09, 12, 13, 18 et 36 sont de portée
+   **session**, les autres de portée **stagiaire** ; 19 (données de santé) n'est générable que par un administrateur.
+4. Contrôle : générer 08, 13 et 23 sur une session de test ; vérifier les taux sur des données connues.

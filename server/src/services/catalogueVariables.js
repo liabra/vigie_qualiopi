@@ -391,7 +391,7 @@ const DEF_BLOCS = [
       local("inscrit_statut", "texte", "Statut du parcours : Inscrit, En cours, Terminé ou Abandon."),
       local("inscrit_prescripteur", "texte", "Prescripteur de l'inscrit."),
       local("inscrit_heures_absence", "nombre", "Heures d'absence de l'inscrit.", { format: "duree_heures" }),
-      local("inscrit_taux_absence", "nombre", "Taux d'absence de l'inscrit en % (vide si non calculable).", { format: "pourcentage" }),
+      local("inscrit_taux_absence", "texte", "Taux d'absence de l'inscrit, affiché avec son signe % (vide si non calculable).", {}),
       local("inscrit_date_abandon", "date", "Date d'abandon, le cas échéant.", { format: "date" }),
       local("inscrit_motif_abandon", "texte", "Motif d'abandon, le cas échéant.", { sensibilite: "personnelle" })] },
 ];

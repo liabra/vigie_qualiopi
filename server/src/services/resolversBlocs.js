@@ -130,7 +130,7 @@ export const CHAMPS_BLOC = {
     inscrit_statut: (l) => libelle({ inscrit: "Inscrit", en_cours: "En cours", termine: "Terminé", abandon: "Abandon" }, l.statut),
     inscrit_prescripteur: (l) => texte(l.prescripteur_nom),
     inscrit_heures_absence: (l) => duree(l.heures_absence),
-    inscrit_taux_absence: (l) => (l.taux_absence === null || l.taux_absence === undefined ? absent() : resolu(l.taux_absence)),
+    inscrit_taux_absence: (l) => (l.taux_absence === null || l.taux_absence === undefined ? absent() : resolu(`${l.taux_absence} %`)),
     inscrit_date_abandon: (l) => date(l.date_abandon),
     inscrit_motif_abandon: (l) => texte(l.motif_abandon),
   },

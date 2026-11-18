@@ -64,4 +64,5 @@ export const SIGNATURES = {
   "042_formation_contenu_documentaire.sql": colonne("formation_versions", "objectifs_operationnels"),
   "043_condition_assiduite.sql": `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'modeles_documents_condition_code_check' AND pg_get_constraintdef(oid) LIKE '%assiduite_atteinte%') AS ok`,
   "044_fiche_stagiaire_complete.sql": colonne("stagiaires", "date_naissance"),
+  "045_competences_stagiaires.sql": table("competences_stagiaires"),
 };

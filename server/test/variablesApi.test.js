@@ -66,7 +66,7 @@ test("admin et contributeur : catalogue versionné complet en lecture", async ()
     assert.equal(r.statut, 200);
     assert.equal(r.corps.version, "1.8");
     assert.equal(r.corps.variables.length, VARIABLES.length);
-    assert.equal(r.corps.blocs.length, 11);
+    assert.equal(r.corps.blocs.length, 13);
     assert.equal(r.corps.alias.prenom_stagiaire, "stagiaire_prenom");
     assert.ok(r.corps.historiques.lieu);
     assert.ok(r.corps.variables.every((v) => !Object.hasOwn(v, "obligatoire")));

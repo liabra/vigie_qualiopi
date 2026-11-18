@@ -38,7 +38,7 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.6", changement: "Ajout de 7 variables, créées avec les documents qui les utilisent : analyse du besoin du stagiaire (BES-01 à BES-05 : besoin_date_recueil, besoin_attentes, besoin_objectifs_personnels, besoin_prerequis_verifies, besoin_conclusion), STA-18 stagiaire_situation_handicap (accès restreint) et EVA-13 evaluation_seuil_reussite (ajoutée au bloc evaluations). Nouveau domaine « besoin ». Les noms et identifiants de la 1.5 sont inchangés." },
   { version: "1.7", changement: "Ajout du bloc {{#questionnaire_formation}} (BLK-11) : réponses du stagiaire au questionnaire de sa formation, une ligne par question, avec la question telle qu'elle était posée (question_libelle, question_reponse). Aucune variable ajoutée." },
   { version: "1.6", changement: "Résolveurs ajoutés pour des variables déjà au catalogue : organisme_* et signataire_* (paramètres de l'organisme et signataires), formation_objectifs_operationnels, formation_methodes_pedagogiques, formation_modalites_evaluation (fiche formation), financeur_nom et stagiaire_besoins_specifiques (accès restreint). Blocs : objectifs_formation et adaptations (accès restreint) désormais supportés ; evaluations complété (moment, résultat de validation, commentaire, seuil de réussite)." },
-  { version: "1.8", changement: "Données des documents A2C : STA-19 à STA-28 (profession, niveau issu du positionnement, domaines de handicap [restreinte], entreprise et son responsable/OPCA), PAR-08 (adresse du prescripteur), IND-05 à IND-24 (indicateurs de session : répondants et répartition de la satisfaction, absence, réussites/échecs, abandons et leurs catégories, prescripteurs). STA-06 à STA-10, PAR-02/04/05 et IND-01 à IND-04 deviennent calculables." },
+  { version: "1.8", changement: "Blocs BLK-12 {{#competences_stagiaire}} (grille des compétences) et BLK-13 {{#inscrits_session}} (liste des inscrits d'une session). Données des documents A2C : STA-19 à STA-28 (profession, niveau issu du positionnement, domaines de handicap [restreinte], entreprise et son responsable/OPCA), PAR-08 (adresse du prescripteur), IND-05 à IND-24 (indicateurs de session : répondants et répartition de la satisfaction, absence, réussites/échecs, abandons et leurs catégories, prescripteurs). STA-06 à STA-10, PAR-02/04/05 et IND-01 à IND-04 deviennent calculables." },
 ]);
 
 export const TYPES = Object.freeze(["texte", "date", "nombre", "booleen", "liste", "bloc"]);
@@ -370,6 +370,30 @@ const DEF_BLOCS = [
     documents: "Fiche d'analyse des besoins, bilan",
     champs: [local("question_libelle", "texte", "Question posée, telle qu'elle l'était au moment de la réponse."),
       local("question_reponse", "texte", "Réponse du stagiaire à la question.", { sensibilite: "personnelle" })] },
+  // v1.8 : grille d'acquisition des compétences du stagiaire (une ligne par compétence de la formation / des séances).
+  { id: "BLK-12", nom: "competences_stagiaire", libelle: "Compétences du stagiaire", source: "inscription -> competences_stagiaires",
+    documents: "Indicateur de suivi et de résultat (grille des compétences)",
+    champs: [local("competence_libelle", "texte", "Compétence évaluée."),
+      local("competence_statut", "texte", "Statut : Acquis, En cours d'acquisition, Pas acquis ou Non évalué.", { sensibilite: "personnelle" }),
+      local("competence_acquis", "texte", "« X » si la compétence est acquise, sinon vide (colonne d'une grille).", { sensibilite: "personnelle" }),
+      local("competence_en_cours", "texte", "« X » si la compétence est en cours d'acquisition, sinon vide.", { sensibilite: "personnelle" }),
+      local("competence_non_acquis", "texte", "« X » si la compétence n'est pas acquise, sinon vide.", { sensibilite: "personnelle" })] },
+  // v1.8 : liste des inscrits de la session (documents de suivi par session : suivi des inscrits, transmission des documents).
+  { id: "BLK-13", nom: "inscrits_session", libelle: "Inscrits de la session", source: "session -> inscriptions",
+    documents: "Suivi des inscrits et des absences, tableau de transmission des documents",
+    champs: [local("inscrit_nom", "texte", "Nom de l'inscrit.", { sensibilite: "personnelle" }),
+      local("inscrit_prenom", "texte", "Prénom de l'inscrit.", { sensibilite: "personnelle" }),
+      local("inscrit_nom_complet", "texte", "Nom et prénom de l'inscrit.", { sensibilite: "personnelle" }),
+      local("inscrit_telephone", "texte", "Téléphone de l'inscrit.", { sensibilite: "personnelle" }),
+      local("inscrit_email", "texte", "E-mail de l'inscrit.", { sensibilite: "personnelle" }),
+      local("inscrit_date_inscription", "date", "Date d'inscription.", { format: "date" }),
+      local("inscrit_dossier_complet", "texte", "Dossier complet : Oui ou Non."),
+      local("inscrit_statut", "texte", "Statut du parcours : Inscrit, En cours, Terminé ou Abandon."),
+      local("inscrit_prescripteur", "texte", "Prescripteur de l'inscrit."),
+      local("inscrit_heures_absence", "nombre", "Heures d'absence de l'inscrit.", { format: "duree_heures" }),
+      local("inscrit_taux_absence", "nombre", "Taux d'absence de l'inscrit en % (vide si non calculable).", { format: "pourcentage" }),
+      local("inscrit_date_abandon", "date", "Date d'abandon, le cas échéant.", { format: "date" }),
+      local("inscrit_motif_abandon", "texte", "Motif d'abandon, le cas échéant.", { sensibilite: "personnelle" })] },
 ];
 
 export const BLOCS = Object.freeze(DEF_BLOCS.map((b) => figer({

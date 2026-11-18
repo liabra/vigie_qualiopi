@@ -5,6 +5,7 @@
 //  Module PUR : aucun appel réseau ni base.
 // ─────────────────────────────────────────────────────────────
 import { formaterDate, formaterDuree } from "./formatageDocuments.js";
+import { LIBELLES_STATUT_COMPETENCE } from "./competencesStagiaire.js";
 
 const resolu = (valeur) => ({ statut: "resolu", valeur });
 const absent = () => ({ statut: "absent", valeur: null });
@@ -107,6 +108,31 @@ export const CHAMPS_BLOC = {
     suivi_difficultes: (l) => texte(l.difficultes),
     suivi_impressions: (l) => texte(l.impressions),
     suivi_observations: (l) => texte(l.observations),
+  },
+
+  // competences_stagiaire : table competences_stagiaires ; une compétence non saisie reste « Non évalué » (jamais déduite).
+  competences_stagiaire: {
+    competence_libelle: (l) => texte(l.competence),
+    competence_statut: (l) => resolu(LIBELLES_STATUT_COMPETENCE[l.statut] || "Non évalué"),
+    competence_acquis: (l) => resolu(l.statut === "acquis" ? "X" : ""),
+    competence_en_cours: (l) => resolu(l.statut === "en_cours" ? "X" : ""),
+    competence_non_acquis: (l) => resolu(l.statut === "non_acquis" ? "X" : ""),
+  },
+  // inscrits_session : une ligne par inscription de la session (abandons compris : le statut le dit).
+  inscrits_session: {
+    inscrit_nom: (l) => texte(l.nom),
+    inscrit_prenom: (l) => texte(l.prenom),
+    inscrit_nom_complet: (l) => (l.prenom || l.nom ? resolu(`${l.prenom || ""} ${l.nom || ""}`.trim()) : absent()),
+    inscrit_telephone: (l) => texte(l.telephone),
+    inscrit_email: (l) => texte(l.email),
+    inscrit_date_inscription: (l) => date(l.date_inscription),
+    inscrit_dossier_complet: (l) => resolu(l.dossier_complet === true ? "Oui" : "Non"),
+    inscrit_statut: (l) => libelle({ inscrit: "Inscrit", en_cours: "En cours", termine: "Terminé", abandon: "Abandon" }, l.statut),
+    inscrit_prescripteur: (l) => texte(l.prescripteur_nom),
+    inscrit_heures_absence: (l) => duree(l.heures_absence),
+    inscrit_taux_absence: (l) => (l.taux_absence === null || l.taux_absence === undefined ? absent() : resolu(l.taux_absence)),
+    inscrit_date_abandon: (l) => date(l.date_abandon),
+    inscrit_motif_abandon: (l) => texte(l.motif_abandon),
   },
 };
 

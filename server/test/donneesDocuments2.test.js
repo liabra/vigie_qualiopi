@@ -190,3 +190,35 @@ test("génération : fiche, entreprise, prescripteur et indicateurs de session i
   const h = (await documents(F.session, sensible)).find((d) => d.stagiaire_id === a.stagiaire_id).texte;
   assert.equal(h, "HANDICAP Moteur, Visuel");
 });
+
+test("compétences : liste (formation puis séances), statuts saisis, refus des compétences inconnues, effacement", async () => {
+  const a = F.inscrits.Alpha.id;
+  await pool.query("UPDATE formation_versions SET competences = ARRAY['AT01 allumer un PC', 'AT02 ouvrir un logiciel'] WHERE formation_id = $1", [F.formation]);
+  await pool.query("INSERT INTO seances (session_id, date_seance, heure_debut, heure_fin, competences) VALUES ($1, '2026-12-02', '09:00', '12:00', ARRAY['AT02 ouvrir un logiciel', 'AT03 envoyer un message'])", [F.session]);
+  const liste = ok(await api("GET", `/api/inscriptions/${a}/competences`, undefined, C())).competences;
+  assert.deepEqual(liste.map((c) => c.competence), ["AT01 allumer un PC", "AT02 ouvrir un logiciel", "AT03 envoyer un message"], "sans doublon, ordre formation puis séances");
+  assert.equal((await api("PUT", `/api/inscriptions/${a}/competences`, { competences: [{ competence: "Inventée", statut: "acquis" }] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/inscriptions/${a}/competences`, { competences: [{ competence: "AT01 allumer un PC", statut: "parfait" }] }, A())).statut, 400);
+  assert.equal((await api("PUT", `/api/inscriptions/${a}/competences`, { competences: "x" }, A())).statut, 400);
+  ok(await api("PUT", `/api/inscriptions/${a}/competences`, { competences: [{ competence: "AT01 allumer un PC", statut: "acquis" }, { competence: "AT02 ouvrir un logiciel", statut: "en_cours" }, { competence: "AT03 envoyer un message", statut: "non_acquis" }] }, C()));
+  ok(await api("PUT", `/api/inscriptions/${a}/competences`, { competences: [{ competence: "AT03 envoyer un message", statut: null }] }, C()));
+  const relu = ok(await api("GET", `/api/inscriptions/${a}/competences`, undefined, C())).competences;
+  assert.deepEqual(relu.map((c) => c.statut), ["acquis", "en_cours", null], "une ligne effacée, les autres conservées");
+});
+
+test("génération : grille des compétences (X par colonne) et liste des inscrits de la session (modèle de portée session)", async () => {
+  const grille = await modele("{{#competences_stagiaire}}[{{competence_libelle}}|{{competence_acquis}}|{{competence_en_cours}}|{{competence_non_acquis}}|{{competence_statut}}]{{/competences_stagiaire}}");
+  ok(await api("POST", "/api/generations", { modele_id: grille, session_id: F.session }, C()));
+  const docs = await documents(F.session, grille);
+  const alpha = docs.find((d) => d.stagiaire_id === F.inscrits.Alpha.stagiaire_id).texte;
+  assert.equal(alpha, "[AT01 allumer un PC|X|||Acquis][AT02 ouvrir un logiciel||X||En cours d'acquisition][AT03 envoyer un message||||Non évalué]");
+  const charlie = docs.find((d) => d.stagiaire_id === F.inscrits.Charlie.stagiaire_id).texte;
+  assert.match(charlie, /^\[AT01 allumer un PC\|\|\|\|Non évalué\]/, "jamais de statut inventé");
+
+  const liste = await modele("{{#inscrits_session}}<{{inscrit_nom_complet}}|{{inscrit_statut}}|{{inscrit_prescripteur}}|{{inscrit_heures_absence}}|{{inscrit_taux_absence}}|{{inscrit_dossier_complet}}>{{/inscrits_session}}", { portee: "session" });
+  ok(await api("POST", "/api/generations", { modele_id: liste, session_id: F.session }, C()));
+  const [doc] = await documents(F.session, liste);
+  assert.match(doc.texte, /<Test Alpha\|Inscrit\|Pôle Emploi\|2 h\|10\|Non>/, "taux d'absence = 2/20");
+  assert.match(doc.texte, /<Test Bravo\|Abandon\|[^|]*\|0 h\|\|Non>/, "abandon : taux non calculable, vide");
+  assert.equal((doc.texte.match(/</g) || []).length, 4, "les 4 inscrits, abandon compris");
+});

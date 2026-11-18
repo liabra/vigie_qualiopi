@@ -13,6 +13,8 @@ import { requireAuth, requireRedacteur } from "../session.js";
 import { parseIdPositif } from "../services/ids.js";
 import { MSG_ARCHIVEE } from "../services/archive.js";
 import { lireAdaptation, lireRecueil, lireSuivi } from "../services/parcours.js";
+import { competencesDeSession, lireCompetences } from "../services/competencesStagiaire.js";
+import { getPool } from "../db.js";
 
 const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -258,6 +260,42 @@ router.patch("/inscriptions/:id/suivi/:evenementId", requireRedacteur, wrap(asyn
   );
   const { rows: [e] } = await query(`${LIRE_SUIVIS} WHERE e.id = $1`, [evenementId]);
   res.json({ evenement: e });
+}));
+
+// ── Acquisition des compétences d'un stagiaire (grille de suivi des résultats) ──
+// GET : compétences proposées (formation, puis séances) + statut saisi. PUT : état complet voulu ; un statut vide efface la ligne.
+router.get("/inscriptions/:id/competences", requireAuth, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const { rows: [insc] } = await query("SELECT i.id, i.session_id, s.archivee_le FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1", [id]);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  const [liste, { rows: saisies }] = await Promise.all([
+    competencesDeSession(insc.session_id),
+    query("SELECT competence, statut FROM competences_stagiaires WHERE inscription_id = $1", [id]),
+  ]);
+  const statuts = new Map(saisies.map((r) => [r.competence, r.statut]));
+  res.json({ competences: liste.map((c) => ({ competence: c, statut: statuts.get(c) || null })), archivee: !!insc.archivee_le });
+}));
+
+router.put("/inscriptions/:id/competences", requireRedacteur, wrap(async (req, res) => {
+  const id = parseIdPositif(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant d'inscription invalide." });
+  const { rows: [insc] } = await query("SELECT i.id, i.session_id, s.archivee_le FROM inscriptions i JOIN sessions s ON s.id = i.session_id WHERE i.id = $1", [id]);
+  if (!insc) return res.status(404).json({ error: "Inscription introuvable." });
+  if (insc.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  const liste = await competencesDeSession(insc.session_id);
+  const { lignes, erreur } = lireCompetences(req.body || {}, liste);
+  if (erreur) return res.status(400).json({ error: erreur });
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    await cx.query("DELETE FROM competences_stagiaires WHERE inscription_id = $1 AND competence = ANY($2::text[])", [id, (req.body.competences || []).map((l) => l.competence.trim())]);
+    for (const l of lignes) {
+      await cx.query("INSERT INTO competences_stagiaires (inscription_id, competence, statut, renseigne_par) VALUES ($1,$2,$3,$4)", [id, l.competence, l.statut, req.user.id]);
+    }
+    await cx.query("COMMIT");
+  } catch (e) { await cx.query("ROLLBACK").catch(() => {}); throw e; } finally { cx.release(); }
+  res.json({ ok: true, enregistrees: lignes.length });
 }));
 
 export default router;

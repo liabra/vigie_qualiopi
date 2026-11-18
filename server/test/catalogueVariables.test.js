@@ -103,8 +103,8 @@ test("catalogue : figé, aucune modification à chaud", () => {
   assert.throws(() => { HISTORIQUES.lieu.cibles_possibles.push("x"); }, TypeError);
 });
 
-test("blocs : 11 blocs, schéma de champs complet, champs locaux distincts des noms globaux", () => {
-  assert.deepEqual(BLOCS.map((b) => b.nom), ["phases", "objectifs_formation", "objectifs_phase", "seances", "evaluations", "absences", "adaptations", "immersions", "intervenants", "suivi_pedagogique", "questionnaire_formation"]);
+test("blocs : 13 blocs, schéma de champs complet, champs locaux distincts des noms globaux", () => {
+  assert.deepEqual(BLOCS.map((b) => b.nom), ["phases", "objectifs_formation", "objectifs_phase", "seances", "evaluations", "absences", "adaptations", "immersions", "intervenants", "suivi_pedagogique", "questionnaire_formation", "competences_stagiaire", "inscrits_session"]);
   assert.ok(!blocCanonique("resultats"), "pas de bloc resultats : evaluations le couvre");
   for (const b of BLOCS) {
     assert.ok(!variableCanonique(b.nom) && !resoudreAlias(b.nom) && !Object.hasOwn(HISTORIQUES, b.nom), `nom de bloc libre : ${b.nom}`);
@@ -318,7 +318,7 @@ test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
   assert.equal(c.version, "1.8");
   assert.equal(c.variables.length, VARIABLES.length);
-  assert.equal(c.blocs.length, 11);
+  assert.equal(c.blocs.length, 13);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });
   assert.ok(!JSON.stringify(c).includes("\"obligatoire\""));
 });

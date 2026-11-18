@@ -21,6 +21,7 @@ import { signatairePour } from "./parametresOrganisme.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { chargerIndicateursSession } from "./indicateursSession.js";
+import { competencesDeSession } from "./competencesStagiaire.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
 import { planContenuTableaux, planStructureTableaux } from "./blocsTableaux.js";
 
@@ -308,6 +309,12 @@ async function cibles(modele, { session, groupe }) {
 // DOC-6A/6B/7B — Lignes des blocs répétables, récupérées en UNE requête par bloc
 // pour TOUTES les cibles (jamais une par stagiaire : pas de N+1). Seuls les
 // blocs réellement demandés par le modèle sont chargés.
+// Taux d'absence d'une ligne d'inscrit : complément de l'assiduité (même calcul), null si non calculable.
+function tauxAbsence(l, heuresPrevues) {
+  const a = calculerAssiduite({ heuresPrevues, heuresAbsence: l.heures_absence, statut: l.statut });
+  return a.fiable ? 100 - a.taux : null;
+}
+
 async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
   const ids = aProduire.map((c) => c.stagiaire?.inscription_id).filter((x) => x != null);
   const resultat = {};
@@ -371,6 +378,27 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
       adaptations.get(r.inscription_id).push(r);
     }
     resultat.adaptations = adaptations;
+  }
+  // Grille des compétences : compétences de la session (formation puis séances) croisées avec les statuts saisis
+  // par stagiaire ; une compétence non saisie garde statut null (« Non évalué »). Deux requêtes pour toutes les cibles.
+  if (ids.length && blocs.includes("competences_stagiaire") && sessionId) {
+    const liste = await competencesDeSession(sessionId);
+    const { rows } = await query("SELECT inscription_id, competence, statut FROM competences_stagiaires WHERE inscription_id = ANY($1::int[])", [ids]);
+    const saisies = new Map();
+    for (const r of rows) { if (!saisies.has(r.inscription_id)) saisies.set(r.inscription_id, new Map()); saisies.get(r.inscription_id).set(r.competence, r.statut); }
+    const lignes = new Map();
+    for (const id of ids) lignes.set(id, liste.map((competence) => ({ competence, statut: saisies.get(id)?.get(competence) || null })));
+    resultat.competences_stagiaire = lignes;
+  }
+  // Inscrits de la SESSION (mêmes lignes pour toutes les cibles) : une requête, tous statuts, ordre alphabétique.
+  if (blocs.includes("inscrits_session") && sessionId) {
+    const { rows } = await query(
+      `SELECT i.id AS inscription_id, i.statut, i.date_inscription, i.date_abandon, i.motif_abandon, i.dossier_complet,
+              s.nom, s.prenom, s.email, s.telephone, pr.nom AS prescripteur_nom,
+              COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
+       FROM inscriptions i JOIN stagiaires s ON s.id = i.stagiaire_id LEFT JOIN prescripteurs pr ON pr.code = i.prescripteur
+       WHERE i.session_id = $1 ORDER BY s.nom, s.prenom, i.id`, [sessionId]);
+    resultat.inscrits_session = rows;
   }
   // DOC-7B : séances de la SESSION (mêmes lignes pour toutes les cibles),
   // une seule requête, ordre date_seance, heure_debut, id.
@@ -704,6 +732,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
             objectifs_formation: (ctx.version?.objectifs_operationnels || []).map((libelle, i) => ({ code: `O${i + 1}`, libelle })),
             intervenants: lignesIntervenants || [],
             seances: lignesBlocs.seances || [],
+            competences_stagiaire: (stagiaire?.inscription_id != null ? lignesBlocs.competences_stagiaire?.get(stagiaire.inscription_id) : null) || [],
+            inscrits_session: (lignesBlocs.inscrits_session || []).map((l) => ({ ...l, taux_absence: tauxAbsence(l, ctx.heuresPrevues) })),
             suivi_pedagogique: (stagiaire?.inscription_id != null ? lignesBlocs.suivi_pedagogique?.get(stagiaire.inscription_id) : null) || [],
           }
         : null;

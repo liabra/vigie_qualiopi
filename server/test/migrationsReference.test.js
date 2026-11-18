@@ -60,15 +60,15 @@ test("chaque fichier de migration a une signature (aucune référence impossible
   assert.deepEqual(fichiers.filter((f) => !SIGNATURES[f]), []);
 });
 
-test("base de production sans historique : référence établie, 001 jamais rejouée, seules 032, 033 et 036 à 043 appliquées", async () => {
+test("base de production sans historique : référence établie, 001 jamais rejouée, seules 026 à 033 et 036 à 043 appliquées", async () => {
   const pool = await nouvelleBase("prod_complete");
   try {
     await schemaProduction(pool);
     setPoolFactory(() => pool);
     const appliquees = await migrate(silence);
-    assert.deepEqual(appliquees, ["032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql"]);
+    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql"]);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-    assert.equal(rows[0].n, 35);
+    assert.equal(rows[0].n, 41);
     const { rows: [m] } = await pool.query("SELECT nom, type_document, mode_generation FROM modeles_documents");
     assert.deepEqual(m, { nom: "Attestation réelle", type_document: "autre", mode_generation: "manuel" }, "donnée existante préservée");
     assert.deepEqual(await migrate(silence), [], "second démarrage : rien à faire");
@@ -84,7 +84,7 @@ test("migration 007 absente en production : non enregistrée, puis appliquée no
     await schemaProduction(pool, { sauf: ["007_alertes_contraintes_souples.sql"] });
     setPoolFactory(() => pool);
     const appliquees = await migrate(silence);
-    assert.deepEqual(appliquees, ["007_alertes_contraintes_souples.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql"]);
+    assert.deepEqual(appliquees, ["007_alertes_contraintes_souples.sql", "026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql"]);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM pg_constraint WHERE conname IN ('preuves_check', 'preuves_check1')");
     assert.equal(rows[0].n, 0, "contraintes supprimées par l'application normale de 007");
   } finally {
@@ -121,7 +121,7 @@ test("historique déjà renseigné : aucune référence par signature, comportem
   try {
     setPoolFactory(() => pool);
     const toutes = await migrate(silence);
-    assert.equal(toutes.length, 35, "base neuve : tout est appliqué normalement");
+    assert.equal(toutes.length, 41, "base neuve : tout est appliqué normalement");
     assert.deepEqual(await migrate(silence), []);
   } finally {
     setPoolFactory(null);

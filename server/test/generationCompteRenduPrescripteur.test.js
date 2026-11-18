@@ -76,6 +76,8 @@ function baseSimulee({ generationMultiple = false } = {}) {
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) return { rows: [{ ...session }] };
     if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 4, termines: 0 }] };
     if (sql.startsWith("SELECT i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_")) return { rows: [] };
+    if (sql.startsWith("SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme")) return { rows: [] };
+    if (sql.startsWith("SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_groupes l")) return { rows: [] };
     if (sql.startsWith("SELECT * FROM documents_generes")) {
       const [modeleId, sessionId, groupeId, libelle] = params;
       return { rows: generes.filter((g) =>

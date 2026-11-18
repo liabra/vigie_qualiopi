@@ -282,10 +282,10 @@ test("bloc absences : rendu réel des champs résolubles", () => {
 
 test("champ non résoluble : laissé tel quel (jamais inventé)", () => {
   const entete = { cellules: [{ texte: "x" }] };
-  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_moment}}{{/evaluations}}" }] };
+  const spec = { cellules: [{ texte: "{{#evaluations}}{{evaluation_niveau}}{{/evaluations}}" }] };
   const { requetes } = genererDeuxPhases([], entete, spec, [], { evaluations: [{ intitule: "QCM" }] });
   const ins = requetes.find((r) => r.insertText);
-  assert.equal(ins.insertText.text, "{{evaluation_moment}}");
+  assert.equal(ins.insertText.text, "{{evaluation_niveau}}");
 });
 
 test("champ facultatif (absence_motif) : vide sans motif, rendu sans erreur quand renseigné", () => {

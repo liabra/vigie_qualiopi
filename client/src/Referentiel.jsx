@@ -151,7 +151,9 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
           <p className="muted">
             {data.version.source && <>{data.version.source} · </>}
             {data.criteres.length} critères · {data.totalIndicateurs} indicateurs
-            {data.totalIndicateurs !== 32 && <span className="text-erreur"> · 32 attendus</span>}
+            {data.version.nb_indicateurs_attendu != null && data.totalIndicateurs !== data.version.nb_indicateurs_attendu && (
+              <span className="text-erreur"> · {data.version.nb_indicateurs_attendu} attendus</span>
+            )}
           </p>
         </div>
         <input
@@ -194,9 +196,15 @@ export default function Referentiel({ admin, rafraichir = 0, vue: vueImposee, su
       </div>
       {err && <p className="flash erreur">{err}</p>}
       {data.version.note && <p className="flash info">{data.version.note}</p>}
+      {data.version.guide_de_lecture_disponible === false && (
+        <p className="flash info">
+          Guide de lecture non disponible pour cette version : les libellés réglementaires sont vérifiés, mais les
+          niveaux attendus, exemples de preuves et autres précisions du guide ne sont pas encore renseignés.
+        </p>
+      )}
       {nonVerifies > 0 && (
         <p className="flash info">
-          {nonVerifies} libellé(s) provisoire(s), non confronté(s) au guide de lecture officiel.
+          {nonVerifies} libellé(s) provisoire(s), non confronté(s) à une source officielle.
         </p>
       )}
       {criteres.length === 0 && <p className="muted">Aucun indicateur ne correspond.</p>}

@@ -19,22 +19,28 @@ const RESERVEES_BLOC = [
 // ou — session_libelle — deux concepts canoniques distincts que Vigie ne modélise pas
 // séparément : pas d'approximation entre eux).
 const NON_RESOLUES_PAR_DECISION = [
-  "stagiaire_besoins_specifiques", "stagiaire_amenagements", "relance_derniere_action",
+  "stagiaire_amenagements", "relance_derniere_action",
   "indicateur_taux_assiduite", "indicateur_taux_abandon", "groupe_code", "session_libelle",
 ];
 
 // Contexte complet, représentatif de ce que documents.js assemble réellement.
 const CTX = {
   organisme: "A2C",
+  organismeParams: { nom: "Association Test", adresse_ligne1: "1 rue Exemple", adresse_ligne2: "Cité Test", code_postal: "97300",
+    ville: "Cayenne", telephone: "0594000000", mobile: "0694000000", email: "contact@exemple.fr" },
+  signataire: { nom: "Marie Exemple", fonction: "Présidente" },
   formation: { id: 7, intitule: "Aide à domicile", code_interne: "ADVF" },
-  version: { duree_heures_defaut: 400, public_vise: "Demandeurs d'emploi", prerequis: "Aucun",
+  version: { objectifs_operationnels: ["Utiliser un ordinateur", "Naviguer sur Internet"], methodes_pedagogiques: "Ateliers pratiques", modalites_evaluation: "Exercices et quiz",
+    duree_heures_defaut: 400, public_vise: "Demandeurs d'emploi", prerequis: "Aucun",
     objectifs: "Accompagner vers l'emploi", modalite: "presentiel", accessibilite_handicap: "Locaux accessibles" },
   session: { id: 1, reference: "ADVF-2026-01", date_debut: "2026-01-05", date_fin: "2026-03-05",
     horaire: "8h30–12h00", lieu: "Cayenne", duree_heures_reelle: 380, statut: "en_cours",
     nombre_inscrits: 12, nombre_termines: 3 },
   groupe: { id: 5, nom: "Groupe A" },
   stagiaire: { id: 42, civilite: "Mme", nom: "Stark", prenom: "Blandine", email: "b@exemple.fr",
-    telephone: "0600000000", date_inscription: "2026-01-02", statut: "inscrit", groupe_nom: "Groupe A",
+    telephone: "0600000000", financeur: "Région Fictive", besoins_adaptation: "Poste adapté", situation_handicap: true,
+    besoin_date_recueil: "2026-01-03", besoin_attentes: "Apprendre à utiliser la messagerie", besoin_objectifs_personnels: "Être autonome",
+    besoin_prerequis_verifies: "partiel", besoin_conclusion: "parcours_adapte", date_inscription: "2026-01-02", statut: "inscrit", groupe_nom: "Groupe A",
     prescripteur_nom: "Pôle Emploi", date_abandon: null, motif_abandon: null,
     relance_derniere_date: "2026-01-10", heures_absence: 3.5 },
   assiduite: { heures_prevues: 380, heures_suivies: 376.5, heures_absence: 3.5, taux: 99, fiable: true },
@@ -43,10 +49,10 @@ const CTX = {
 const canoniques = resoudreCanoniques(CTX);
 const vide = resoudreCanoniques({});
 
-test("invariant : exactement 164 clés, pilotées par le catalogue, aucune en trop", () => {
-  assert.equal(VARIABLES.length, 164, "source de vérité du catalogue");
-  assert.equal(Object.keys(canoniques).length, 164);
-  assert.equal(Object.keys(vide).length, 164, "même nombre de clés quel que soit ctx");
+test("invariant : exactement 171 clés, pilotées par le catalogue, aucune en trop", () => {
+  assert.equal(VARIABLES.length, 171, "source de vérité du catalogue");
+  assert.equal(Object.keys(canoniques).length, 171);
+  assert.equal(Object.keys(vide).length, 171, "même nombre de clés quel que soit ctx");
   for (const nom of Object.keys(canoniques)) assert.ok(variableCanonique(nom), `${nom} doit exister dans VARIABLES`);
   assert.deepEqual(Object.keys(canoniques).sort(), VARIABLES.map((v) => v.nom).sort());
 });
@@ -55,9 +61,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("46 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 46);
-  assert.equal(new Set(NOMS_RESOLUS).size, 46, "aucun doublon");
+test("66 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 66, "46 historiques + 9 organisme/signataire + 3 contenu formation + financeur + 2 restreintes + 5 besoin");
+  assert.equal(new Set(NOMS_RESOLUS).size, 66, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -68,9 +74,17 @@ test("toute variable du catalogue reçoit exactement un résultat à trois statu
   }
 });
 
-test("les 46 variables supportées sont résolues depuis un contexte complet", () => {
+test("les 66 variables supportées sont résolues depuis un contexte complet", () => {
   const attendu = {
-    organisme_nom: "A2C", formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
+    organisme_nom: "Association Test", organisme_adresse_ligne1: "1 rue Exemple", organisme_adresse_ligne2: "Cité Test",
+    organisme_code_postal: "97300", organisme_ville: "Cayenne", organisme_telephone: "0594000000", organisme_mobile: "0694000000",
+    organisme_email: "contact@exemple.fr", signataire_nom: "Marie Exemple", signataire_fonction: "Présidente",
+    formation_objectifs_operationnels: "Utiliser un ordinateur\nNaviguer sur Internet", formation_methodes_pedagogiques: "Ateliers pratiques",
+    formation_modalites_evaluation: "Exercices et quiz", financeur_nom: "Région Fictive",
+    stagiaire_besoins_specifiques: "Poste adapté", stagiaire_situation_handicap: "Oui",
+    besoin_date_recueil: "03/01/2026", besoin_attentes: "Apprendre à utiliser la messagerie", besoin_objectifs_personnels: "Être autonome",
+    besoin_prerequis_verifies: "Partiellement", besoin_conclusion: "Parcours adapté",
+    formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
     formation_duree_heures: 400, formation_public_vise: "Demandeurs d'emploi", formation_prerequis: "Aucun",
     formation_objectif_general: "Accompagner vers l'emploi", formation_modalite: "presentiel",
     formation_accessibilite: "Locaux accessibles",
@@ -93,8 +107,8 @@ test("les 46 variables supportées sont résolues depuis un contexte complet", (
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les 44 attendus + les 2 abandon_* couverts = 46 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 46);
+  // Les 64 attendus + les 2 abandon_* couverts = 66 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 66);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
@@ -102,10 +116,9 @@ test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors ca
   assert.ok(!Object.hasOwn(canoniques, "session_statut"), "l'ancien nom n'est plus une clé canonique");
 });
 
-test("DOC-3D : aucune variable résolue n'est restreinte — jamais rendable sans autorisation", () => {
-  for (const nom of NOMS_RESOLUS) {
-    assert.notEqual(variableCanonique(nom).sensibilite, "restreinte", `${nom} ne doit pas être restreinte`);
-  }
+test("DOC-3D : seules deux variables résolues sont restreintes, et le précontrôle les réserve aux administrateurs", () => {
+  const restreintes = NOMS_RESOLUS.filter((nom) => variableCanonique(nom).sensibilite === "restreinte").sort();
+  assert.deepEqual(restreintes, ["stagiaire_besoins_specifiques", "stagiaire_situation_handicap"]);
 });
 
 test("0 et false sont des valeurs RÉSOLUES valides, jamais confondues avec absent", () => {
@@ -132,7 +145,7 @@ test("champ NULL/vide pour cette instance ⇒ « absent », jamais une chaîne v
   }
 });
 
-test("contexte vide : les 46 supportées sont « absent », les 116 autres « non_resoluble »", () => {
+test("contexte vide : les 66 supportées sont « absent », les 105 autres « non_resoluble »", () => {
   for (const nom of NOMS_RESOLUS) assert.equal(vide[nom].statut, "absent", nom);
   for (const v of VARIABLES) {
     if (!NOMS_RESOLUS.includes(v.nom)) assert.equal(vide[v.nom].statut, "non_resoluble", v.nom);
@@ -165,4 +178,30 @@ test("document_date et document_date_convocation partagent le même instant, cal
 test("document_date_attestation = session_date_fin (règle de compatibilité provisoire)", () => {
   assert.equal(canoniques.document_date_attestation.valeur, canoniques.session_date_fin.valeur);
   assert.equal(canoniques.document_date_attestation.valeur, "05/03/2026");
+});
+
+test("organisme : le nom retombe sur la configuration tant que les paramètres ne sont pas saisis", () => {
+  const r = resoudreCanoniques({ organisme: "A2C", organismeParams: {} });
+  assert.deepEqual(r.organisme_nom, { statut: "resolu", valeur: "A2C" });
+  assert.equal(r.organisme_ville.statut, "absent");
+  assert.deepEqual(resoudreCanoniques({ organisme: "A2C", organismeParams: { nom: "Association Test" } }).organisme_nom, { statut: "resolu", valeur: "Association Test" });
+});
+
+test("signataire : absent sans signataire choisi, jamais une valeur inventée", () => {
+  const r = resoudreCanoniques({ signataire: null });
+  assert.deepEqual(r.signataire_nom, { statut: "absent", valeur: null });
+  assert.deepEqual(r.signataire_fonction, { statut: "absent", valeur: null });
+});
+
+test("besoin : énumérations rendues par leur libellé, valeur inconnue = absent ; handicap Oui / Non", () => {
+  const r = resoudreCanoniques({ stagiaire: { besoin_prerequis_verifies: "inconnu", besoin_conclusion: "reorientation", situation_handicap: false } });
+  assert.deepEqual(r.besoin_prerequis_verifies, { statut: "absent", valeur: null });
+  assert.deepEqual(r.besoin_conclusion, { statut: "resolu", valeur: "Réorientation" });
+  assert.deepEqual(r.stagiaire_situation_handicap, { statut: "resolu", valeur: "Non" });
+  assert.deepEqual(resoudreCanoniques({}).stagiaire_situation_handicap, { statut: "absent", valeur: null });
+});
+
+test("objectifs opérationnels : une ligne par objectif ; liste vide = absent", () => {
+  assert.deepEqual(resoudreCanoniques({ version: { objectifs_operationnels: [] } }).formation_objectifs_operationnels, { statut: "absent", valeur: null });
+  assert.equal(resoudreCanoniques({ version: { objectifs_operationnels: ["A", "B"] } }).formation_objectifs_operationnels.valeur, "A\nB");
 });

@@ -131,6 +131,13 @@ const AIDE = {
           "Les sessions déjà créées conservent la version de formation qu'elles ont figée.",
         ],
       },
+      {
+        titre: "Contenu repris dans les documents",
+        lignes: [
+          "Objectifs, objectifs opérationnels (un par ligne), méthodes pédagogiques et modalités d'évaluation alimentent la convention, le programme et le bilan : saisissez-les une fois par version de formation.",
+          "Un champ laissé vide reste vide dans le document.",
+        ],
+      },
     ],
   },
   modeles: {
@@ -140,6 +147,79 @@ const AIDE = {
         titre: "Les gabarits",
         lignes: [
           "Un modèle est un Google Doc ou Sheet existant sur le Drive. Vigie en fait une copie et remplace les marqueurs {{…}} — le modèle d'origine n'est jamais modifié.",
+        ],
+      },
+      {
+        titre: "Modes de génération",
+        lignes: [
+          "Manuelle : le document est généré depuis l'onglet Documents de la session.",
+          "Automatique : le document est produit seul au moment choisi (création de la session, inscription d'un stagiaire, début ou fin de la session).",
+          "Conditionnelle : comme l'automatique, mais seulement pour les stagiaires concernés (situation de handicap, besoin d'adaptation, prescripteur renseigné).",
+          "Seuls les documents manquants sont produits : un document existant n'est jamais remplacé. Un modèle utilisant une donnée restreinte n'est jamais généré automatiquement : générez-le à la main.",
+          "Le suivi (fait, sans objet, bloqué) apparaît dans l'onglet Documents de chaque session ; une génération bloquée se relance après correction.",
+        ],
+      },
+      {
+        titre: "Retirer un modèle",
+        lignes: ["Désactiver un modèle le retire des listes et arrête ses générations automatiques ; les documents déjà produits sont conservés. Il peut être réactivé."],
+      },
+    ],
+  },
+  "parametres/organisme": {
+    titre: "Organisme et signataires",
+    sections: [
+      {
+        titre: "Coordonnées de l'organisme",
+        lignes: [
+          "Adresse, téléphones et e-mail alimentent les variables {{organisme_*}} des documents (convocation, attestation, convention…). Ils ne sont plus écrits dans les modèles : modifiez-les ici, tous les prochains documents suivent.",
+          "Un champ vide reste vide dans le document. Les documents déjà générés ne changent pas.",
+        ],
+      },
+      {
+        titre: "Signataires",
+        lignes: [
+          "Ajoutez les personnes qui signent (nom et fonction). Le signataire se choisit ensuite pour chaque modèle : un signataire fixe (par exemple la présidente) ou le formateur concerné.",
+          "Un signataire n'est jamais supprimé : on le désactive. Un signataire utilisé par un modèle ne peut pas être désactivé tant que ce modèle ne change pas de signataire.",
+        ],
+      },
+    ],
+  },
+  variablesDocumentaires: {
+    titre: "Variables documentaires",
+    sections: [
+      {
+        titre: "À quoi sert cette page",
+        lignes: [
+          "Elle liste toutes les données que Vigie sait insérer dans un document, avec leur libellé et la balise {{…}} à écrire dans le modèle Google Docs.",
+          "La recherche ignore les accents et la casse. Une balise absente de la liste est refusée : le document n'est pas généré tant qu'elle n'est pas corrigée.",
+          "Les mentions « Donnée personnelle » et « Accès restreint » signalent les données sensibles : une donnée à accès restreint n'est jamais générée automatiquement.",
+          "La page est en consultation seule ; le dictionnaire est mis à jour avec l'application.",
+        ],
+      },
+    ],
+  },
+  questionnaires: {
+    titre: "Questionnaires de formation",
+    sections: [
+      {
+        titre: "À quoi ça sert",
+        lignes: [
+          "Chaque formation peut avoir ses propres questions de positionnement, en plus de l'analyse des besoins commune.",
+          "Les réponses se saisissent dans le dossier d'accompagnement du stagiaire (onglet Accompagnement de la session).",
+          "Modifier ou retirer une question ne change jamais les réponses déjà recueillies : elles gardent la question telle que posée.",
+        ],
+      },
+    ],
+  },
+  "parametres/inventaire-drive": {
+    titre: "Inventaire Drive",
+    sections: [
+      {
+        titre: "À quoi sert cette page",
+        lignes: [
+          "Elle liste, en lecture seule, les Google Docs et Sheets du dossier Vigie sur le Drive, et indique ceux déjà déclarés comme modèles.",
+          "« Analyser » vérifie les marqueurs d'un fichier et propose un type, un usage et des indicateurs. Rien n'est enregistré sans votre validation.",
+          "« Enregistrer comme modèle… » ouvre le formulaire prérempli : le fichier Drive n'est ni copié, ni déplacé, ni modifié.",
         ],
       },
     ],
@@ -162,6 +242,14 @@ const AIDE = {
         titre: "Les versions",
         lignes: [
           "Une seule version est active à la fois. Une version vide (sans critère ni indicateur) ne peut pas être activée.",
+        ],
+      },
+      {
+        titre: "Passer au référentiel V10",
+        lignes: [
+          "Le V10 (décret n° 2026-728, en vigueur le 1er novembre 2026) est fourni avec Vigie : 33 indicateurs, libellés du décret. Son guide de lecture n'est pas encore publié : niveaux attendus et exemples de preuves sont absents.",
+          "À l'activation, « Reporter les rattachements » relie preuves, modèles, veille et qualité à l'indicateur de même numéro. Les preuves des indicateurs dont le texte a changé passent « à confirmer » : relisez-les depuis Preuves.",
+          "L'indicateur 33 (nouveau, propre aux CFA) démarre sans preuve. Réactiver V9 avec report ramène les rattachements.",
         ],
       },
     ],
@@ -305,7 +393,11 @@ const CLES = [
   ["/intervenants", "intervenants"],
   ["/justificatifs-intervenants", "justificatifsIntervenants"],
   ["/modeles", "modeles"],
+  ["/parametres/organisme", "parametres/organisme"],
+  ["/variables-documentaires", "variablesDocumentaires"],
+  ["/parametres/inventaire-drive", "parametres/inventaire-drive"],
   ["/prescripteurs", "prescripteurs"],
+  ["/questionnaires", "questionnaires"],
   ["/versions", "versions"],
   ["/parametres/google", "parametres/google"],
 ];
@@ -376,7 +468,7 @@ export const RUBRIQUES_GUIDE = [
   {
     id: "documents", titre: "Documents", admin: false,
     sections: [
-      { titre: "Génération", lignes: ["Vigie copie un modèle Drive et remplace les marqueurs {{…}}. Le modèle d'origine n'est jamais modifié."] },
+      { titre: "Génération", lignes: ["Vigie copie un modèle Drive et remplace les marqueurs {{…}}. Le modèle d'origine n'est jamais modifié.", "Les modèles automatiques et conditionnels sont produits seuls ; leur suivi apparaît sous « Générations automatiques »."] },
       { titre: "Externes / EduSign", lignes: ["Rattachez un fichier déjà présent sur le Drive (export EduSign…) sans le copier ni le stocker dans Vigie."] },
     ],
   },

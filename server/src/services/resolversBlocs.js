@@ -14,6 +14,12 @@ const duree = (v) => (v === null || v === undefined || v === "" ? absent() : res
 const nombre = (v) => (v === null || v === undefined ? absent() : resolu(Number(v)));
 // Booléen rendu à l'identique du scalaire abandon_statut : true / false.
 const booleen = (v) => resolu(v === true);
+// Libellés affichés dans les documents (les valeurs stockées restent des codes).
+const MOMENTS_EVALUATION = { positionnement: "Positionnement", intermediaire: "Intermédiaire", qcm: "QCM", validation_etape: "Validation d'étape", evaluation_finale: "Finale", autre: "Autre" };
+const RESULTATS_VALIDATION = { valide: "Validé", non_valide: "Non validé" };
+const CATEGORIES_ADAPTATION = { rythme: "Rythme", supports: "Supports", accessibilite_locaux: "Accessibilité des locaux", materiel: "Matériel", modalites_evaluation: "Modalités d'évaluation", accompagnement: "Accompagnement", autre: "Autre" };
+const STATUTS_ADAPTATION = { prevue: "Prévue", mise_en_oeuvre: "Mise en œuvre", abandonnee: "Mesure abandonnée" };
+const libelle = (table, v) => (v && Object.hasOwn(table, v) ? resolu(table[v]) : absent());
 // Heure PostgreSQL (« HH:MM:SS ») → « HH:MM » pour les documents.
 const heure = (v) => (v ? resolu(String(v).slice(0, 5)) : absent());
 // Liste PostgreSQL text[] → « a, b, c » pour les documents.
@@ -36,12 +42,37 @@ export const CHAMPS_BLOC = {
     evaluation_date: (l) => date(l.date_passage),
     evaluation_score_obtenu: (l) => nombre(l.score),
     evaluation_score_max: (l) => nombre(l.score_max),
+    // resultats_qcm.type / resultat / commentaire / seuil_reussite (colonnes existantes). « Non déterminé » et
+    // « non applicable » ne sont pas un résultat de validation : champ absent, jamais inventé.
+    evaluation_moment: (l) => libelle(MOMENTS_EVALUATION, l.type),
+    evaluation_resultat_validation: (l) => libelle(RESULTATS_VALIDATION, l.resultat),
+    evaluation_commentaire: (l) => texte(l.commentaire),
+    evaluation_seuil_reussite: (l) => nombre(l.seuil_reussite),
     evaluation_pourcentage: (l) => {
       const s = Number(l.score);
       const m = Number(l.score_max);
       if (!Number.isFinite(s) || !Number.isFinite(m) || m <= 0) return absent();
       return resolu(Number((s / m * 100).toFixed(1)));
     },
+  },
+  // objectifs_formation : objectifs opérationnels de la version de formation (liste), codés O1, O2…
+  objectifs_formation: {
+    objectif_code: (l) => texte(l.code),
+    objectif_libelle: (l) => texte(l.libelle),
+  },
+  // questionnaire_formation : instantané de la question + réponse (texte libre, oui/non, choix unique ou multiple).
+  questionnaire_formation: {
+    question_libelle: (l) => texte(l.question_libelle),
+    question_reponse: (l) => texte(l.valeur_texte || (Array.isArray(l.valeurs_choisies) ? l.valeurs_choisies.join(", ") : "")),
+  },
+  // adaptations (accès RESTREINT : le précontrôle exige un administrateur) : table adaptations_parcours.
+  adaptations: {
+    adaptation_categorie: (l) => libelle(CATEGORIES_ADAPTATION, l.categorie),
+    adaptation_mesure: (l) => texte(l.mesure),
+    adaptation_statut: (l) => libelle(STATUTS_ADAPTATION, l.statut),
+    adaptation_date_decision: (l) => date(l.date_decision),
+    adaptation_date_mise_en_oeuvre: (l) => date(l.date_mise_en_oeuvre),
+    adaptation_bilan: (l) => texte(l.bilan),
   },
   // intervenants : `intervenants` (civilite, nom, prenom, email, fonction).
   // telephone (aucune colonne), phase_numero et groupe_nom : non résolubles.

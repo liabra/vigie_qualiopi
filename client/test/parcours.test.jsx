@@ -88,24 +88,48 @@ test("onglet Accompagnement : synthèse par inscription, sans texte libre ; « A
   assert.ok(texte().includes("2 inscriptions, dont 1 abandon ; l'onglet Stagiaires compte 1 inscrit actif."), "populations explicitées");
 });
 
-test("dossier d'accompagnement : trois sections expliquées, boutons explicites, retour au dossier après un panneau", async () => {
+test("dossier d'accompagnement : quatre sections expliquées, boutons explicites, retour au dossier après un panneau", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
   await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
   await attendre(() => titreDialogue() === "Dossier d'accompagnement");
   const d = dialogue();
-  assert.deepEqual([...d.querySelectorAll("h3")].map((h) => h.textContent), ["1. Besoins et positionnement", "2. Mesures pédagogiques", "3. Observations et relances"]);
+  assert.deepEqual([...d.querySelectorAll("h3")].map((h) => h.textContent), ["1. Besoins et positionnement", "2. Mesures pédagogiques", "3. Observations et relances", "4. Questionnaire de formation"]);
   assert.ok(d.textContent.includes("Situation de l'inscription :") && d.textContent.includes("Inscrit"));
   assert.ok(d.textContent.includes("vérification des prérequis") && d.textContent.includes("sans diagnostic") && d.textContent.includes("Faits observés"), "explications courtes");
   const libelles = [...d.querySelectorAll("button")].map((b) => b.textContent);
   assert.deepEqual(libelles.filter((l) => /^(Modifier|Gérer|Renseigner|Consulter)/.test(l)),
-    ["Modifier les besoins et le positionnement", "Gérer les mesures pédagogiques", "Gérer les observations et relances"]);
+    ["Modifier les besoins et le positionnement", "Gérer les mesures pédagogiques", "Gérer les observations et relances", "Renseigner le questionnaire de formation"]);
   assert.ok(!libelles.includes("Modifier") && !libelles.includes("Suivi") && !libelles.includes("Adaptations"), "aucun libellé ambigu");
   assert.ok(!d.textContent.includes(SECRET), "aucun texte libre dans le dossier");
   await cliquer(bouton("Modifier les besoins et le positionnement"));
   await attendre(() => titreDialogue() === "Besoins et positionnement");
   await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Annuler"));
   await attendre(() => titreDialogue() === "Dossier d'accompagnement");
+});
+
+test("questionnaire de formation : questions de la formation, réponses envoyées pour l'inscription", async () => {
+  const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", {
+    ...routes(),
+    "GET /api/inscriptions/11/questionnaire": { questionnaire: { id: 1, nom: "Questionnaire" }, archivee: false, questions: [
+      { id: 5, ordre: 1, libelle: "Votre objectif ?", type: "texte_libre", options: [], obligatoire: true, reponse: null },
+      { id: 6, ordre: 2, libelle: "Votre niveau ?", type: "choix_unique", options: ["Débutant", "Confirmé"], obligatoire: false,
+        reponse: { valeur_texte: null, valeurs_choisies: ["Débutant"], question_libelle: "Niveau actuel ?" } },
+    ] },
+    "PUT /api/inscriptions/11/questionnaire/reponses": { ok: true },
+  });
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await attendre(() => bouton("Renseigner le questionnaire de formation"));
+  await cliquer(bouton("Renseigner le questionnaire de formation"));
+  await attendre(() => champ("Votre objectif ?"));
+  assert.ok(dialogue().textContent.includes("Répondu alors à « Niveau actuel ? »"), "ancienne formulation signalée");
+  await saisir(champ("Votre objectif ?"), "Travailler auprès des personnes âgées");
+  await cliquer(bouton("Enregistrer"));
+  await attendre(() => appels.some((a) => a.methode === "PUT"));
+  const corps = appels.find((a) => a.methode === "PUT").corps;
+  assert.deepEqual(corps.reponses[0], { question_id: 5, valeur_texte: "Travailler auprès des personnes âgées", valeurs_choisies: [] });
+  assert.deepEqual(corps.reponses[1].valeurs_choisies, ["Débutant"]);
 });
 
 test("filtre « Besoins à recueillir » et état vide correspondant", async () => {

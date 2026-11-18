@@ -4,6 +4,10 @@
 //  tout le projet : celui-ci.
 // ─────────────────────────────────────────────────────────────
 
+// Seuil d'assiduité (en %) : même valeur que l'écran d'assiduité (client/src/sessions/format.js) ; il conditionne
+// la délivrance automatique de l'attestation (condition « assiduite_atteinte »).
+export const SEUIL_ASSIDUITE = 80;
+
 // Assiduité d'une inscription. Le taux n'est rendu que lorsqu'il est
 // calculable ET non trompeur :
 // - abandon : les heures réellement suivies avant l'abandon ne sont pas

@@ -57,11 +57,50 @@ export const PORTEES = {
   groupe: { court: "Par groupe", long: "Un document par groupe" },
   stagiaire: { court: "Par stagiaire", long: "Un document par stagiaire" },
 };
+// Bibliothèque : types de document et modes de génération (valeurs admises par l'API).
+export const TYPES_DOCUMENT = {
+  attestation: "Attestation",
+  convocation: "Convocation",
+  emargement: "Émargement",
+  fiche_recapitulative: "Fiche récapitulative",
+  convention: "Convention",
+  compte_rendu: "Compte rendu",
+  evaluation: "Évaluation",
+  bilan: "Bilan",
+  programme: "Programme",
+  scenario_pedagogique: "Scénario pédagogique",
+  questionnaire: "Questionnaire",
+  autre: "Autre",
+};
+export const MODES_GENERATION = {
+  manuel: "Manuelle",
+  automatique: "Automatique",
+  conditionnel: "Conditionnelle",
+};
+// Déclencheurs et conditions : mêmes valeurs que l'API (services/modelesBibliotheque.js).
+export const DECLENCHEURS = {
+  creation_session: "À la création de la session",
+  inscription: "À l'inscription d'un stagiaire",
+  debut_session: "Au début de la session",
+  fin_session: "À la fin de la session",
+};
+export const CONDITIONS = {
+  situation_handicap: "Stagiaire en situation de handicap",
+  besoin_adaptation: "Besoin d'adaptation signalé",
+  prescripteur_renseigne: "Prescripteur renseigné",
+  assiduite_atteinte: "Assiduité d'au moins 80 % (abandons exclus)",
+};
 const TYPES_FICHIER = {
   "application/vnd.google-apps.document": "Google Docs",
   "application/vnd.google-apps.spreadsheet": "Google Sheets",
 };
-const VIDE = { nom: "", lien: "", portee: "stagiaire", description: "", indicateur_ids: [] };
+const VIDE = {
+  nom: "", lien: "", portee: "stagiaire", description: "", indicateur_ids: [],
+  type_document: "", mode_generation: "manuel", condition_generation: "", declencheur: "", condition_code: "",
+  signataire_mode: "aucun", signataire_id: "",
+};
+// Signataire du document : jamais écrit en dur dans le modèle (Paramètres → Organisme et signataires).
+export const MODES_SIGNATAIRE = { aucun: "Aucun signataire", fixe: "Signataire fixe", formateur: "Formateur concerné" };
 
 // Lien externe rendu seulement s'il est http(s). // fix
 export const lienSur = (url) => (typeof url === "string" && /^https?:\/\//i.test(url) ? url : null);
@@ -76,9 +115,22 @@ function LienDrive({ url, nom }) {
   );
 }
 
-// /modeles (admin) : liste compacte d'abord ; détail, création et marqueurs
-// dans des panneaux. Un modèle se crée ou se retire (pas de modification
-// côté serveur) ; le retrait ne touche pas les documents déjà générés.
+// Mode de génération : affiché seulement quand il n'est pas le mode manuel habituel.
+function Usage({ m }) {
+  return (
+    <>
+      {PORTEES[m.portee]?.court || m.portee}
+      <span className="sess-secondaire"> · {TYPES_DOCUMENT[m.type_document] || m.type_document}</span>
+      {m.mode_generation && m.mode_generation !== "manuel" && (
+        <span className="sess-secondaire"> · génération {MODES_GENERATION[m.mode_generation]?.toLowerCase() || m.mode_generation}</span>
+      )}
+    </>
+  );
+}
+
+// /modeles (admin) : liste compacte d'abord ; détail, création, modification et marqueurs
+// dans des panneaux. Un modèle désactivé se réactive depuis la liste des désactivés ;
+// le retrait ne touche pas les documents déjà générés.
 export function ModelesPage() {
   useTitrePage("Modèles de documents");
   const [donnees, setDonnees] = useState(null);
@@ -87,10 +139,13 @@ export function ModelesPage() {
   const [succes, setSucces] = useState(null);
   const [erreurAction, setErreurAction] = useState(null);
   const [creation, setCreation] = useState(false);
+  const [edition, setEdition] = useState(null);
   const [detail, setDetail] = useState(null);
   const [marqueursOuverts, setMarqueursOuverts] = useState(false);
   const [aRetirer, setARetirer] = useState(null);
   const [retrait, setRetrait] = useState(false);
+  const [desactives, setDesactives] = useState(null);
+  const [afficherDesactives, setAfficherDesactives] = useState(false);
   // DOC-2 : { id, chargement, erreur, data } — un diagnostic à la fois,
   // celui du modèle actuellement ouvert dans le Drawer « Détail ».
   const [diag, setDiag] = useState(null);
@@ -119,7 +174,14 @@ export function ModelesPage() {
       setErr(null);
     } catch (e) { setErr(e.message); }
   }, []);
+  const chargerDesactives = useCallback(async () => {
+    try {
+      const r = await api("/api/modeles?inactifs=1");
+      setDesactives(r.modeles || []);
+    } catch (e) { setErreurAction(e.message); }
+  }, []);
   useEffect(() => { charger(); }, [charger]);
+  useEffect(() => { if (afficherDesactives) chargerDesactives(); }, [afficherDesactives, chargerDesactives]);
   useEffect(() => {
     api("/api/referentiel").then((r) => setCriteres(r.criteres || [])).catch(() => setCriteres([]));
   }, []);
@@ -135,12 +197,26 @@ export function ModelesPage() {
       const nom = aRetirer.nom;
       setARetirer(null); setDetail(null);
       await charger();
+      if (afficherDesactives) await chargerDesactives();
       setSucces(`Modèle « ${nom} » retiré.`);
     } catch (e) {
       setErreurAction(e.message);
       setARetirer(null);
     } finally {
       setRetrait(false);
+    }
+  }
+
+  async function reactiver(m) {
+    setSucces(null);
+    setErreurAction(null);
+    try {
+      await api(`/api/modeles/${m.id}/reactiver`, { method: "POST" });
+      await charger();
+      await chargerDesactives();
+      setSucces(`Modèle « ${m.nom} » réactivé : il est de nouveau proposé à la génération.`);
+    } catch (e) {
+      setErreurAction(e.message);
     }
   }
 
@@ -161,7 +237,7 @@ export function ModelesPage() {
         )}
       />
       {succes && <Alert ton="success">{succes}</Alert>}
-      {erreurAction && <Alert ton="error" titre="Le modèle n'a pas été retiré.">{erreurAction}</Alert>}
+      {erreurAction && <Alert ton="error" titre="L'action sur le modèle n'a pas abouti.">{erreurAction}</Alert>}
       {err && <Alert ton="error" titre="Les modèles n'ont pas pu être chargés." action={<Button compact onClick={charger}>Réessayer</Button>}>{err}</Alert>}
       {!donnees && !err && <LoadingState texte="Chargement des modèles…" />}
 
@@ -190,7 +266,7 @@ export function ModelesPage() {
                   <button type="button" className="param-lien-bouton" onClick={() => setDetail(m)}>{m.nom}</button>
                   {m.description && <span className="sess-secondaire param-tronque">{m.description}</span>}
                 </td>
-                <td data-label="Usage">{PORTEES[m.portee]?.court || m.portee}</td>
+                <td data-label="Usage"><Usage m={m} /></td>
                 <td data-label="Indicateurs">
                   {(m.indicateurs || []).length ? `Ind. ${m.indicateurs.map((i) => i.numero).join(", ")}` : "—"}
                 </td>
@@ -209,10 +285,32 @@ export function ModelesPage() {
         </table>
       )}
 
+      {modeles && (
+        <section className="param-desactives" aria-labelledby="desactives-titre">
+          <h2 id="desactives-titre" className="param-section-titre">Modèles désactivés</h2>
+          <Button compact variante="ghost" onClick={() => setAfficherDesactives((v) => !v)} aria-expanded={afficherDesactives}>
+            {afficherDesactives ? "Masquer les modèles désactivés" : "Afficher les modèles désactivés"}
+          </Button>
+          {afficherDesactives && desactives === null && <LoadingState texte="Chargement…" />}
+          {afficherDesactives && desactives?.length === 0 && <p className="sess-secondaire">Aucun modèle désactivé.</p>}
+          {afficherDesactives && desactives?.length > 0 && (
+            <ul className="param-marqueurs">
+              {desactives.map((m) => (
+                <li key={m.id}>
+                  <strong>{m.nom}</strong> <span className="sess-secondaire">· {PORTEES[m.portee]?.court || m.portee}</span>{" "}
+                  <Button compact aria-label={`Réactiver le modèle ${m.nom}`} onClick={() => reactiver(m)}>Réactiver</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       <Drawer ouvert={!!detail} onFermer={() => setDetail(null)} titre={detail?.nom || ""}
         description={detail ? PORTEES[detail.portee]?.long : undefined}
         pied={detail && (
           <>
+            <Button onClick={() => { setEdition(detail); setDetail(null); }}>Modifier</Button>
             <Button variante="danger" onClick={() => setARetirer(detail)}>Retirer ce modèle</Button>
             <Button onClick={() => setDetail(null)}>Fermer</Button>
           </>
@@ -220,6 +318,19 @@ export function ModelesPage() {
         {detail && (
           <dl className="param-detail">
             <div><dt>Description</dt><dd>{detail.description || <span className="sess-secondaire">Aucune description</span>}</dd></div>
+            <div><dt>Type de document</dt><dd>{TYPES_DOCUMENT[detail.type_document] || detail.type_document}</dd></div>
+            <div>
+              <dt>Mode de génération</dt>
+              <dd>
+                {MODES_GENERATION[detail.mode_generation] || detail.mode_generation}
+                {detail.declencheur && <> · {DECLENCHEURS[detail.declencheur]?.toLowerCase() || detail.declencheur}</>}
+                {detail.mode_generation === "conditionnel" && detail.condition_generation && <> — {detail.condition_generation}</>}
+                {detail.mode_generation !== "manuel" && !detail.declencheur && (
+                  <div className="sess-secondaire">Aucun moment choisi : ce modèle n'est pas encore généré automatiquement.</div>
+                )}
+              </dd>
+            </div>
+            <div><dt>Signataire</dt><dd>{MODES_SIGNATAIRE[detail.signataire_mode] || "Aucun signataire"}</dd></div>
             <div><dt>Fichier Google</dt><dd><LienDrive url={detail.drive_url} nom={detail.nom} />{TYPES_FICHIER[detail.drive_mime] && <> · {TYPES_FICHIER[detail.drive_mime]}</>}</dd></div>
             <div>
               <dt>Indicateurs liés</dt>
@@ -253,34 +364,67 @@ export function ModelesPage() {
         </ul>
       </Drawer>
 
-      <CreationModele
-        ouvert={creation} criteres={criteres} onFermer={() => setCreation(false)}
-        onCree={async (nom) => { setCreation(false); await charger(); setSucces(`Modèle « ${nom} » enregistré.`); }}
+      <FormulaireModele
+        ouvert={creation} criteres={criteres} modele={null} onFermer={() => setCreation(false)}
+        onEnregistre={async (nom) => { setCreation(false); await charger(); setSucces(`Modèle « ${nom} » enregistré.`); }}
+      />
+      <FormulaireModele
+        ouvert={!!edition} criteres={criteres} modele={edition} onFermer={() => setEdition(null)}
+        onEnregistre={async (nom) => { setEdition(null); await charger(); setSucces(`Modèle « ${nom} » mis à jour.`); }}
       />
 
       <ConfirmDialog
         ouvert={!!aRetirer} titre="Retirer ce modèle ?" libelleConfirmer="Retirer" enCours={retrait}
         onConfirmer={retirer} onAnnuler={() => setARetirer(null)}
       >
-        <p>« {aRetirer?.nom} » ne sera plus proposé à la génération.</p>
+        <p>« {aRetirer?.nom} » ne sera plus proposé à la génération. Vous pourrez le réactiver depuis « Modèles désactivés ».</p>
         <p>Les documents déjà générés ne sont pas touchés, et le fichier reste sur le Drive.</p>
       </ConfirmDialog>
     </>
   );
 }
 
-function CreationModele({ ouvert, criteres, onFermer, onCree }) {
+// Valeurs initiales : création (vide) ou modification (valeurs du modèle).
+function valeursDe(modele) {
+  if (!modele) return VIDE;
+  return {
+    nom: modele.nom || "",
+    lien: modele.drive_url || "",
+    portee: modele.portee || "stagiaire",
+    description: modele.description || "",
+    indicateur_ids: (modele.indicateurs || []).map((i) => i.id),
+    type_document: modele.type_document || "",
+    mode_generation: modele.mode_generation || "manuel",
+    condition_generation: modele.condition_generation || "",
+    declencheur: modele.declencheur || "",
+    condition_code: modele.condition_code || "",
+    signataire_mode: modele.signataire_mode || "aucun",
+    signataire_id: modele.signataire_id ? String(modele.signataire_id) : "",
+  };
+}
+
+// Création et modification : même formulaire. En modification, seul le lien modifié est envoyé
+// (un lien inchangé ne réinitialise pas le type du fichier Drive).
+export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = null, onFermer, onEnregistre }) {
   const [valeurs, setValeurs] = useState(VIDE);
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
   const [enCours, setEnCours] = useState(false);
+  const [signataires, setSignataires] = useState([]);
 
   useEffect(() => {
     if (!ouvert) return;
-    setValeurs(VIDE); setErreurs({}); setErreurServeur(null); setEnCours(false);
+    api("/api/signataires").then((r) => setSignataires(r.signataires || [])).catch(() => setSignataires([]));
   }, [ouvert]);
 
+  useEffect(() => {
+    if (!ouvert) return;
+    setValeurs(modele ? valeursDe(modele) : { ...VIDE, ...(valeursInitiales || {}) });
+    setErreurs({}); setErreurServeur(null); setEnCours(false);
+  }, [ouvert, modele, valeursInitiales]);
+
   const champ = (cle) => (e) => setValeurs({ ...valeurs, [cle]: e.target.value });
+  const titre = modele ? "Modifier le modèle" : "Nouveau modèle";
 
   async function enregistrer(e) {
     e.preventDefault();
@@ -289,18 +433,43 @@ function CreationModele({ ouvert, criteres, onFermer, onCree }) {
     const numeros = valeurs.indicateur_ids.map((id) => parId.get(Number(id))).filter(Boolean).sort((a, b) => a - b);
     const trouvees = {};
     if (!valeurs.nom.trim()) trouvees.nom = "Donnez un nom au modèle.";
-    if (!valeurs.lien.trim()) trouvees.lien = "Collez le lien ou l'identifiant du fichier Drive.";
+    if (!modele && !valeurs.lien.trim()) trouvees.lien = "Collez le lien ou l'identifiant du fichier Drive.";
+    if (!valeurs.type_document) trouvees.type_document = "Choisissez le type de document.";
+    if (valeurs.mode_generation !== "manuel" && !valeurs.declencheur) {
+      trouvees.declencheur = "Choisissez quand le document est généré.";
+    }
+    if (valeurs.mode_generation === "conditionnel" && !valeurs.condition_code) {
+      trouvees.condition_code = "Choisissez la condition.";
+    }
+    if (valeurs.signataire_mode === "fixe" && !valeurs.signataire_id) trouvees.signataire_id = "Choisissez le signataire.";
     if (!numeros.length) trouvees.indicateurs = "Sélectionnez au moins un indicateur.";
     setErreurs(trouvees);
     if (Object.keys(trouvees).length) return;
+
+    const corps = {
+      nom: valeurs.nom,
+      portee: valeurs.portee,
+      description: valeurs.description,
+      type_document: valeurs.type_document,
+      mode_generation: valeurs.mode_generation,
+      condition_generation: valeurs.mode_generation === "conditionnel" ? (valeurs.condition_generation.trim() || null) : null,
+      declencheur: valeurs.mode_generation !== "manuel" ? valeurs.declencheur : null,
+      condition_code: valeurs.mode_generation === "conditionnel" ? valeurs.condition_code : null,
+      signataire_mode: valeurs.signataire_mode,
+      signataire_id: valeurs.signataire_mode === "fixe" ? Number(valeurs.signataire_id) : null,
+      indicateurs: numeros,
+    };
+    if (!modele) corps.lien = valeurs.lien;
+    else if (valeurs.lien.trim() && valeurs.lien.trim() !== (modele.drive_url || "").trim()) corps.lien = valeurs.lien;
+
     setEnCours(true);
     setErreurServeur(null);
     try {
-      await api("/api/modeles", {
-        method: "POST",
-        body: JSON.stringify({ nom: valeurs.nom, lien: valeurs.lien, portee: valeurs.portee, description: valeurs.description, indicateurs: numeros }),
+      await api(modele ? `/api/modeles/${modele.id}` : "/api/modeles", {
+        method: modele ? "PATCH" : "POST",
+        body: JSON.stringify(corps),
       });
-      await onCree(valeurs.nom.trim());
+      await onEnregistre(valeurs.nom.trim());
     } catch (err) {
       setErreurServeur(err.message);
       setEnCours(false);
@@ -310,8 +479,8 @@ function CreationModele({ ouvert, criteres, onFermer, onCree }) {
   return (
     <Drawer
       ouvert={ouvert} onFermer={onFermer} fermable={!enCours} taille="large"
-      titre="Nouveau modèle"
-      description="Le fichier doit déjà exister sur le Drive de l'organisme."
+      titre={titre}
+      description={modele ? undefined : "Le fichier doit déjà exister sur le Drive de l'organisme."}
       pied={
         <>
           <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
@@ -327,15 +496,71 @@ function CreationModele({ ouvert, criteres, onFermer, onCree }) {
           <Field label="Nom" erreur={erreurs.nom}>
             <input value={valeurs.nom} onChange={champ("nom")} placeholder="Convocation" required />
           </Field>
+          <Field label="Type de document" erreur={erreurs.type_document}>
+            <select value={valeurs.type_document} onChange={champ("type_document")}>
+              <option value="">Choisir un type…</option>
+              {Object.entries(TYPES_DOCUMENT).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Field>
           <Field label="Usage">
             <select value={valeurs.portee} onChange={champ("portee")}>
               {Object.entries(PORTEES).map(([v, p]) => <option key={v} value={v}>{p.long}</option>)}
             </select>
           </Field>
-          <Field label="Lien ou identifiant du fichier Drive" erreur={erreurs.lien} className="ui-field--large"
-            aide="Copiez l'adresse du Google Doc ou Sheet depuis la barre du navigateur.">
-            <input value={valeurs.lien} onChange={champ("lien")} placeholder="https://docs.google.com/document/d/…/edit" required />
+          <Field label="Mode de génération" aide="Manuelle : lancée depuis la session. Automatique : produite au moment choisi. Conditionnelle : produite au moment choisi, pour les seuls stagiaires concernés.">
+            <select value={valeurs.mode_generation} onChange={champ("mode_generation")}>
+              {Object.entries(MODES_GENERATION).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </Field>
+          {valeurs.mode_generation !== "manuel" && (
+            <Field label="Moment de la génération" erreur={erreurs.declencheur}
+              aide="Seuls les documents manquants sont produits : un document existant n'est jamais remplacé.">
+              <select value={valeurs.declencheur} onChange={champ("declencheur")}>
+                <option value="">Choisir…</option>
+                {Object.entries(DECLENCHEURS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </Field>
+          )}
+          {valeurs.mode_generation === "conditionnel" && (
+            <>
+              <Field label="Condition" erreur={erreurs.condition_code}>
+                <select value={valeurs.condition_code} onChange={champ("condition_code")}>
+                  <option value="">Choisir…</option>
+                  {Object.entries(CONDITIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </Field>
+              <Field label="Précision" facultatif className="ui-field--large"
+                aide="Par défaut, le libellé de la condition.">
+                <textarea value={valeurs.condition_generation} onChange={champ("condition_generation")} rows={2} maxLength={300} />
+              </Field>
+            </>
+          )}
+          <Field label="Signataire" aide="Nom et fonction affichés par {{signataire_nom}} et {{signataire_fonction}}. « Formateur concerné » : formateur du groupe du stagiaire, à défaut de la session.">
+            <select value={valeurs.signataire_mode} onChange={(e) => setValeurs({ ...valeurs, signataire_mode: e.target.value, signataire_id: "" })}>
+              {Object.entries(MODES_SIGNATAIRE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Field>
+          {valeurs.signataire_mode === "fixe" && (
+            <Field label="Signataire fixe" erreur={erreurs.signataire_id}
+              aide={signataires.length ? undefined : "Aucun signataire : ajoutez-en dans Paramètres → Organisme et signataires."}>
+              <select value={valeurs.signataire_id} onChange={champ("signataire_id")}>
+                <option value="">Choisir…</option>
+                {signataires.map((sg) => <option key={sg.id} value={sg.id}>{sg.nom} — {sg.fonction}</option>)}
+              </select>
+            </Field>
+          )}
+          {!modele && (
+            <Field label="Lien ou identifiant du fichier Drive" erreur={erreurs.lien} className="ui-field--large"
+              aide="Copiez l'adresse du Google Doc ou Sheet depuis la barre du navigateur.">
+              <input value={valeurs.lien} onChange={champ("lien")} placeholder="https://docs.google.com/document/d/…/edit" required />
+            </Field>
+          )}
+          {modele && (
+            <Field label="Lien du fichier Drive" erreur={erreurs.lien} className="ui-field--large"
+              aide="Laissez tel quel pour conserver le fichier actuel.">
+              <input value={valeurs.lien} onChange={champ("lien")} />
+            </Field>
+          )}
           <Field label="Description" facultatif className="ui-field--large">
             <input value={valeurs.description} onChange={champ("description")} />
           </Field>

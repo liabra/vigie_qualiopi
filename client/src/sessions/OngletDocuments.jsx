@@ -12,6 +12,10 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
   const [generation, setGeneration] = useState(false);
   const [rattachement, setRattachement] = useState(false);
   const nomGroupe = (id) => groupes.find((g) => g.id === id)?.nom;
+  // Modèles à génération manuelle encore jamais produits pour cette session.
+  const produits = new Set(documents.map((d) => d.modele_id));
+  const aProduire = (annexes.modeles || []).filter((m) =>
+    (m.mode_generation || "manuel") === "manuel" && ["session", "groupe", "stagiaire"].includes(m.portee) && !produits.has(m.id));
 
   return (
     <div className="sess-sections">
@@ -23,6 +27,11 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
           </div>
           {peutSaisir && !archivee && <Button compact variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}
         </div>
+        {peutSaisir && !archivee && aProduire.length > 0 && (
+          <Alert ton="info" titre="Documents à produire manuellement">
+            Pas encore générés pour cette session : {aProduire.map((m) => m.nom).join(", ")}.
+          </Alert>
+        )}
         {documents.length === 0 ? (
           <EmptyState titre="Aucun document généré pour cette session"
             action={peutSaisir && !archivee && <Button variante="primary" onClick={() => setGeneration(true)}>Générer un document</Button>}>
@@ -47,6 +56,9 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
           </table>
         )}
       </section>
+
+      <GenerationsAutomatiques sessionId={session.id} admin={admin} archivee={archivee}
+        nbDocuments={documents.length} recharger={recharger} notifier={notifier} />
 
       <section className="sess-section" aria-labelledby="titre-externes">
         <div className="sess-section__tete">
@@ -93,6 +105,87 @@ export function OngletDocuments({ donnees, annexes, admin, peutSaisir, recharger
           onFait={async () => { setRattachement(false); notifier({ ton: "success", titre: "Document externe rattaché." }); await recharger(); }} />
       )}
     </div>
+  );
+}
+
+const EVENEMENTS = {
+  creation_session: "Création de la session",
+  inscription: "Inscription",
+  debut_session: "Début de la session",
+  fin_session: "Fin de la session",
+};
+const STATUTS_TACHE = {
+  en_attente: ["En attente", "info"],
+  faite: ["Faite", "success"],
+  sans_objet: ["Sans objet", "neutral"],
+  bloquee: ["Bloquée", "error"],
+};
+
+// Générations automatiques et conditionnelles : tâches déclenchées par la vie de la session.
+// Une tâche bloquée se relance (administrateur) après correction du modèle ou des données.
+function GenerationsAutomatiques({ sessionId, admin, archivee, nbDocuments, recharger, notifier }) {
+  const [taches, setTaches] = useState(null);
+  const [erreur, setErreur] = useState(null);
+  const [relance, setRelance] = useState(null);
+
+  async function charger() {
+    try {
+      const r = await api(`/api/sessions/${sessionId}/generations-planifiees`);
+      setTaches(r.taches || []);
+      setErreur(null);
+    } catch (e) { setErreur(e.message); }
+  }
+  useEffect(() => { charger(); }, [sessionId, nbDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function relancer(t) {
+    setRelance(t.id);
+    try {
+      await api(`/api/generations-planifiees/${t.id}/relancer`, { method: "POST", body: "{}" });
+      notifier({ ton: "success", titre: "Génération remise en file.", message: "Elle sera traitée dans les prochaines minutes." });
+      await charger();
+      await recharger();
+    } catch (e) { setErreur(e.message); } finally { setRelance(null); }
+  }
+
+  if (taches === null && !erreur) return null;
+  return (
+    <section className="sess-section" aria-labelledby="titre-automatiques">
+      <div className="sess-section__tete">
+        <div>
+          <h2 id="titre-automatiques" className="sess-section__titre">Générations automatiques</h2>
+          <p className="sess-secondaire">Documents produits sans intervention, selon les modèles automatiques et conditionnels. Seuls les documents manquants sont créés.</p>
+        </div>
+        <Button compact variante="ghost" onClick={charger}>Actualiser</Button>
+      </div>
+      {erreur && <Alert ton="error" titre="Suivi indisponible.">{erreur}</Alert>}
+      {taches?.length === 0 ? (
+        <p className="sess-secondaire">Aucune génération automatique pour cette session.</p>
+      ) : taches && (
+        <table className="sess-table">
+          <caption className="visually-hidden">Générations automatiques de la session</caption>
+          <thead><tr><th scope="col">Modèle</th><th scope="col">Événement</th><th scope="col">État</th><th scope="col">Détail</th></tr></thead>
+          <tbody>
+            {taches.map((t) => {
+              const [libelle, ton] = STATUTS_TACHE[t.statut] || [t.statut, "neutral"];
+              return (
+                <tr key={t.id}>
+                  <td data-label="Modèle" className="sess-table__principal">{t.modele}<span className="sess-secondaire">{PORTEES[t.portee] || t.portee}</span></td>
+                  <td data-label="Événement">{EVENEMENTS[t.evenement] || t.evenement}<span className="sess-secondaire">{formaterDateHeure(t.cree_le)}</span></td>
+                  <td data-label="État"><Badge ton={ton}>{libelle}</Badge></td>
+                  <td data-label="Détail">
+                    {t.resultat && <div>{t.resultat}</div>}
+                    {t.derniere_erreur && t.statut !== "faite" && <div className="sess-secondaire">{t.derniere_erreur}</div>}
+                    {admin && !archivee && t.statut === "bloquee" && (
+                      <Button compact onClick={() => relancer(t)} disabled={relance === t.id}>{relance === t.id ? "Relance…" : "Relancer"}</Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 

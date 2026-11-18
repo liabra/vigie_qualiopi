@@ -7,7 +7,10 @@ import { Router } from "express";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
+import { verifierSignataireModele } from "../services/parametresOrganisme.js";
+import { relancer, signalerEvenement, tachesDeSession } from "../services/generationsAutomatiques.js";
 import { MARQUEURS } from "../services/marqueurs.js";
+import { CHAMPS_MODIFIABLES, CONDITIONS, DECLENCHEURS, MODES_GENERATION, TYPES_DOCUMENT, completerMode, validerChamps, verifierCoherence } from "../services/modelesBibliotheque.js";
 import { etatJeton, getDrive } from "../services/google.js";
 import { analyserModeleDrive } from "../services/diagnosticModele.js";
 import { parseIdPositif } from "../services/ids.js";
@@ -57,7 +60,21 @@ const STATUTS_INSCRIPTION = ["inscrit", "en_cours", "termine", "abandon"];
 const CHAMPS_VERSION = [
   "objectifs", "prerequis", "public_vise", "duree_heures_defaut", "modalite",
   "certifiante", "code_rncp_rs", "tarif_ht", "accessibilite_handicap",
+  "objectifs_operationnels", "methodes_pedagogiques", "modalites_evaluation",
 ];
+// Champs ajoutés après coup : absents d'un envoi (ancien client), ils sont REPRIS de la version précédente
+// plutôt que remis à vide.
+const CHAMPS_VERSION_REPRIS = ["objectifs_operationnels", "methodes_pedagogiques", "modalites_evaluation"];
+const MAX_OBJECTIFS = 30;
+const MAX_OBJECTIF = 500;
+const MAX_TEXTE_VERSION = 4000;
+
+// Objectifs opérationnels : liste de textes, ou texte « un objectif par ligne ». Renvoie le tableau normalisé.
+export function lireObjectifs(valeur) {
+  if (valeur === undefined || valeur === null || valeur === "") return [];
+  const brut = Array.isArray(valeur) ? valeur : String(valeur).split(/\r?\n/);
+  return brut.map((o) => String(o ?? "").replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean);
+}
 
 // Horaire d'une session : texte libre, facultatif. La MÊME règle sert à la
 // création et à la correction — sinon un horaire saisi puis corrigé ne
@@ -137,6 +154,7 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
             v.id AS version_id, v.numero AS version_numero, v.duree_heures_defaut, v.modalite,
             v.objectifs, v.prerequis, v.public_vise,
             v.certifiante, v.code_rncp_rs, v.tarif_ht, v.accessibilite_handicap,
+            v.objectifs_operationnels, v.methodes_pedagogiques, v.modalites_evaluation,
             (SELECT count(*)::int FROM formation_versions fv WHERE fv.formation_id = f.id) AS nb_versions,
             (SELECT count(*)::int FROM sessions s WHERE s.formation_id = f.id) AS nb_sessions
      FROM formations f
@@ -152,6 +170,19 @@ router.get("/formations", requireAuth, wrap(async (_req, res) => {
 // négative) est refusée AVANT l'écriture — sinon PostgreSQL répondrait par
 // une erreur de conversion, qu'on refuse de déguiser en 400 global.
 function erreurVersion(corps) {
+  if (corps?.objectifs_operationnels !== undefined && corps.objectifs_operationnels !== null
+      && !Array.isArray(corps.objectifs_operationnels) && typeof corps.objectifs_operationnels !== "string") {
+    return "Objectifs opérationnels : liste ou texte attendu.";
+  }
+  const objectifs = lireObjectifs(corps?.objectifs_operationnels);
+  if (objectifs.length > MAX_OBJECTIFS) return `Objectifs opérationnels : ${MAX_OBJECTIFS} au plus.`;
+  if (objectifs.some((o) => o.length > MAX_OBJECTIF)) return `Objectifs opérationnels : ${MAX_OBJECTIF} caractères au plus par objectif.`;
+  for (const c of ["methodes_pedagogiques", "modalites_evaluation"]) {
+    const v = corps?.[c];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string") return `Champ ${c} invalide : texte attendu.`;
+    if (v.length > MAX_TEXTE_VERSION) return `Champ ${c} : ${MAX_TEXTE_VERSION} caractères au plus.`;
+  }
   for (const c of ["duree_heures_defaut", "tarif_ht"]) {
     const v = corps?.[c];
     if (v === undefined || v === null || v === "") continue;
@@ -166,9 +197,16 @@ async function creerVersion(cx, formationId, corps, utilisateurId) {
     "SELECT COALESCE(max(numero), 0) + 1 AS suivant FROM formation_versions WHERE formation_id = $1",
     [formationId]
   );
+  const { rows: [precedente] } = await cx.query(
+    "SELECT objectifs_operationnels, methodes_pedagogiques, modalites_evaluation FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1",
+    [formationId]
+  );
   const valeurs = CHAMPS_VERSION.map((c) => {
-    const v = corps[c];
+    let v = corps[c];
+    if (v === undefined && precedente && CHAMPS_VERSION_REPRIS.includes(c)) v = precedente[c];
     if (c === "certifiante") return v === true;
+    if (c === "objectifs_operationnels") return lireObjectifs(v);
+    if (c === "methodes_pedagogiques" || c === "modalites_evaluation") return typeof v === "string" && v.trim() ? v.trim() : null;
     return v === "" || v === undefined ? null : v;
   });
   const { rows: [version] } = await cx.query(
@@ -330,6 +368,7 @@ router.post("/sessions", requireAdmin, wrap(async (req, res) => {
      lieu?.trim() || null, modalite || null, formateur?.trim() || null, duree,
      normaliserHoraire(horaire)]
   );
+  await signalerEvenement("creation_session", session.id);
   res.status(201).json({ session });
 }));
 
@@ -506,6 +545,11 @@ router.patch("/sessions/:id", requireAdmin, wrap(async (req, res) => {
   try {
     const { rows } = await query(`UPDATE sessions SET ${sets.join(", ")} WHERE id = $1 RETURNING *`, params);
     if (!rows.length) return res.status(404).json({ error: "Session introuvable." });
+    // Passage en cours ou terminée : déclencheurs de début et de fin de session.
+    if (corps.statut !== undefined && corps.statut !== actuelle.statut) {
+      if (corps.statut === "en_cours") await signalerEvenement("debut_session", id);
+      if (corps.statut === "terminee") await signalerEvenement("fin_session", id);
+    }
     res.json({ session: rows[0], documentsObsoletes, ...(avertissementAbsences || {}) });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Cette référence est déjà utilisée par une autre session." });
@@ -798,6 +842,7 @@ router.post("/sessions/:id/stagiaires", requireRedacteur, wrap(async (req, res) 
       [personneId, sessionId, gid, prescripteur || null, dossier_complet === true, date_inscription || null, dateMetierAujourdhui()] // fix : jour civil de Cayenne
     );
     await cx.query("COMMIT");
+    await signalerEvenement("inscription", sessionId);
     res.status(201).json({ inscription });
   } catch (e) {
     await cx.query("ROLLBACK");
@@ -1373,6 +1418,7 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
     }
 
     await cx.query("COMMIT");
+    if (bilan.inscrits) await signalerEvenement("inscription", sessionId);
     res.json({ bilan });
   } catch (e) {
     await cx.query("ROLLBACK");
@@ -1447,79 +1493,211 @@ export function extraireFileId(saisie) {
   return /^[A-Za-z0-9_-]{10,}$/.test(t) ? t : null;
 }
 
-router.get("/modeles", requireAuth, wrap(async (req, res) => {
-  const portee = req.query.portee;
-  const params = [];
-  let filtre = "m.actif";
-  if (portee && PORTEES.includes(portee)) { params.push(portee); filtre += ` AND m.portee = $${params.length}`; }
-  const { rows } = await query(
-    `SELECT m.*,
-            COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero) ORDER BY i.numero)
+// Bibliothèque de modèles : liste filtrable, création, modification, retrait et réactivation.
+// Règles métier dans services/modelesBibliotheque.js ; la portée et le fichier Drive sont
+// validés ici (fichier unique par couple fichier × portée).
+const COLONNES_MODELE = `m.*, COALESCE((SELECT json_agg(json_build_object('id', i.id, 'numero', i.numero) ORDER BY i.numero)
                       FROM modele_indicateurs mi JOIN indicateurs i ON i.id = mi.indicateur_id
-                      WHERE mi.modele_id = m.id), '[]'::json) AS indicateurs
-     FROM modeles_documents m WHERE ${filtre} ORDER BY m.portee, m.nom`,
+                      WHERE mi.modele_id = m.id), '[]'::json) AS indicateurs`;
+
+// Rattache des indicateurs du référentiel actif à un modèle. Renvoie une erreur si l'un est inconnu.
+async function rattacherIndicateurs(cx, modeleId, numeros) {
+  const { rows: trouves } = await cx.query(
+    `SELECT i.id, i.numero FROM indicateurs i
+     JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
+     WHERE i.numero = ANY($1::int[])`,
+    [numeros]
+  );
+  if (trouves.length !== numeros.length) {
+    const manquants = numeros.filter((n) => !trouves.some((t) => t.numero === n));
+    return { erreur: `Indicateur(s) inconnu(s) : ${manquants.join(", ")}.` };
+  }
+  for (const t of trouves) {
+    await cx.query("INSERT INTO modele_indicateurs (modele_id, indicateur_id) VALUES ($1,$2)", [modeleId, t.id]);
+  }
+  return { ok: true };
+}
+
+// Colonnes de modeles_documents correspondant aux champs validés (hors indicateurs et lien).
+const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code", "signataire_mode", "signataire_id"];
+
+router.get("/modeles", requireAuth, wrap(async (req, res) => {
+  const filtres = [req.query.inactifs === "1" ? "NOT m.actif" : "m.actif"];
+  const params = [];
+  if (req.query.portee && PORTEES.includes(req.query.portee)) { params.push(req.query.portee); filtres.push(`m.portee = $${params.length}`); }
+  if (req.query.type_document && TYPES_DOCUMENT.includes(req.query.type_document)) { params.push(req.query.type_document); filtres.push(`m.type_document = $${params.length}`); }
+  if (req.query.mode_generation && MODES_GENERATION.includes(req.query.mode_generation)) { params.push(req.query.mode_generation); filtres.push(`m.mode_generation = $${params.length}`); }
+  const { rows } = await query(
+    `SELECT ${COLONNES_MODELE}
+     FROM modeles_documents m WHERE ${filtres.join(" AND ")} ORDER BY m.portee, m.nom`,
     params
   );
-  res.json({ modeles: rows, marqueurs: MARQUEURS, total: rows.length });
+  res.json({
+    modeles: rows, marqueurs: MARQUEURS, total: rows.length,
+    types_document: TYPES_DOCUMENT, modes_generation: MODES_GENERATION,
+    declencheurs: DECLENCHEURS, conditions: CONDITIONS,
+  });
 }));
 
+// Cohérence du signataire d'un modèle (état final) : mode / identifiant, et signataire actif s'il est fixe.
+async function controlerSignataire(m) {
+  let actif = true;
+  if (m.signataire_mode === "fixe" && m.signataire_id) {
+    const { rowCount } = await query("SELECT 1 FROM signataires WHERE id = $1 AND actif", [m.signataire_id]);
+    actif = rowCount > 0;
+  }
+  return verifierSignataireModele(m, actif);
+}
+
 router.post("/modeles", requireAdmin, wrap(async (req, res) => {
-  const { nom, lien, portee, description, indicateurs, drive_mime, generation_multiple } = req.body || {};
-  if (!nom?.trim()) return manque(res, "nom");
-  if (!PORTEES.includes(portee)) return res.status(400).json({ error: "Portée inconnue." });
-  const fileId = extraireFileId(lien);
+  const v = validerChamps(req.body, { complet: true });
+  if (v.erreur) return res.status(400).json({ error: v.erreur });
+  const fileId = extraireFileId(v.valeur.lien);
   if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
-  // DOC-10D : plusieurs documents indépendants pour une même session n'a de
-  // sens que pour une portée non liée à un stagiaire précis (chaque
-  // stagiaire a déjà SON document, régénérer le remplace délibérément).
-  if (generation_multiple === true && portee === "stagiaire") {
+  const modele = completerMode({
+    nom: v.valeur.nom, portee: v.valeur.portee, type_document: v.valeur.type_document,
+    mode_generation: v.valeur.mode_generation, condition_generation: v.valeur.condition_generation ?? null,
+    declencheur: v.valeur.declencheur ?? null, condition_code: v.valeur.condition_code ?? null,
+    description: v.valeur.description ?? null,
+  }, new Set(Object.keys(v.valeur)));
+  const coherence = verifierCoherence(modele);
+  if (coherence.erreur) return res.status(400).json({ error: coherence.erreur });
+  modele.signataire_mode = v.valeur.signataire_mode ?? "aucun";
+  modele.signataire_id = v.valeur.signataire_id ?? null; // contrôlé ci-dessous : refusé hors mode « fixe »
+  const signataire = await controlerSignataire(modele);
+  if (signataire.erreur) return res.status(400).json({ error: signataire.erreur });
+  // DOC-10D : plusieurs documents par session = pas pour un modèle de portée « stagiaire » (un document par stagiaire).
+  if (req.body?.generation_multiple === true && modele.portee === "stagiaire") {
     return res.status(400).json({ error: "Un modèle de portée « stagiaire » ne peut pas autoriser plusieurs documents par session." });
   }
-  // Un numéro d'indicateur doit être un entier positif : une valeur
-  // illisible est refusée ici, jamais laissée à PostgreSQL (conversion 500).
-  const bruts = Array.isArray(indicateurs) ? indicateurs : [];
-  if (bruts.some((v) => !parseIdPositif(v))) {
-    return res.status(400).json({ error: "Indicateur(s) invalide(s) : numéro entier positif attendu." });
-  }
-  const numeros = bruts.map((v) => parseIdPositif(v));
-  if (!numeros.length) return res.status(400).json({ error: "Indiquez au moins un indicateur." });
 
   const cx = await getPool().connect();
   try {
     await cx.query("BEGIN");
-    const { rows: [modele] } = await cx.query(
-      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par, generation_multiple)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [nom.trim(), fileId, `https://drive.google.com/open?id=${fileId}`, drive_mime || null,
-       portee, description?.trim() || null, req.user.id, generation_multiple === true]
+    const { rows: [cree] } = await cx.query(
+      `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par,
+                                      type_document, mode_generation, condition_generation, declencheur, condition_code,
+                                      declencheur_actif_depuis, signataire_mode, signataire_id, generation_multiple)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, CASE WHEN $9 = 'manuel' THEN NULL ELSE now() END, $13, $14, $15) RETURNING id`,
+      [modele.nom, fileId, `https://drive.google.com/open?id=${fileId}`, req.body.drive_mime || null,
+       modele.portee, modele.description, req.user.id,
+       modele.type_document, modele.mode_generation, modele.condition_generation, modele.declencheur, modele.condition_code,
+       modele.signataire_mode, modele.signataire_id, req.body?.generation_multiple === true]
     );
-    const { rows: trouves } = await cx.query(
-      `SELECT i.id, i.numero FROM indicateurs i
-       JOIN referentiel_versions v ON v.id = i.version_id AND v.est_active
-       WHERE i.numero = ANY($1::int[])`,
-      [numeros]
-    );
-    if (trouves.length !== numeros.length) {
+    const rattachement = await rattacherIndicateurs(cx, cree.id, v.valeur.indicateurs);
+    if (rattachement.erreur) {
       await cx.query("ROLLBACK");
-      const manquants = numeros.filter((n) => !trouves.some((t) => t.numero === n));
-      return res.status(400).json({ error: `Indicateur(s) inconnu(s) : ${manquants.join(", ")}.` });
-    }
-    for (const t of trouves) {
-      await cx.query("INSERT INTO modele_indicateurs (modele_id, indicateur_id) VALUES ($1,$2)", [modele.id, t.id]);
+      return res.status(400).json({ error: rattachement.erreur });
     }
     await cx.query("COMMIT");
-    res.status(201).json({ modele: { ...modele, indicateurs: trouves } });
+    const { rows: [complet] } = await query(`SELECT ${COLONNES_MODELE} FROM modeles_documents m WHERE m.id = $1`, [cree.id]);
+    res.status(201).json({ modele: complet });
   } catch (e) {
-    await cx.query("ROLLBACK");
-    if (e.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré comme modèle pour cette portée." });
+    await cx.query("ROLLBACK").catch(() => {});
+    if (e.code === "23505") return res.status(409).json({ error: "Un modèle actif existe déjà pour ce fichier et cette portée." });
     throw e;
   } finally { cx.release(); }
+}));
+
+// Modification partielle. Une transmission absente reste inchangée ; une fusion complète est
+// vérifiée (cohérence du mode, de la condition et de la portée) avant toute écriture.
+router.patch("/modeles/:id", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  const corps = req.body || {};
+  const inconnus = Object.keys(corps).filter((k) => !CHAMPS_MODIFIABLES.includes(k) && k !== "drive_mime");
+  if (inconnus.length) return res.status(400).json({ error: `Champ(s) non modifiable(s) : ${inconnus.join(", ")}.` });
+  const v = validerChamps(corps, { complet: false });
+  if (v.erreur) return res.status(400).json({ error: v.erreur });
+  if (!Object.keys(v.valeur).length) return res.status(400).json({ error: "Aucune modification transmise." });
+  let fileId = null;
+  if (v.valeur.lien !== undefined) {
+    fileId = extraireFileId(v.valeur.lien);
+    if (!fileId) return res.status(400).json({ error: "Lien ou identifiant Drive non reconnu." });
+  }
+
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [actuel] } = await cx.query("SELECT * FROM modeles_documents WHERE id = $1 FOR UPDATE", [id]);
+    if (!actuel) {
+      await cx.query("ROLLBACK");
+      return res.status(404).json({ error: "Modèle introuvable." });
+    }
+    let fusion = { ...actuel };
+    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined) fusion[c] = v.valeur[c];
+    // Un changement de mode remet en cohérence les champs dépendants non transmis.
+    if (v.valeur.mode_generation !== undefined) fusion = completerMode(fusion, new Set(Object.keys(v.valeur)));
+    const toucheMode = ["mode_generation", "declencheur", "condition_code"].some((c) => v.valeur[c] !== undefined);
+    const coherence = verifierCoherence(fusion, { exigerDeclencheur: toucheMode });
+    if (coherence.erreur) {
+      await cx.query("ROLLBACK");
+      return res.status(400).json({ error: coherence.erreur });
+    }
+    // Signataire : un mode autre que « fixe » retire l'identifiant ; « fixe » exige un signataire actif.
+    if (v.valeur.signataire_mode !== undefined && v.valeur.signataire_mode !== "fixe" && v.valeur.signataire_id === undefined) fusion.signataire_id = null;
+    const signataire = await controlerSignataire(fusion);
+    if (signataire.erreur) {
+      await cx.query("ROLLBACK");
+      return res.status(400).json({ error: signataire.erreur });
+    }
+    // Colonnes réellement modifiées : celles transmises, plus les champs remis en cohérence par le mode.
+    const modifs = {};
+    for (const c of COLONNES_DIRECTES) if (v.valeur[c] !== undefined || fusion[c] !== actuel[c]) modifs[c] = fusion[c];
+    // Date d'activation des déclenchements : posée au passage en automatique ou conditionnel,
+    // effacée au retour en manuel. Les déclenchements par date ne remontent jamais avant.
+    if (fusion.mode_generation === "manuel" && actuel.mode_generation !== "manuel") modifs.declencheur_actif_depuis = null;
+    if (fusion.mode_generation !== "manuel" && (actuel.mode_generation === "manuel" || fusion.declencheur !== actuel.declencheur)) {
+      modifs.declencheur_actif_depuis = new Date();
+    }
+    if (fileId) Object.assign(modifs, { drive_file_id: fileId, drive_url: `https://drive.google.com/open?id=${fileId}`, drive_mime: corps.drive_mime || null });
+    const colonnes = Object.keys(modifs);
+    if (colonnes.length) {
+      const affectation = colonnes.map((c, i) => `${c} = $${i + 2}`).join(", ");
+      await cx.query(`UPDATE modeles_documents SET ${affectation}, updated_at = now() WHERE id = $1`, [id, ...colonnes.map((c) => modifs[c])]);
+    }
+    if (v.valeur.indicateurs !== undefined) {
+      await cx.query("DELETE FROM modele_indicateurs WHERE modele_id = $1", [id]);
+      const rattachement = await rattacherIndicateurs(cx, id, v.valeur.indicateurs);
+      if (rattachement.erreur) {
+        await cx.query("ROLLBACK");
+        return res.status(400).json({ error: rattachement.erreur });
+      }
+    }
+    await cx.query("COMMIT");
+    const { rows: [complet] } = await query(`SELECT ${COLONNES_MODELE} FROM modeles_documents m WHERE m.id = $1`, [id]);
+    res.json({ ok: true, modele: complet });
+  } catch (e) {
+    await cx.query("ROLLBACK").catch(() => {});
+    if (e.code === "23505") return res.status(409).json({ error: "Un modèle actif existe déjà pour ce fichier et cette portée." });
+    throw e;
+  } finally { cx.release(); }
+}));
+
+// Réactivation d'un modèle désactivé. Refusée si un autre modèle actif occupe le même couple fichier × portée.
+router.post("/modeles/:id/reactiver", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
+  try {
+    const { rows: [m] } = await query(
+      "UPDATE modeles_documents SET actif = true, updated_at = now() WHERE id = $1 AND NOT actif RETURNING id, nom, portee", [id]
+    );
+    if (m) return res.json({ ok: true, modele: m });
+    const { rowCount } = await query("SELECT 1 FROM modeles_documents WHERE id = $1", [id]);
+    if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
+    return res.status(409).json({ error: "Ce modèle est déjà actif.", code: "modele_deja_actif" });
+  } catch (e) {
+    if (e.code === "23505") {
+      return res.status(409).json({ error: "Un autre modèle actif existe déjà pour ce fichier et cette portée.", code: "modele_conflit" });
+    }
+    throw e;
+  }
 }));
 
 router.delete("/modeles/:id", requireAdmin, wrap(async (req, res) => {
   const id = identifiant(req.params.id);
   if (!id) return res.status(400).json({ error: "Identifiant de modèle invalide." });
-  const { rowCount } = await query("UPDATE modeles_documents SET actif = false WHERE id = $1", [id]);
+  const { rowCount } = await query("UPDATE modeles_documents SET actif = false, updated_at = now() WHERE id = $1", [id]);
   if (!rowCount) return res.status(404).json({ error: "Modèle introuvable." });
   res.json({ ok: true });
 }));
@@ -1589,6 +1767,29 @@ router.post("/generations", requireRedacteur, wrap(async (req, res) => {
     if (e.statut) return res.status(e.statut).json({ error: e.message });
     return res.status(400).json({ error: e.message });
   }
+}));
+
+// Générations automatiques et conditionnelles d'une session : tâches planifiées et leur sort.
+router.get("/sessions/:id/generations-planifiees", requireAuth, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de session invalide." });
+  const taches = await tachesDeSession(id);
+  res.json({ taches, total: taches.length });
+}));
+
+// Remise en file d'une tâche bloquée (administrateur), après correction du modèle ou des données.
+router.post("/generations-planifiees/:id/relancer", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de tâche invalide." });
+  const { rows: [t] } = await query(
+    `SELECT g.statut, s.archivee_le FROM generations_planifiees g JOIN sessions s ON s.id = g.session_id WHERE g.id = $1`, [id]
+  );
+  if (!t) return res.status(404).json({ error: "Tâche introuvable." });
+  if (t.archivee_le) return res.status(409).json({ error: MSG_ARCHIVEE });
+  if (!(await relancer(id))) {
+    return res.status(409).json({ error: "Seule une tâche bloquée ou en attente peut être relancée, sans doublon en attente." });
+  }
+  res.json({ ok: true });
 }));
 
 // ── Évaluations / QCM + satisfaction (lot L7) ────────────────

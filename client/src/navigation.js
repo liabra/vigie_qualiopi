@@ -36,14 +36,22 @@ export const NAVIGATION = [
     ],
   },
   {
+    id: "documents",
+    titre: "Documents",
+    entrees: [{ to: "/variables-documentaires", libelle: "Variables documentaires" }],
+  },
+  {
     id: "parametres",
     titre: "Paramètres",
     admin: true,
     entrees: [
       { to: "/modeles", libelle: "Modèles de documents" },
       { to: "/prescripteurs", libelle: "Prescripteurs" },
+      { to: "/questionnaires", libelle: "Questionnaires de formation" },
       { to: "/versions", libelle: "Versions du référentiel" },
+      { to: "/parametres/organisme", libelle: "Organisme et signataires" },
       { to: "/parametres/google", libelle: "Google Drive" },
+      { to: "/parametres/inventaire-drive", libelle: "Inventaire Drive" },
     ],
   },
 ];

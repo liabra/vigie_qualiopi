@@ -17,7 +17,11 @@ import { FormationsPage } from "./parametres/Formations.jsx";
 import { PrescripteursPage } from "./parametres/Prescripteurs.jsx";
 import { ModelesPage } from "./parametres/Modeles.jsx";
 import { VersionsPage } from "./parametres/Versions.jsx";
+import { QuestionnairesPage } from "./parametres/Questionnaires.jsx";
 import { GoogleDrivePage } from "./parametres/GoogleDrive.jsx";
+import { InventaireDrivePage } from "./parametres/InventaireDrive.jsx";
+import { VariablesDocumentsPage } from "./parametres/VariablesDocuments.jsx";
+import { OrganismePage } from "./parametres/Organisme.jsx";
 import { SessionsListe } from "./sessions/SessionsListe.jsx";
 import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
@@ -205,8 +209,12 @@ export default function App() {
         <Route path="justificatifs-intervenants" element={admin(<JustificatifsPilotage />)} />
         <Route path="modeles" element={admin(<ModelesPage />)} />
         <Route path="prescripteurs" element={admin(<PrescripteursPage />)} />
+        <Route path="questionnaires" element={admin(<QuestionnairesPage />)} />
         <Route path="versions" element={admin(<VersionsPage onChange={auChangement} />)} />
         <Route path="parametres/google" element={admin(<GoogleDrivePage />)} />
+        <Route path="parametres/inventaire-drive" element={admin(<InventaireDrivePage />)} />
+        <Route path="variables-documentaires" element={<VariablesDocumentsPage />} />
+        <Route path="parametres/organisme" element={admin(<OrganismePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />
       </Route>

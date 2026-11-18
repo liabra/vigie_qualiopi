@@ -17,6 +17,7 @@ import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
 import { marqueursInconnus, requetesDocs, requetesSheets, valeursDeRemplacement, valeursMarqueurs } from "./marqueurs.js";
 import { calculerAssiduite } from "./assiduite.js";
 import { precontrolerGeneration } from "./precontroleGeneration.js";
+import { signatairePour } from "./parametresOrganisme.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
@@ -273,14 +274,18 @@ async function cibles(modele, { session, groupe }) {
     // LEFT JOIN LATERAL — une seule requête pour TOUS les stagiaires
     // ciblés, jamais une par stagiaire (pas de N+1).
     `SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
-            i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.statut,
+            i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.groupe_id, i.statut,
             i.date_inscription, i.date_abandon, i.motif_abandon,
+            s.situation_handicap, s.besoins_adaptation,
+            rb.date_recueil AS besoin_date_recueil, rb.attentes AS besoin_attentes, rb.objectifs_personnels AS besoin_objectifs_personnels,
+            rb.prerequis_verifies AS besoin_prerequis_verifies, rb.conclusion AS besoin_conclusion,
             r.date_evenement AS relance_derniere_date,
             COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
      FROM inscriptions i
      JOIN stagiaires s ON s.id = i.stagiaire_id
      LEFT JOIN prescripteurs pr ON pr.code = i.prescripteur
      LEFT JOIN groupes g ON g.id = i.groupe_id
+     LEFT JOIN recueils_besoin rb ON rb.inscription_id = i.id
      LEFT JOIN LATERAL (
        SELECT si.date_evenement FROM suivis_inscription si
        WHERE si.inscription_id = i.id AND si.type = 'relance'
@@ -317,7 +322,7 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
   if (ids.length && blocs.includes("evaluations")) {
     const evaluations = new Map();
     const { rows } = await query(
-      `SELECT inscription_id, intitule, date_passage, score, score_max
+      `SELECT inscription_id, intitule, date_passage, score, score_max, type, resultat, commentaire, seuil_reussite
        FROM resultats_qcm WHERE inscription_id = ANY($1::int[])
        ORDER BY inscription_id, date_passage, id`,
       [ids]
@@ -327,6 +332,39 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
       evaluations.get(r.inscription_id).push(r);
     }
     resultat.evaluations = evaluations;
+  }
+  // Réponses au questionnaire de formation : instantané de la question, dans l'ordre actuel du questionnaire
+  // (une réponse dont la question a disparu garde son énoncé et passe en fin). Une requête pour toutes les cibles.
+  if (ids.length && blocs.includes("questionnaire_formation")) {
+    const reponses = new Map();
+    const { rows } = await query(
+      `SELECT r.inscription_id, r.question_libelle, r.valeur_texte, r.valeurs_choisies
+       FROM questionnaire_reponses r LEFT JOIN questionnaire_questions q ON q.id = r.question_id
+       WHERE r.inscription_id = ANY($1::int[])
+       ORDER BY r.inscription_id, q.ordre NULLS LAST, r.id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!reponses.has(r.inscription_id)) reponses.set(r.inscription_id, []);
+      reponses.get(r.inscription_id).push(r);
+    }
+    resultat.questionnaire_formation = reponses;
+  }
+  // Adaptations du parcours (accès RESTREINT : le précontrôle exige un administrateur) : une requête
+  // pour toutes les cibles.
+  if (ids.length && blocs.includes("adaptations")) {
+    const adaptations = new Map();
+    const { rows } = await query(
+      `SELECT inscription_id, categorie, mesure, statut, date_decision, date_mise_en_oeuvre, bilan
+       FROM adaptations_parcours WHERE inscription_id = ANY($1::int[])
+       ORDER BY inscription_id, date_decision, id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!adaptations.has(r.inscription_id)) adaptations.set(r.inscription_id, []);
+      adaptations.get(r.inscription_id).push(r);
+    }
+    resultat.adaptations = adaptations;
   }
   // DOC-7B : séances de la SESSION (mêmes lignes pour toutes les cibles),
   // une seule requête, ordre date_seance, heure_debut, id.
@@ -378,7 +416,9 @@ export async function contexteGeneration(sessionId, groupeId) {
     `SELECT s.*, f.id AS formation_id, f.intitule, f.code_interne AS formation_code_interne,
             v.duree_heures_defaut, v.public_vise AS version_public_vise, v.prerequis AS version_prerequis,
             v.objectifs AS version_objectifs, v.modalite AS version_modalite,
-            v.accessibilite_handicap AS version_accessibilite_handicap
+            v.accessibilite_handicap AS version_accessibilite_handicap,
+            v.objectifs_operationnels AS version_objectifs_operationnels, v.methodes_pedagogiques AS version_methodes_pedagogiques,
+            v.modalites_evaluation AS version_modalites_evaluation
      FROM sessions s
      JOIN formations f ON f.id = s.formation_id
      LEFT JOIN formation_versions v ON v.id = s.formation_version_id
@@ -398,6 +438,18 @@ export async function contexteGeneration(sessionId, groupeId) {
      WHERE l.${cle} = $1 ORDER BY i.nom, i.prenom, i.id`, [id])).rows : []);
   const formateursSession = await formateurs("intervenants_sessions", "session_id", session.id);
   const formateursGroupe = await formateurs("intervenants_groupes", "groupe_id", groupe?.id);
+  // Paramètres de l'organisme (une ligne) et formateurs de CHAQUE groupe de la session (une requête) :
+  // alimentent {{organisme_*}} et le signataire « formateur concerné » d'un stagiaire.
+  const { rows: [organismeParams] } = await query(
+    "SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme WHERE id = 1"
+  );
+  const { rows: lignesGroupes } = await query(
+    `SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction
+     FROM intervenants_groupes l JOIN intervenants i ON i.id = l.intervenant_id
+     JOIN groupes g ON g.id = l.groupe_id
+     WHERE g.session_id = $1 ORDER BY i.nom, i.prenom, i.id`, [session.id]);
+  const formateursParGroupe = new Map();
+  for (const l of lignesGroupes) { if (!formateursParGroupe.has(l.groupe_id)) formateursParGroupe.set(l.groupe_id, []); formateursParGroupe.get(l.groupe_id).push(l); }
   // DOC-3B : comptage de la session — UNE requête, indépendante du nombre
   // de documents produits. « Inscrits » exclut l'abandon, comme partout
   // ailleurs dans Vigie (pilotage.js, api.js, gestion.js) : pas une
@@ -411,12 +463,14 @@ export async function contexteGeneration(sessionId, groupeId) {
   session.nombre_inscrits = compte.inscrits;
   session.nombre_termines = compte.termines;
   return {
-    session, groupe, formateursSession, formateursGroupe,
+    session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
     formation: { intitule: session.intitule, id: session.formation_id, code_interne: session.formation_code_interne },
     version: {
       duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,
       prerequis: session.version_prerequis, objectifs: session.version_objectifs,
       modalite: session.version_modalite, accessibilite_handicap: session.version_accessibilite_handicap,
+      objectifs_operationnels: session.version_objectifs_operationnels || [], methodes_pedagogiques: session.version_methodes_pedagogiques,
+      modalites_evaluation: session.version_modalites_evaluation,
     },
     // Durée prévue réellement déclarée, à défaut celle de la version
     // figée : la source unique du calcul d'assiduité (lot L2).
@@ -488,11 +542,16 @@ const generationsEnCours = new Map();
 // `client` n'est passé que par les tests ; en production il vient de getDrive().
 // DOC-3C : `admin` (booléen, estAdmin(req.user) calculé par la route) sert
 // au précontrôle pour les variables/blocs `sensibilite: "restreinte"`.
-export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null } = {}) {
+// Génération automatique : `completer` ne produit que les documents manquants (jamais de
+// remplacement ni de suppression) et `filtre(stagiaire)` restreint les cibles stagiaire ; quand
+// il ne reste rien à produire, le résultat est { documents: 0, rien: true } au lieu d'une erreur.
+// `planificationId` rattache la génération à la tâche planifiée qui l'a lancée.
+export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null, completer = false, filtre = null, planificationId = null } = {}) {
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");
     e.statut = 503;
+    e.driveAbsent = true;
     throw e;
   }
   if (!d.row.scopes.split(/\s+/).includes(DRIVE_FILE)) {
@@ -518,21 +577,34 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   }
 
   const ctx = await contexteGeneration(sessionId, groupeId);
-  const aProduire = await cibles(modele, ctx);
-  if (!aProduire.length) {
-    throw new Error("Aucun stagiaire inscrit (hors abandons) : rien à générer pour ce modèle.");
+  // Signataire fixe du modèle (la présidente…) : chargé une fois ; « formateur » se résout par cible.
+  if (modele.signataire_mode === "fixe" && modele.signataire_id) {
+    const { rows: [sg] } = await query("SELECT nom, fonction FROM signataires WHERE id = $1 AND actif", [modele.signataire_id]);
+    ctx.signataireFixe = sg || null;
   }
+  let aProduire = await cibles(modele, ctx);
+  if (filtre && modele.portee === "stagiaire") aProduire = aProduire.filter((c) => filtre(c.stagiaire));
 
   // Déjà produits pour ce couple (modèle/session/groupe ET libellé) : on ne
   // double jamais sans consigne — mais un libellé DIFFÉRENT n'est jamais
   // considéré comme « déjà généré » (c'est précisément ce qui permet
   // plusieurs documents indépendants pour la même session).
-  const { rows: existants } = await query(
+  const { rows: tousExistants } = await query(
     `SELECT * FROM documents_generes
      WHERE modele_id = $1 AND COALESCE(session_id, 0) = $2 AND COALESCE(groupe_id, 0) = $3
        AND COALESCE(libelle, '') = COALESCE($4, '')`,
     [modeleId, sessionId || 0, groupeId || 0, libelleNorm]
   );
+  // En complément, les documents existants ne sont ni remplacés ni retirés des preuves.
+  const existants = completer ? [] : tousExistants;
+  if (completer) {
+    const dejaFaits = new Set(tousExistants.map((x) => x.stagiaire_id ?? 0));
+    aProduire = aProduire.filter((c) => !dejaFaits.has(c.stagiaire?.id ?? 0));
+  }
+  if (!aProduire.length) {
+    if (completer || filtre) return { modele: modele.nom, portee: modele.portee, documents: 0, rien: true };
+    throw new Error("Aucun stagiaire inscrit (hors abandons) : rien à générer pour ce modèle.");
+  }
   if (existants.length && !remplacer) {
     const e = new Error(
       `${existants.length} document(s) ont déjà été générés pour ce modèle sur cette session${libelleNorm ? ` (« ${libelleNorm} »)` : ""}. ` +
@@ -600,7 +672,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       // ET document_date_convocation (resolversCanoniques.js) — jamais deux
       // `new Date()` distincts pour un même document.
       const maintenant = new Date();
-      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant });
+      const signataire = signatairePour(modele, ctx, stagiaire);
+      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant, signataire });
       // DOC-3D : map plat de remplacement — 23 historiques + les canoniques
       // réellement présents dans le modèle (précontrôle), jamais les 45.
       const remplacements = valeursDeRemplacement(valeurs, precontrole.canoniques);
@@ -618,6 +691,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
         ? {
             absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences?.get(stagiaire.inscription_id) : null) || [],
             evaluations: (stagiaire?.inscription_id != null ? lignesBlocs.evaluations?.get(stagiaire.inscription_id) : null) || [],
+            adaptations: (stagiaire?.inscription_id != null ? lignesBlocs.adaptations?.get(stagiaire.inscription_id) : null) || [],
+            questionnaire_formation: (stagiaire?.inscription_id != null ? lignesBlocs.questionnaire_formation?.get(stagiaire.inscription_id) : null) || [],
+            objectifs_formation: (ctx.version?.objectifs_operationnels || []).map((libelle, i) => ({ code: `O${i + 1}`, libelle })),
             intervenants: lignesIntervenants || [],
             seances: lignesBlocs.seances || [],
             suivi_pedagogique: (stagiaire?.inscription_id != null ? lignesBlocs.suivi_pedagogique?.get(stagiaire.inscription_id) : null) || [],
@@ -641,9 +717,9 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   try {
     await cx.query("BEGIN");
     const { rows: [gen] } = await cx.query(
-      `INSERT INTO generations (modele_id, session_id, groupe_id, nb_documents, nb_remplaces, lancee_par)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [modeleId, sessionId, groupeId, produits.length, remplaces, utilisateurId]
+      `INSERT INTO generations (modele_id, session_id, groupe_id, nb_documents, nb_remplaces, lancee_par, planification_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [modeleId, sessionId, groupeId, produits.length, remplaces, utilisateurId, planificationId]
     );
 
     const preuves = [];

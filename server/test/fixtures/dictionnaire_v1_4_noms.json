@@ -1,0 +1,661 @@
+{
+"version": "1.4",
+"variables": [
+{
+"id": "ORG-01",
+"nom": "organisme_nom"
+},
+{
+"id": "ORG-02",
+"nom": "organisme_adresse_ligne1"
+},
+{
+"id": "ORG-03",
+"nom": "organisme_adresse_ligne2"
+},
+{
+"id": "ORG-04",
+"nom": "organisme_code_postal"
+},
+{
+"id": "ORG-05",
+"nom": "organisme_ville"
+},
+{
+"id": "ORG-06",
+"nom": "organisme_telephone"
+},
+{
+"id": "ORG-07",
+"nom": "organisme_mobile"
+},
+{
+"id": "ORG-08",
+"nom": "organisme_email"
+},
+{
+"id": "ORG-09",
+"nom": "organisme_site_web"
+},
+{
+"id": "ORG-10",
+"nom": "organisme_siret"
+},
+{
+"id": "ORG-11",
+"nom": "organisme_nda"
+},
+{
+"id": "ORG-12",
+"nom": "referent_handicap_nom"
+},
+{
+"id": "ORG-13",
+"nom": "referent_handicap_email"
+},
+{
+"id": "ORG-14",
+"nom": "referent_handicap_telephone"
+},
+{
+"id": "FOR-01",
+"nom": "formation_id"
+},
+{
+"id": "FOR-02",
+"nom": "formation_intitule"
+},
+{
+"id": "FOR-03",
+"nom": "formation_code"
+},
+{
+"id": "FOR-04",
+"nom": "formation_version_programme"
+},
+{
+"id": "FOR-05",
+"nom": "formation_duree_heures"
+},
+{
+"id": "FOR-06",
+"nom": "formation_public_vise"
+},
+{
+"id": "FOR-07",
+"nom": "formation_prerequis"
+},
+{
+"id": "FOR-08",
+"nom": "formation_objectif_general"
+},
+{
+"id": "FOR-09",
+"nom": "formation_objectifs_operationnels"
+},
+{
+"id": "FOR-10",
+"nom": "formation_modalite"
+},
+{
+"id": "FOR-11",
+"nom": "formation_methodes_pedagogiques"
+},
+{
+"id": "FOR-12",
+"nom": "formation_modalites_evaluation"
+},
+{
+"id": "FOR-13",
+"nom": "formation_accessibilite"
+},
+{
+"id": "FOR-14",
+"nom": "formation_nombre_phases"
+},
+{
+"id": "SES-01",
+"nom": "session_id"
+},
+{
+"id": "SES-02",
+"nom": "session_libelle"
+},
+{
+"id": "SES-03",
+"nom": "session_date_debut"
+},
+{
+"id": "SES-04",
+"nom": "session_date_fin"
+},
+{
+"id": "SES-05",
+"nom": "session_horaires"
+},
+{
+"id": "SES-06",
+"nom": "session_lieu"
+},
+{
+"id": "SES-07",
+"nom": "session_adresse"
+},
+{
+"id": "SES-08",
+"nom": "session_duree_heures"
+},
+{
+"id": "SES-09",
+"nom": "session_statut_code"
+},
+{
+"id": "SES-10",
+"nom": "session_nombre_inscrits"
+},
+{
+"id": "SES-11",
+"nom": "session_nombre_termines"
+},
+{
+"id": "SES-12",
+"nom": "session_reference"
+},
+{
+"id": "GRP-01",
+"nom": "groupe_id"
+},
+{
+"id": "GRP-02",
+"nom": "groupe_nom"
+},
+{
+"id": "GRP-03",
+"nom": "groupe_code"
+},
+{
+"id": "GRP-04",
+"nom": "groupe_age_min"
+},
+{
+"id": "GRP-05",
+"nom": "groupe_age_max"
+},
+{
+"id": "GRP-06",
+"nom": "groupe_tranche_age"
+},
+{
+"id": "GRP-07",
+"nom": "groupe_adaptation_pedagogique"
+},
+{
+"id": "STA-01",
+"nom": "stagiaire_id"
+},
+{
+"id": "STA-02",
+"nom": "stagiaire_civilite"
+},
+{
+"id": "STA-03",
+"nom": "stagiaire_nom"
+},
+{
+"id": "STA-04",
+"nom": "stagiaire_prenom"
+},
+{
+"id": "STA-05",
+"nom": "stagiaire_nom_complet"
+},
+{
+"id": "STA-06",
+"nom": "stagiaire_date_naissance"
+},
+{
+"id": "STA-07",
+"nom": "stagiaire_age"
+},
+{
+"id": "STA-08",
+"nom": "stagiaire_adresse"
+},
+{
+"id": "STA-09",
+"nom": "stagiaire_code_postal"
+},
+{
+"id": "STA-10",
+"nom": "stagiaire_ville"
+},
+{
+"id": "STA-11",
+"nom": "stagiaire_telephone"
+},
+{
+"id": "STA-12",
+"nom": "stagiaire_email"
+},
+{
+"id": "STA-13",
+"nom": "stagiaire_date_inscription"
+},
+{
+"id": "STA-14",
+"nom": "stagiaire_statut_parcours"
+},
+{
+"id": "STA-15",
+"nom": "stagiaire_groupe_nom"
+},
+{
+"id": "STA-16",
+"nom": "stagiaire_besoins_specifiques"
+},
+{
+"id": "STA-17",
+"nom": "stagiaire_amenagements"
+},
+{
+"id": "LEG-01",
+"nom": "representant_legal_nom"
+},
+{
+"id": "LEG-02",
+"nom": "representant_legal_prenom"
+},
+{
+"id": "LEG-03",
+"nom": "representant_legal_lien"
+},
+{
+"id": "LEG-04",
+"nom": "representant_legal_email"
+},
+{
+"id": "LEG-05",
+"nom": "representant_legal_telephone"
+},
+{
+"id": "LEG-06",
+"nom": "autorisation_ia_statut"
+},
+{
+"id": "LEG-07",
+"nom": "autorisation_image_statut"
+},
+{
+"id": "PHA-01",
+"nom": "phase_id"
+},
+{
+"id": "PHA-02",
+"nom": "phase_numero"
+},
+{
+"id": "PHA-03",
+"nom": "phase_intitule"
+},
+{
+"id": "PHA-04",
+"nom": "phase_duree_heures"
+},
+{
+"id": "PHA-05",
+"nom": "phase_objectif_general"
+},
+{
+"id": "PHA-06",
+"nom": "phase_objectifs_operationnels"
+},
+{
+"id": "PHA-07",
+"nom": "phase_contenus"
+},
+{
+"id": "PHA-08",
+"nom": "phase_methodes"
+},
+{
+"id": "PHA-09",
+"nom": "phase_modalites_evaluation"
+},
+{
+"id": "PHA-10",
+"nom": "phase_date_debut"
+},
+{
+"id": "PHA-11",
+"nom": "phase_date_fin"
+},
+{
+"id": "PHA-12",
+"nom": "phase_resultat_niveau"
+},
+{
+"id": "PHA-13",
+"nom": "phase_resultat_score"
+},
+{
+"id": "PHA-14",
+"nom": "phase_observations_formateur"
+},
+{
+"id": "PHA-15",
+"nom": "phase_progression_commentaire"
+},
+{
+"id": "PHA-16",
+"nom": "phase_prochaine_etape"
+},
+{
+"id": "SEA-01",
+"nom": "seance_id"
+},
+{
+"id": "SEA-02",
+"nom": "seance_numero"
+},
+{
+"id": "SEA-03",
+"nom": "seance_date"
+},
+{
+"id": "SEA-04",
+"nom": "seance_heure_debut"
+},
+{
+"id": "SEA-05",
+"nom": "seance_heure_fin"
+},
+{
+"id": "SEA-06",
+"nom": "seance_duree_heures"
+},
+{
+"id": "SEA-07",
+"nom": "seance_theme"
+},
+{
+"id": "SEA-08",
+"nom": "seance_lieu"
+},
+{
+"id": "SEA-09",
+"nom": "seance_phase_numero"
+},
+{
+"id": "SEA-10",
+"nom": "seance_groupe_nom"
+},
+{
+"id": "SEA-11",
+"nom": "seance_competences"
+},
+{
+"id": "SEA-12",
+"nom": "seance_activites"
+},
+{
+"id": "SUI-01",
+"nom": "presence_heures_prevues"
+},
+{
+"id": "SUI-02",
+"nom": "presence_heures_realisees"
+},
+{
+"id": "SUI-03",
+"nom": "absence_heures_total"
+},
+{
+"id": "SUI-04",
+"nom": "presence_taux"
+},
+{
+"id": "SUI-05",
+"nom": "absence_taux"
+},
+{
+"id": "SUI-06",
+"nom": "abandon_statut"
+},
+{
+"id": "SUI-07",
+"nom": "abandon_date"
+},
+{
+"id": "SUI-08",
+"nom": "abandon_motif"
+},
+{
+"id": "SUI-09",
+"nom": "relance_derniere_date"
+},
+{
+"id": "SUI-10",
+"nom": "relance_derniere_action"
+},
+{
+"id": "EVA-01",
+"nom": "evaluation_id"
+},
+{
+"id": "EVA-02",
+"nom": "evaluation_intitule"
+},
+{
+"id": "EVA-03",
+"nom": "evaluation_methode"
+},
+{
+"id": "EVA-04",
+"nom": "evaluation_date"
+},
+{
+"id": "EVA-05",
+"nom": "evaluation_score_obtenu"
+},
+{
+"id": "EVA-06",
+"nom": "evaluation_score_max"
+},
+{
+"id": "EVA-07",
+"nom": "evaluation_pourcentage"
+},
+{
+"id": "EVA-08",
+"nom": "evaluation_niveau"
+},
+{
+"id": "EVA-09",
+"nom": "evaluation_commentaire"
+},
+{
+"id": "EVA-10",
+"nom": "evaluation_objectif_associe"
+},
+{
+"id": "EVA-11",
+"nom": "evaluation_moment"
+},
+{
+"id": "EVA-12",
+"nom": "evaluation_resultat_validation"
+},
+{
+"id": "BIL-01",
+"nom": "bilan_date"
+},
+{
+"id": "BIL-02",
+"nom": "bilan_synthese"
+},
+{
+"id": "BIL-03",
+"nom": "bilan_competences_acquises"
+},
+{
+"id": "BIL-04",
+"nom": "bilan_axes_progres"
+},
+{
+"id": "BIL-05",
+"nom": "bilan_suite_parcours"
+},
+{
+"id": "SAT-01",
+"nom": "satisfaction_score_global"
+},
+{
+"id": "SAT-02",
+"nom": "satisfaction_commentaire"
+},
+{
+"id": "IND-01",
+"nom": "indicateur_taux_satisfaction"
+},
+{
+"id": "IND-02",
+"nom": "indicateur_taux_assiduite"
+},
+{
+"id": "IND-03",
+"nom": "indicateur_taux_abandon"
+},
+{
+"id": "IND-04",
+"nom": "indicateur_taux_atteinte_objectifs"
+},
+{
+"id": "INT-01",
+"nom": "intervenant_id"
+},
+{
+"id": "INT-02",
+"nom": "intervenant_civilite"
+},
+{
+"id": "INT-03",
+"nom": "intervenant_nom"
+},
+{
+"id": "INT-04",
+"nom": "intervenant_prenom"
+},
+{
+"id": "INT-05",
+"nom": "intervenant_nom_complet"
+},
+{
+"id": "INT-06",
+"nom": "intervenant_fonction"
+},
+{
+"id": "INT-07",
+"nom": "intervenant_email"
+},
+{
+"id": "INT-08",
+"nom": "intervenant_telephone"
+},
+{
+"id": "PAR-01",
+"nom": "prescripteur_nom"
+},
+{
+"id": "PAR-02",
+"nom": "prescripteur_contact_nom"
+},
+{
+"id": "PAR-03",
+"nom": "prescripteur_contact_fonction"
+},
+{
+"id": "PAR-04",
+"nom": "prescripteur_email"
+},
+{
+"id": "PAR-05",
+"nom": "prescripteur_telephone"
+},
+{
+"id": "PAR-06",
+"nom": "financeur_nom"
+},
+{
+"id": "PAR-07",
+"nom": "convention_reference"
+},
+{
+"id": "IMM-01",
+"nom": "immersion_structure_nom"
+},
+{
+"id": "IMM-02",
+"nom": "immersion_tuteur_nom"
+},
+{
+"id": "IMM-03",
+"nom": "immersion_tuteur_contact"
+},
+{
+"id": "IMM-04",
+"nom": "immersion_date_debut"
+},
+{
+"id": "IMM-05",
+"nom": "immersion_date_fin"
+},
+{
+"id": "IMM-06",
+"nom": "immersion_objectifs"
+},
+{
+"id": "IMM-07",
+"nom": "immersion_bilan"
+},
+{
+"id": "DOC-01",
+"nom": "document_date"
+},
+{
+"id": "DOC-02",
+"nom": "document_reference"
+},
+{
+"id": "DOC-03",
+"nom": "document_version"
+},
+{
+"id": "DOC-04",
+"nom": "document_redacteur"
+},
+{
+"id": "DOC-05",
+"nom": "document_approbateur"
+},
+{
+"id": "DOC-06",
+"nom": "document_date_convocation"
+},
+{
+"id": "DOC-07",
+"nom": "document_date_attestation"
+},
+{
+"id": "DOC-08",
+"nom": "signataire_nom"
+},
+{
+"id": "DOC-09",
+"nom": "signataire_fonction"
+},
+{
+"id": "DOC-10",
+"nom": "document_duree_attestation"
+}
+]
+}

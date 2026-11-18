@@ -9,13 +9,13 @@ const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) =>
 test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
   assert.deepEqual(liens("admin"), [
     "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions",
-    "/modeles", "/prescripteurs", "/versions", "/parametres/google",
+    "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/google", "/parametres/inventaire-drive",
   ]);
   assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));
 });
 
 test("contributeur : aucune entrée d'administration, aucun groupe Paramètres", () => {
-  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite"]);
+  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/variables-documentaires"]);
   assert.ok(!navigationPour("contributeur").some((g) => g.titre === "Paramètres"));
 });
 
@@ -26,6 +26,7 @@ test("rôle inconnu : traité comme non administrateur", () => {
 test("fil d'Ariane : préfixe le plus long, sous-pages de session comprises", () => {
   assert.deepEqual(contexteDe("/sessions/12/assiduite"), { groupe: "Formation", page: "Sessions", to: "/sessions" });
   assert.deepEqual(contexteDe("/parametres/google"), { groupe: "Paramètres", page: "Google Drive", to: "/parametres/google" });
+  assert.deepEqual(contexteDe("/variables-documentaires"), { groupe: "Documents", page: "Variables documentaires", to: "/variables-documentaires" });
   assert.equal(contexteDe("/nimporte-quoi"), null);
   assert.equal(contexteDe("/sessionsX"), null, "pas de faux préfixe");
 });

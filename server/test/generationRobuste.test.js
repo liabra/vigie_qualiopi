@@ -59,6 +59,9 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     }
     if (sql.startsWith("SELECT indicateur_id FROM modele_indicateurs")) return { rows: [{ indicateur_id: 11 }] };
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) return { rows: [{ ...session }] };
+    // Paramètres de l'organisme et formateurs par groupe (lot « signataires ») : aucun, comportement historique.
+    if (sql.startsWith("SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme")) return { rows: [] };
+    if (sql.startsWith("SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_groupes l")) return { rows: [] };
     // DOC-3B : comptage inscrits/terminés de la session, une requête à part.
     if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 1, termines: 0 }] };
     if (sql.startsWith("SELECT * FROM groupes WHERE id = $1 AND session_id = $2")) {
@@ -346,14 +349,14 @@ test("DOC-3C : lot de 3 stagiaires, une erreur bloquante au niveau du modèle em
 // modèle serait par ailleurs valide pour un admin.
 test("DOC-3C : contributeur + variable restreinte dans le modèle → refus, admin → autre blocage (non_resoluble)", async () => {
   baseSimulee().installer();
-  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  const { trace, client } = clientDriveSimule({ modeleTexte: "{{stagiaire_amenagements}}" });
   setDriveFactory(() => client);
   const rContrib = await generer(requete, CONTRIBUTEUR);
   assert.equal(rContrib.statut, 400);
   assert.equal(rContrib.corps.precontrole.erreurs[0].code, "VARIABLE_RESTREINTE_REFUSEE");
   assert.equal(trace.copies, 0);
 
-  const { trace: traceAdmin, client: clientAdmin } = clientDriveSimule({ modeleTexte: "{{stagiaire_besoins_specifiques}}" });
+  const { trace: traceAdmin, client: clientAdmin } = clientDriveSimule({ modeleTexte: "{{stagiaire_amenagements}}" });
   setDriveFactory(() => clientAdmin);
   const rAdmin = await generer(requete, ADMIN);
   assert.equal(rAdmin.statut, 400);

@@ -264,6 +264,47 @@ test("génération : 409 « déjà générés » → confirmation → remplaceme
   assert.deepEqual(posts.map((p) => p.corps.remplacer), [false, true]);
 });
 
+test("générations automatiques : suivi par session, relance d'une tâche bloquée (administrateur)", async () => {
+  const tache = (id, statut, extra = {}) => ({ id, modele: "Convocation auto", portee: "stagiaire", evenement: "inscription", statut, cree_le: "2026-11-13T12:00:00Z", ...extra });
+  let relancee = false;
+  const appels = await monter("/sessions/1/documents", "admin", {
+    "GET /api/sessions/1/generations-planifiees": () => ({ taches: [
+      tache(2, relancee ? "en_attente" : "bloquee", { resultat: "Génération bloquée : à traiter manuellement.", derniere_erreur: "Modèle illisible." }),
+      tache(1, "faite", { resultat: "2 document(s) produit(s)." }),
+    ] }),
+    "POST /api/generations-planifiees/2/relancer": () => { relancee = true; return { ok: true }; },
+  });
+  await attendre(() => texte().includes("Générations automatiques") && texte().includes("Bloquée"));
+  const t = texte();
+  for (const x of ["Convocation auto", "Inscription", "Faite", "2 document(s) produit(s).", "Modèle illisible."]) assert.ok(t.includes(x), x);
+  await cliquer(bouton("Relancer"));
+  await attendre(() => appels.some((a) => a.chemin === "/api/generations-planifiees/2/relancer"));
+  await attendre(() => texte().includes("En attente"));
+  assert.ok(!bouton("Relancer"), "plus de relance une fois remise en file");
+});
+
+test("documents à produire manuellement : modèles manuels jamais générés pour la session", async () => {
+  await monter("/sessions/1/documents", "admin", {
+    "GET /api/modeles": { modeles: [
+      { id: 3, nom: "Attestation", portee: "stagiaire", mode_generation: "manuel" },
+      { id: 4, nom: "Feuille d'émargement", portee: "session", mode_generation: "manuel" },
+      { id: 5, nom: "Convocation auto", portee: "stagiaire", mode_generation: "automatique" },
+      { id: 6, nom: "Charte formateur", portee: "formation", mode_generation: "manuel" },
+    ], marqueurs: [] },
+  });
+  await attendre(() => texte().includes("Documents à produire manuellement"));
+  assert.ok(texte().includes("Pas encore générés pour cette session : Feuille d'émargement."), "déjà produit, automatique et hors session exclus");
+});
+
+test("générations automatiques : un contributeur suit sans pouvoir relancer", async () => {
+  await monter("/sessions/1/documents", "contributeur", {
+    "GET /api/sessions/1/generations-planifiees": { taches: [{ id: 3, modele: "Attestation", portee: "session", evenement: "fin_session", statut: "bloquee", cree_le: "2026-11-13T12:00:00Z" }] },
+  });
+  await attendre(() => texte().includes("Bloquée"));
+  assert.ok(texte().includes("Fin de la session"));
+  assert.ok(!bouton("Relancer"));
+});
+
 test("session inexistante : page propre dans la coque", async () => {
   await monter("/sessions/999/documents");
   await attendre(() => texte().includes("Cette session n'existe pas ou n'existe plus."));

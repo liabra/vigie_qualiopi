@@ -15,7 +15,7 @@
 //  SEULEMENT. Ici, STRICT : "absent" et "non_resoluble" restent null.
 //
 //  Architecture demandée : SEULES les variables réellement supportées ont
-//  une entrée dans RESOLVEURS_CANONIQUES (46 aujourd'hui). Pas de liste
+//  une entrée dans RESOLVEURS_CANONIQUES (66 aujourd'hui). Pas de liste
 //  manuelle des ~116 autres : leur absence de RESOLVEURS_CANONIQUES suffit,
 //  le parcours de VARIABLES fait le reste. Aucun resolver ne doit cibler
 //  un nom absent du catalogue (invariant testé).
@@ -24,7 +24,7 @@
 //  par documents.js (contexteGeneration()/cibles() + stagiaire + assiduite
 //  + maintenant), comme pour valeursMarqueurs() aujourd'hui.
 // ─────────────────────────────────────────────────────────────
-import { VARIABLES } from "./catalogueVariables.js";
+import { VARIABLES, variableCanonique } from "./catalogueVariables.js";
 import { dureeAttestation, formaterDate } from "./formatageDocuments.js";
 
 const resolu = (valeur) => ({ statut: "resolu", valeur });
@@ -33,13 +33,27 @@ const absent = () => ({ statut: "absent", valeur: null });
 // base est « absent », jamais une chaîne vide déguisée en valeur réelle.
 const texte = (v) => (v ? resolu(v) : absent());
 const date = (v) => (v ? resolu(formaterDate(v)) : absent());
+// Valeur d'une énumération du catalogue → son libellé affiché (valeur inconnue = absent, jamais inventée).
+const enumeration = (nom, v) => {
+  const libelles = variableCanonique(nom)?.libelles;
+  return v && libelles && Object.hasOwn(libelles, v) ? resolu(libelles[v]) : absent();
+};
 const nombre = (v) => (v === null || v === undefined ? absent() : resolu(Number(v)));
 
-// 46 variables réellement supportées. Classement dans les commentaires
+// 66 variables réellement supportées. Classement dans les commentaires
 // pour traçabilité (voir DOC-3A/DOC-3B pour le détail de chaque décision).
 const RESOLVEURS_CANONIQUES = {
   // ── Organisme (1) ──
-  organisme_nom: (ctx) => texte(ctx.organisme),
+  // Paramètres de l'organisme (table parametres_organisme, écran administrateur) ; le nom retombe sur
+  // la configuration d'environnement tant qu'il n'est pas saisi.
+  organisme_nom: (ctx) => texte(ctx.organismeParams?.nom || ctx.organisme),
+  organisme_adresse_ligne1: (ctx) => texte(ctx.organismeParams?.adresse_ligne1),
+  organisme_adresse_ligne2: (ctx) => texte(ctx.organismeParams?.adresse_ligne2),
+  organisme_code_postal: (ctx) => texte(ctx.organismeParams?.code_postal),
+  organisme_ville: (ctx) => texte(ctx.organismeParams?.ville),
+  organisme_telephone: (ctx) => texte(ctx.organismeParams?.telephone),
+  organisme_mobile: (ctx) => texte(ctx.organismeParams?.mobile),
+  organisme_email: (ctx) => texte(ctx.organismeParams?.email),
 
   // ── Formation (10) ──
   formation_id: (ctx) => nombre(ctx.formation?.id),
@@ -51,9 +65,15 @@ const RESOLVEURS_CANONIQUES = {
   formation_objectif_general: (ctx) => texte(ctx.version?.objectifs),
   formation_modalite: (ctx) => texte(ctx.version?.modalite),
   formation_accessibilite: (ctx) => texte(ctx.version?.accessibilite_handicap),
-  // (formation_objectifs_operationnels, formation_methodes_pedagogiques,
-  // formation_modalites_evaluation, formation_nombre_phases : hors catalogue
-  // supporté, cf. DOC-3A — pas d'entrée ici, donc non_resoluble.)
+  // Contenu documentaire de la version de formation (migration 042) : objectifs opérationnels = une ligne
+  // par objectif (chaque ligne devient un paragraphe dans le document), méthodes, modalités d'évaluation.
+  formation_objectifs_operationnels: (ctx) => {
+    const l = ctx.version?.objectifs_operationnels;
+    return Array.isArray(l) && l.length ? resolu(l.join("\n")) : absent();
+  },
+  formation_methodes_pedagogiques: (ctx) => texte(ctx.version?.methodes_pedagogiques),
+  formation_modalites_evaluation: (ctx) => texte(ctx.version?.modalites_evaluation),
+  // (formation_nombre_phases : aucune donnée Vigie, donc non_resoluble.)
 
   // ── Session (11) ──
   session_id: (ctx) => nombre(ctx.session?.id),
@@ -92,13 +112,20 @@ const RESOLVEURS_CANONIQUES = {
   stagiaire_date_inscription: (ctx) => date(ctx.stagiaire?.date_inscription),
   stagiaire_statut_parcours: (ctx) => texte(ctx.stagiaire?.statut),
   stagiaire_groupe_nom: (ctx) => texte(ctx.stagiaire?.groupe_nom),
-  // (stagiaire_besoins_specifiques, stagiaire_amenagements : NON résolues —
-  // la première pour une raison d'AUTORISATION (besoins_adaptation est
-  // réservé admin, cf. confidentialite.js, alors que la génération est
-  // ouverte aux contributeurs — sujet d'une étape de sécurité documentaire
-  // distincte), la seconde en attente d'une règle de rendu du bloc
-  // adaptations. stagiaire_date_naissance/age/adresse/code_postal/ville :
-  // aucune colonne, cf. DOC-3A.)
+  // Données de santé : sensibilité « restreinte » au catalogue. Le précontrôle refuse la variable à un
+  // non-administrateur AVANT toute résolution, et la génération automatique (sans droits administrateur)
+  // ne les produit jamais : un modèle qui les utilise se génère à la main par un administrateur.
+  stagiaire_besoins_specifiques: (ctx) => texte(ctx.stagiaire?.besoins_adaptation),
+  stagiaire_situation_handicap: (ctx) => (ctx.stagiaire ? resolu(ctx.stagiaire.situation_handicap === true ? "Oui" : "Non") : absent()),
+  // (stagiaire_amenagements : en attente d'une règle de rendu ; le bloc adaptations porte le détail.
+  // stagiaire_date_naissance/age/adresse/code_postal/ville : aucune colonne, cf. DOC-3A.)
+
+  // ── Analyse du besoin (recueils_besoin, saisi dans l'onglet Accompagnement) ──
+  besoin_date_recueil: (ctx) => date(ctx.stagiaire?.besoin_date_recueil),
+  besoin_attentes: (ctx) => texte(ctx.stagiaire?.besoin_attentes),
+  besoin_objectifs_personnels: (ctx) => texte(ctx.stagiaire?.besoin_objectifs_personnels),
+  besoin_prerequis_verifies: (ctx) => enumeration("besoin_prerequis_verifies", ctx.stagiaire?.besoin_prerequis_verifies),
+  besoin_conclusion: (ctx) => enumeration("besoin_conclusion", ctx.stagiaire?.besoin_conclusion),
 
   // ── Suivi (6) ──
   abandon_statut: (ctx) => (ctx.stagiaire ? resolu(ctx.stagiaire.statut === "abandon") : absent()),
@@ -121,6 +148,8 @@ const RESOLVEURS_CANONIQUES = {
 
   // ── Partenaire (1) ──
   prescripteur_nom: (ctx) => texte(ctx.stagiaire?.prescripteur_nom),
+  // Financeur saisi sur le stagiaire (texte libre) ; la convention A2C, gratuite, ne l'utilise pas.
+  financeur_nom: (ctx) => texte(ctx.stagiaire?.financeur),
 
   // ── Document (4) ──
   // document_date et document_date_convocation partagent EXPLICITEMENT le
@@ -142,6 +171,9 @@ const RESOLVEURS_CANONIQUES = {
   // v1.3 : durée affichée sur l'attestation — source unique partagée avec
   // le marqueur historique duree (jamais deux calculs divergents).
   document_duree_attestation: (ctx) => texte(dureeAttestation(ctx)),
+  // Signataire choisi PAR MODÈLE (fixe, ou formateur concerné) : jamais écrit en dur dans un modèle.
+  signataire_nom: (ctx) => texte(ctx.signataire?.nom),
+  signataire_fonction: (ctx) => texte(ctx.signataire?.fonction),
 };
 
 // Invariant exploité par les tests : aucun nom hors catalogue.

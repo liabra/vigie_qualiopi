@@ -135,6 +135,28 @@ test("formations : réviser crée une nouvelle version sans perdre les champs no
   assert.equal(corps.intitule, "Aide à domicile");
 });
 
+test("formations : contenu repris dans les documents (objectifs opérationnels une ligne par objectif), relu et renvoyé", async () => {
+  const formation = { ...FORMATION, objectifs_operationnels: ["Utiliser un ordinateur", "Naviguer sur Internet"], methodes_pedagogiques: "Ateliers pratiques", modalites_evaluation: "Quiz" };
+  const appels = await monter("/formations", "admin", {
+    "GET /api/formations": { formations: [formation] },
+    "PUT /api/formations/7": { ok: true },
+  });
+  await attendre(() => texte().includes("Aide à domicile"));
+  await cliquer(bouton("Réviser"));
+  await attendre(() => champ("Objectifs opérationnels"));
+  assert.equal(champ("Objectifs opérationnels").value, "Utiliser un ordinateur\nNaviguer sur Internet");
+  assert.equal(champ("Méthodes pédagogiques").value, "Ateliers pratiques");
+  assert.equal(champ("Objectifs de la formation (objectif général)").value, "Objectifs existants");
+  await saisir(champ("Objectifs opérationnels"), "Utiliser un ordinateur\nNaviguer sur Internet\nÉcrire un message");
+  await saisir(champ("Modalités d'évaluation"), "Quiz et exercices");
+  await soumettre("form-formation");
+  await attendre(() => appels.some((a) => a.methode === "PUT"));
+  const corps = appels.find((a) => a.methode === "PUT").corps;
+  assert.equal(corps.objectifs_operationnels, "Utiliser un ordinateur\nNaviguer sur Internet\nÉcrire un message");
+  assert.equal(corps.modalites_evaluation, "Quiz et exercices");
+  assert.equal(corps.methodes_pedagogiques, "Ateliers pratiques", "champ non modifié conservé");
+});
+
 const FORMATION_ARCHIVEE = { ...FORMATION, id: 8, intitule: "Agent de propreté", code_interne: "APR", actif: false, nb_sessions: 0, nb_versions: 1 };
 
 test("formations : filtre actives / archivées (vue active par défaut)", async () => {
@@ -335,6 +357,7 @@ test("modèles : création avec le sélecteur d'indicateurs (numéros envoyés)"
   assert.ok(texte().includes("Donnez un nom au modèle."));
   await saisir(champ("Nom"), "Convocation");
   await saisir(champ("Usage"), "session");
+  await saisir(champ("Type de document"), "convocation");
   await saisir(champ("Lien ou identifiant du fichier Drive"), "https://docs.google.com/document/d/abcdefghijk/edit");
   await cliquer(dialogue().querySelector(".indic-groupe__tete"));
   await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
@@ -343,6 +366,9 @@ test("modèles : création avec le sélecteur d'indicateurs (numéros envoyés)"
   const corps = appels.find((a) => a.methode === "POST").corps;
   assert.deepEqual(corps.indicateurs, [9]);
   assert.equal(corps.portee, "session");
+  assert.equal(corps.type_document, "convocation");
+  assert.equal(corps.mode_generation, "manuel");
+  assert.equal(corps.condition_generation, null);
   await attendre(() => texte().includes("Modèle « Convocation » enregistré."));
 });
 
@@ -395,6 +421,25 @@ test("versions : activer exige une confirmation explicite, avertissement relayé
   await cliquer(bouton("Activer cette version"));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/referentiel/versions/2/activer"));
   await attendre(() => texte().includes("Cette version a une date d'application future."));
+  assert.deepEqual(appels.find((a) => a.chemin === "/api/referentiel/versions/2/activer").corps, { reporter: true }, "report proposé par défaut");
+});
+
+test("versions : bascule avec bilan du report, ou sans report après avertissement", async () => {
+  const appels = await monter("/versions", "admin", {
+    "GET /api/referentiel/versions": VERSIONS,
+    "GET /api/referentiel/versions/1": contenu(32), "GET /api/referentiel/versions/2": contenu(31), "GET /api/referentiel/versions/3": contenu(0),
+    "POST /api/referentiel/versions/2/activer": (corps) => ({ ok: true, bilan: corps.reporter
+      ? { preuves: 12, preuves_a_confirmer: 4, modele_indicateurs: 3, veille_indicateurs: 2, non_applicables: 1 } : null }),
+  });
+  await attendre(() => document.querySelector('button[aria-label="Activer la version V10"]'));
+  await cliquer(document.querySelector('button[aria-label="Activer la version V10"]'));
+  await attendre(() => dialogue()?.textContent.includes("Reporter les rattachements de V9"));
+  await cliquer(dialogue().querySelector('input[type="checkbox"]'));
+  await attendre(() => dialogue().textContent.includes("n'apparaissent plus dans le tableau de bord"));
+  await cliquer(dialogue().querySelector('input[type="checkbox"]'));
+  await cliquer(bouton("Activer cette version"));
+  await attendre(() => texte().includes("12 preuve(s), dont 4 à confirmer"));
+  assert.deepEqual(appels.find((a) => a.methode === "POST").corps, { reporter: true });
 });
 
 test("versions : préparer une nouvelle version (code et libellé obligatoires)", async () => {
@@ -463,4 +508,22 @@ test("Google Drive : déconnexion confirmée par une boîte de dialogue", async 
   await cliquer([...dialogue().querySelectorAll("button")].find((b) => b.textContent === "Déconnecter"));
   await attendre(() => appels.some((a) => a.methode === "POST" && a.chemin === "/api/drive/disconnect"));
   await attendre(() => texte().includes("Google Drive déconnecté.") && texte().includes("Non connecté"));
+});
+
+test("modèles : type de document obligatoire à la création", async () => {
+  const appels = await monter("/modeles", "admin", {
+    "GET /api/modeles": { modeles: [MODELE], marqueurs: [] },
+    "GET /api/referentiel": REFERENTIEL,
+    "POST /api/modeles": [201, { modele: { id: 5 } }],
+  });
+  await attendre(() => texte().includes("Attestation de fin"));
+  await cliquer(bouton("+ Nouveau modèle"));
+  await attendre(() => dialogue()?.textContent.includes("Critère 3"));
+  await saisir(champ("Nom"), "Émargement");
+  await saisir(champ("Lien ou identifiant du fichier Drive"), "https://docs.google.com/document/d/abcdefghijk/edit");
+  await cliquer(dialogue().querySelector(".indic-groupe__tete"));
+  await cliquer([...dialogue().querySelectorAll("label")].find((l) => l.textContent.includes("Indicateur 9")).querySelector("input"));
+  await soumettre("form-modele");
+  await attendre(() => texte().includes("Choisissez le type de document."));
+  assert.equal(appels.filter((a) => a.methode === "POST").length, 0, "rien envoyé sans type");
 });

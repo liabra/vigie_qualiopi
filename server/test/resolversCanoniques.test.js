@@ -26,6 +26,9 @@ const NON_RESOLUES_PAR_DECISION = [
 // Contexte complet, représentatif de ce que documents.js assemble réellement.
 const CTX = {
   organisme: "A2C",
+  organismeParams: { nom: "Association Test", adresse_ligne1: "1 rue Exemple", adresse_ligne2: "Cité Test", code_postal: "97300",
+    ville: "Cayenne", telephone: "0594000000", mobile: "0694000000", email: "contact@exemple.fr" },
+  signataire: { nom: "Marie Exemple", fonction: "Présidente" },
   formation: { id: 7, intitule: "Aide à domicile", code_interne: "ADVF" },
   version: { duree_heures_defaut: 400, public_vise: "Demandeurs d'emploi", prerequis: "Aucun",
     objectifs: "Accompagner vers l'emploi", modalite: "presentiel", accessibilite_handicap: "Locaux accessibles" },
@@ -55,9 +58,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("46 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 46);
-  assert.equal(new Set(NOMS_RESOLUS).size, 46, "aucun doublon");
+test("55 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 55, "46 historiques + 7 organisme_* + 2 signataire_*");
+  assert.equal(new Set(NOMS_RESOLUS).size, 55, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -68,9 +71,12 @@ test("toute variable du catalogue reçoit exactement un résultat à trois statu
   }
 });
 
-test("les 46 variables supportées sont résolues depuis un contexte complet", () => {
+test("les 55 variables supportées sont résolues depuis un contexte complet", () => {
   const attendu = {
-    organisme_nom: "A2C", formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
+    organisme_nom: "Association Test", organisme_adresse_ligne1: "1 rue Exemple", organisme_adresse_ligne2: "Cité Test",
+    organisme_code_postal: "97300", organisme_ville: "Cayenne", organisme_telephone: "0594000000", organisme_mobile: "0694000000",
+    organisme_email: "contact@exemple.fr", signataire_nom: "Marie Exemple", signataire_fonction: "Présidente",
+    formation_id: 7, formation_intitule: "Aide à domicile", formation_code: "ADVF",
     formation_duree_heures: 400, formation_public_vise: "Demandeurs d'emploi", formation_prerequis: "Aucun",
     formation_objectif_general: "Accompagner vers l'emploi", formation_modalite: "presentiel",
     formation_accessibilite: "Locaux accessibles",
@@ -93,8 +99,8 @@ test("les 46 variables supportées sont résolues depuis un contexte complet", (
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les 44 attendus + les 2 abandon_* couverts = 46 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 46);
+  // Les 53 attendus + les 2 abandon_* couverts = 55 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 55);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
@@ -132,7 +138,7 @@ test("champ NULL/vide pour cette instance ⇒ « absent », jamais une chaîne v
   }
 });
 
-test("contexte vide : les 46 supportées sont « absent », les 116 autres « non_resoluble »", () => {
+test("contexte vide : les 55 supportées sont « absent », les 109 autres « non_resoluble »", () => {
   for (const nom of NOMS_RESOLUS) assert.equal(vide[nom].statut, "absent", nom);
   for (const v of VARIABLES) {
     if (!NOMS_RESOLUS.includes(v.nom)) assert.equal(vide[v.nom].statut, "non_resoluble", v.nom);
@@ -165,4 +171,17 @@ test("document_date et document_date_convocation partagent le même instant, cal
 test("document_date_attestation = session_date_fin (règle de compatibilité provisoire)", () => {
   assert.equal(canoniques.document_date_attestation.valeur, canoniques.session_date_fin.valeur);
   assert.equal(canoniques.document_date_attestation.valeur, "05/03/2026");
+});
+
+test("organisme : le nom retombe sur la configuration tant que les paramètres ne sont pas saisis", () => {
+  const r = resoudreCanoniques({ organisme: "A2C", organismeParams: {} });
+  assert.deepEqual(r.organisme_nom, { statut: "resolu", valeur: "A2C" });
+  assert.equal(r.organisme_ville.statut, "absent");
+  assert.deepEqual(resoudreCanoniques({ organisme: "A2C", organismeParams: { nom: "Association Test" } }).organisme_nom, { statut: "resolu", valeur: "Association Test" });
+});
+
+test("signataire : absent sans signataire choisi, jamais une valeur inventée", () => {
+  const r = resoudreCanoniques({ signataire: null });
+  assert.deepEqual(r.signataire_nom, { statut: "absent", valeur: null });
+  assert.deepEqual(r.signataire_fonction, { statut: "absent", valeur: null });
 });

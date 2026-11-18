@@ -27,7 +27,7 @@ const LONGUEUR_DESCRIPTION = 1000;
 const LONGUEUR_CONDITION = 300;
 
 // Champs qu'une modification (PATCH) peut transmettre. Les autres sont refusés.
-export const CHAMPS_MODIFIABLES = ["nom", "lien", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code", "indicateurs"];
+export const CHAMPS_MODIFIABLES = ["nom", "lien", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code", "signataire_mode", "signataire_id", "indicateurs"];
 
 const estPresent = (v) => v !== undefined && v !== null;
 
@@ -76,6 +76,18 @@ export function validerChamps(corps, { complet }) {
   if (estPresent(src.condition_code)) {
     if (!Object.hasOwn(CONDITIONS, src.condition_code)) return { erreur: "Condition inconnue." };
     valeur.condition_code = src.condition_code;
+  }
+  if (estPresent(src.signataire_mode)) {
+    if (!["aucun", "fixe", "formateur"].includes(src.signataire_mode)) return { erreur: "Mode de signataire inconnu." };
+    valeur.signataire_mode = src.signataire_mode;
+  }
+  if (src.signataire_id !== undefined) {
+    if (src.signataire_id === null || src.signataire_id === "") valeur.signataire_id = null;
+    else {
+      const n = typeof src.signataire_id === "number" ? src.signataire_id : Number(src.signataire_id);
+      if (!Number.isSafeInteger(n) || n < 1) return { erreur: "Signataire invalide." };
+      valeur.signataire_id = n;
+    }
   }
   if (estPresent(src.indicateurs) || complet) {
     const bruts = Array.isArray(src.indicateurs) ? src.indicateurs : [];

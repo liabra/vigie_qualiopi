@@ -158,6 +158,25 @@ const AIDE = {
       },
     ],
   },
+  "parametres/organisme": {
+    titre: "Organisme et signataires",
+    sections: [
+      {
+        titre: "Coordonnées de l'organisme",
+        lignes: [
+          "Adresse, téléphones et e-mail alimentent les variables {{organisme_*}} des documents (convocation, attestation, convention…). Ils ne sont plus écrits dans les modèles : modifiez-les ici, tous les prochains documents suivent.",
+          "Un champ vide reste vide dans le document. Les documents déjà générés ne changent pas.",
+        ],
+      },
+      {
+        titre: "Signataires",
+        lignes: [
+          "Ajoutez les personnes qui signent (nom et fonction). Le signataire se choisit ensuite pour chaque modèle : un signataire fixe (par exemple la présidente) ou le formateur concerné.",
+          "Un signataire n'est jamais supprimé : on le désactive. Un signataire utilisé par un modèle ne peut pas être désactivé tant que ce modèle ne change pas de signataire.",
+        ],
+      },
+    ],
+  },
   variablesDocumentaires: {
     titre: "Variables documentaires",
     sections: [
@@ -367,6 +386,7 @@ const CLES = [
   ["/intervenants", "intervenants"],
   ["/justificatifs-intervenants", "justificatifsIntervenants"],
   ["/modeles", "modeles"],
+  ["/parametres/organisme", "parametres/organisme"],
   ["/variables-documentaires", "variablesDocumentaires"],
   ["/parametres/inventaire-drive", "parametres/inventaire-drive"],
   ["/prescripteurs", "prescripteurs"],

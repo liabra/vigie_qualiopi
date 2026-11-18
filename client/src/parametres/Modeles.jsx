@@ -96,7 +96,10 @@ const TYPES_FICHIER = {
 const VIDE = {
   nom: "", lien: "", portee: "stagiaire", description: "", indicateur_ids: [],
   type_document: "", mode_generation: "manuel", condition_generation: "", declencheur: "", condition_code: "",
+  signataire_mode: "aucun", signataire_id: "",
 };
+// Signataire du document : jamais écrit en dur dans le modèle (Paramètres → Organisme et signataires).
+export const MODES_SIGNATAIRE = { aucun: "Aucun signataire", fixe: "Signataire fixe", formateur: "Formateur concerné" };
 
 // Lien externe rendu seulement s'il est http(s). // fix
 export const lienSur = (url) => (typeof url === "string" && /^https?:\/\//i.test(url) ? url : null);
@@ -326,6 +329,7 @@ export function ModelesPage() {
                 )}
               </dd>
             </div>
+            <div><dt>Signataire</dt><dd>{MODES_SIGNATAIRE[detail.signataire_mode] || "Aucun signataire"}</dd></div>
             <div><dt>Fichier Google</dt><dd><LienDrive url={detail.drive_url} nom={detail.nom} />{TYPES_FICHIER[detail.drive_mime] && <> · {TYPES_FICHIER[detail.drive_mime]}</>}</dd></div>
             <div>
               <dt>Indicateurs liés</dt>
@@ -393,6 +397,8 @@ function valeursDe(modele) {
     condition_generation: modele.condition_generation || "",
     declencheur: modele.declencheur || "",
     condition_code: modele.condition_code || "",
+    signataire_mode: modele.signataire_mode || "aucun",
+    signataire_id: modele.signataire_id ? String(modele.signataire_id) : "",
   };
 }
 
@@ -403,6 +409,12 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
   const [erreurs, setErreurs] = useState({});
   const [erreurServeur, setErreurServeur] = useState(null);
   const [enCours, setEnCours] = useState(false);
+  const [signataires, setSignataires] = useState([]);
+
+  useEffect(() => {
+    if (!ouvert) return;
+    api("/api/signataires").then((r) => setSignataires(r.signataires || [])).catch(() => setSignataires([]));
+  }, [ouvert]);
 
   useEffect(() => {
     if (!ouvert) return;
@@ -428,6 +440,7 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
     if (valeurs.mode_generation === "conditionnel" && !valeurs.condition_code) {
       trouvees.condition_code = "Choisissez la condition.";
     }
+    if (valeurs.signataire_mode === "fixe" && !valeurs.signataire_id) trouvees.signataire_id = "Choisissez le signataire.";
     if (!numeros.length) trouvees.indicateurs = "Sélectionnez au moins un indicateur.";
     setErreurs(trouvees);
     if (Object.keys(trouvees).length) return;
@@ -441,6 +454,8 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
       condition_generation: valeurs.mode_generation === "conditionnel" ? (valeurs.condition_generation.trim() || null) : null,
       declencheur: valeurs.mode_generation !== "manuel" ? valeurs.declencheur : null,
       condition_code: valeurs.mode_generation === "conditionnel" ? valeurs.condition_code : null,
+      signataire_mode: valeurs.signataire_mode,
+      signataire_id: valeurs.signataire_mode === "fixe" ? Number(valeurs.signataire_id) : null,
       indicateurs: numeros,
     };
     if (!modele) corps.lien = valeurs.lien;
@@ -518,6 +533,20 @@ export function FormulaireModele({ ouvert, criteres, modele, valeursInitiales = 
                 <textarea value={valeurs.condition_generation} onChange={champ("condition_generation")} rows={2} maxLength={300} />
               </Field>
             </>
+          )}
+          <Field label="Signataire" aide="Nom et fonction affichés par {{signataire_nom}} et {{signataire_fonction}}. « Formateur concerné » : formateur du groupe du stagiaire, à défaut de la session.">
+            <select value={valeurs.signataire_mode} onChange={(e) => setValeurs({ ...valeurs, signataire_mode: e.target.value, signataire_id: "" })}>
+              {Object.entries(MODES_SIGNATAIRE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Field>
+          {valeurs.signataire_mode === "fixe" && (
+            <Field label="Signataire fixe" erreur={erreurs.signataire_id}
+              aide={signataires.length ? undefined : "Aucun signataire : ajoutez-en dans Paramètres → Organisme et signataires."}>
+              <select value={valeurs.signataire_id} onChange={champ("signataire_id")}>
+                <option value="">Choisir…</option>
+                {signataires.map((sg) => <option key={sg.id} value={sg.id}>{sg.nom} — {sg.fonction}</option>)}
+              </select>
+            </Field>
           )}
           {!modele && (
             <Field label="Lien ou identifiant du fichier Drive" erreur={erreurs.lien} className="ui-field--large"

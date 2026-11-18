@@ -20,6 +20,7 @@
 //  Module quasi pur : `analyserModeleDrive` est le seul appel externe
 //  (Drive, lecture seule). Aucune écriture, nulle part.
 // ─────────────────────────────────────────────────────────────
+import { signatairePour } from "./parametresOrganisme.js";
 import { analyserModeleDrive } from "./diagnosticModele.js";
 import { blocCanonique, variableCanonique } from "./catalogueVariables.js";
 import { NOMS_RESOLUS, resoudreCanoniques } from "./resolversCanoniques.js";
@@ -131,7 +132,7 @@ export async function precontrolerGeneration(modele, ctx, cibles, { admin = fals
   // resoudreCanoniques() renvoie les 162 statuts d'un coup.
   const resolutionsParCible = cibles.map((c) => ({
     id: c.stagiaire?.id ?? null,
-    canoniques: resoudreCanoniques({ ...ctx, stagiaire: c.stagiaire }),
+    canoniques: resoudreCanoniques({ ...ctx, stagiaire: c.stagiaire, signataire: signatairePour(modele, ctx, c.stagiaire) }),
   }));
 
   for (const nom of diagnostic.canoniques) {

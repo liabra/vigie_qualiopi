@@ -54,4 +54,5 @@ export const SIGNATURES = {
   "038_generations_automatiques.sql": table("generations_planifiees"),
   "039_bascules_referentiel.sql": table("bascules_referentiel"),
   "040_questionnaires_ordre_differe.sql": `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'questionnaire_questions_ordre_unique') AS ok`,
+  "041_parametres_organisme_signataires.sql": table("signataires"),
 };

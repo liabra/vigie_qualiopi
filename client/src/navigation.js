@@ -48,6 +48,7 @@ export const NAVIGATION = [
       { to: "/prescripteurs", libelle: "Prescripteurs" },
       { to: "/questionnaires", libelle: "Questionnaires de formation" },
       { to: "/versions", libelle: "Versions du référentiel" },
+      { to: "/parametres/organisme", libelle: "Organisme et signataires" },
       { to: "/parametres/google", libelle: "Google Drive" },
       { to: "/parametres/inventaire-drive", libelle: "Inventaire Drive" },
     ],

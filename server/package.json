@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "db:migrate": "node --env-file-if-exists=../.env src/cli/migrate.js",
     "db:seed": "node --env-file-if-exists=../.env src/cli/seed.js",
+    "db:parametres-initiaux": "node --env-file-if-exists=../.env src/cli/parametres-initiaux.js",
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {

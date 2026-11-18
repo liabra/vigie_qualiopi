@@ -59,6 +59,9 @@ function baseSimulee({ modele = null, existants = [], echec = null, groupe = nul
     }
     if (sql.startsWith("SELECT indicateur_id FROM modele_indicateurs")) return { rows: [{ indicateur_id: 11 }] };
     if (sql.startsWith("SELECT s.*, f.id AS formation_id")) return { rows: [{ ...session }] };
+    // Paramètres de l'organisme et formateurs par groupe (lot « signataires ») : aucun, comportement historique.
+    if (sql.startsWith("SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme")) return { rows: [] };
+    if (sql.startsWith("SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction FROM intervenants_groupes l")) return { rows: [] };
     // DOC-3B : comptage inscrits/terminés de la session, une requête à part.
     if (sql.startsWith("SELECT count(*) FILTER (WHERE statut <> 'abandon')")) return { rows: [{ inscrits: 1, termines: 0 }] };
     if (sql.startsWith("SELECT * FROM groupes WHERE id = $1 AND session_id = $2")) {

@@ -21,6 +21,7 @@ import { QuestionnairesPage } from "./parametres/Questionnaires.jsx";
 import { GoogleDrivePage } from "./parametres/GoogleDrive.jsx";
 import { InventaireDrivePage } from "./parametres/InventaireDrive.jsx";
 import { VariablesDocumentsPage } from "./parametres/VariablesDocuments.jsx";
+import { OrganismePage } from "./parametres/Organisme.jsx";
 import { SessionsListe } from "./sessions/SessionsListe.jsx";
 import { SessionDetail } from "./sessions/SessionDetail.jsx";
 import { VeilleListe } from "./veille/VeilleListe.jsx";
@@ -207,6 +208,7 @@ export default function App() {
         <Route path="parametres/google" element={admin(<GoogleDrivePage />)} />
         <Route path="parametres/inventaire-drive" element={admin(<InventaireDrivePage />)} />
         <Route path="variables-documentaires" element={<VariablesDocumentsPage />} />
+        <Route path="parametres/organisme" element={admin(<OrganismePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />
       </Route>

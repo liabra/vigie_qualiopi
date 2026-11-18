@@ -17,6 +17,7 @@ import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
 import { marqueursInconnus, requetesDocs, requetesSheets, valeursDeRemplacement, valeursMarqueurs } from "./marqueurs.js";
 import { calculerAssiduite } from "./assiduite.js";
 import { precontrolerGeneration } from "./precontroleGeneration.js";
+import { signatairePour } from "./parametresOrganisme.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
@@ -273,7 +274,7 @@ async function cibles(modele, { session, groupe }) {
     // LEFT JOIN LATERAL — une seule requête pour TOUS les stagiaires
     // ciblés, jamais une par stagiaire (pas de N+1).
     `SELECT s.id, i.id AS inscription_id, s.civilite, s.nom, s.prenom, s.email, s.telephone, s.entreprise, s.financeur,
-            i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.statut,
+            i.prescripteur, pr.nom AS prescripteur_nom, g.nom AS groupe_nom, i.groupe_id, i.statut,
             i.date_inscription, i.date_abandon, i.motif_abandon,
             r.date_evenement AS relance_derniere_date,
             COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
@@ -398,6 +399,18 @@ export async function contexteGeneration(sessionId, groupeId) {
      WHERE l.${cle} = $1 ORDER BY i.nom, i.prenom, i.id`, [id])).rows : []);
   const formateursSession = await formateurs("intervenants_sessions", "session_id", session.id);
   const formateursGroupe = await formateurs("intervenants_groupes", "groupe_id", groupe?.id);
+  // Paramètres de l'organisme (une ligne) et formateurs de CHAQUE groupe de la session (une requête) :
+  // alimentent {{organisme_*}} et le signataire « formateur concerné » d'un stagiaire.
+  const { rows: [organismeParams] } = await query(
+    "SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme WHERE id = 1"
+  );
+  const { rows: lignesGroupes } = await query(
+    `SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction
+     FROM intervenants_groupes l JOIN intervenants i ON i.id = l.intervenant_id
+     JOIN groupes g ON g.id = l.groupe_id
+     WHERE g.session_id = $1 ORDER BY i.nom, i.prenom, i.id`, [session.id]);
+  const formateursParGroupe = new Map();
+  for (const l of lignesGroupes) { if (!formateursParGroupe.has(l.groupe_id)) formateursParGroupe.set(l.groupe_id, []); formateursParGroupe.get(l.groupe_id).push(l); }
   // DOC-3B : comptage de la session — UNE requête, indépendante du nombre
   // de documents produits. « Inscrits » exclut l'abandon, comme partout
   // ailleurs dans Vigie (pilotage.js, api.js, gestion.js) : pas une
@@ -411,7 +424,7 @@ export async function contexteGeneration(sessionId, groupeId) {
   session.nombre_inscrits = compte.inscrits;
   session.nombre_termines = compte.termines;
   return {
-    session, groupe, formateursSession, formateursGroupe,
+    session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
     formation: { intitule: session.intitule, id: session.formation_id, code_interne: session.formation_code_interne },
     version: {
       duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,
@@ -510,6 +523,11 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
   const { rows: indicateurs } = await query("SELECT indicateur_id FROM modele_indicateurs WHERE modele_id = $1", [modeleId]);
 
   const ctx = await contexteGeneration(sessionId, groupeId);
+  // Signataire fixe du modèle (la présidente…) : chargé une fois ; « formateur » se résout par cible.
+  if (modele.signataire_mode === "fixe" && modele.signataire_id) {
+    const { rows: [sg] } = await query("SELECT nom, fonction FROM signataires WHERE id = $1 AND actif", [modele.signataire_id]);
+    ctx.signataireFixe = sg || null;
+  }
   let aProduire = await cibles(modele, ctx);
   if (filtre && modele.portee === "stagiaire") aProduire = aProduire.filter((c) => filtre(c.stagiaire));
 
@@ -596,7 +614,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
       // ET document_date_convocation (resolversCanoniques.js) — jamais deux
       // `new Date()` distincts pour un même document.
       const maintenant = new Date();
-      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant });
+      const signataire = signatairePour(modele, ctx, stagiaire);
+      const valeurs = valeursMarqueurs({ ...ctx, stagiaire, assiduite, organisme: config.organismeNom, maintenant, signataire });
       // DOC-3D : map plat de remplacement — 23 historiques + les canoniques
       // réellement présents dans le modèle (précontrôle), jamais les 45.
       const remplacements = valeursDeRemplacement(valeurs, precontrole.canoniques);

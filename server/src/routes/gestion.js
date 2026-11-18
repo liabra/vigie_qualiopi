@@ -7,6 +7,7 @@ import { Router } from "express";
 import { getPool, query } from "../db.js";
 import { requireAdmin, requireAuth, requireRedacteur } from "../session.js";
 import { genererDocuments } from "../services/documents.js";
+import { verifierSignataireModele } from "../services/parametresOrganisme.js";
 import { relancer, signalerEvenement, tachesDeSession } from "../services/generationsAutomatiques.js";
 import { MARQUEURS } from "../services/marqueurs.js";
 import { CHAMPS_MODIFIABLES, CONDITIONS, DECLENCHEURS, MODES_GENERATION, TYPES_DOCUMENT, completerMode, validerChamps, verifierCoherence } from "../services/modelesBibliotheque.js";
@@ -1314,7 +1315,7 @@ async function rattacherIndicateurs(cx, modeleId, numeros) {
 }
 
 // Colonnes de modeles_documents correspondant aux champs validés (hors indicateurs et lien).
-const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code"];
+const COLONNES_DIRECTES = ["nom", "portee", "description", "type_document", "mode_generation", "condition_generation", "declencheur", "condition_code", "signataire_mode", "signataire_id"];
 
 router.get("/modeles", requireAuth, wrap(async (req, res) => {
   const filtres = [req.query.inactifs === "1" ? "NOT m.actif" : "m.actif"];
@@ -1334,6 +1335,16 @@ router.get("/modeles", requireAuth, wrap(async (req, res) => {
   });
 }));
 
+// Cohérence du signataire d'un modèle (état final) : mode / identifiant, et signataire actif s'il est fixe.
+async function controlerSignataire(m) {
+  let actif = true;
+  if (m.signataire_mode === "fixe" && m.signataire_id) {
+    const { rowCount } = await query("SELECT 1 FROM signataires WHERE id = $1 AND actif", [m.signataire_id]);
+    actif = rowCount > 0;
+  }
+  return verifierSignataireModele(m, actif);
+}
+
 router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   const v = validerChamps(req.body, { complet: true });
   if (v.erreur) return res.status(400).json({ error: v.erreur });
@@ -1347,6 +1358,10 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
   }, new Set(Object.keys(v.valeur)));
   const coherence = verifierCoherence(modele);
   if (coherence.erreur) return res.status(400).json({ error: coherence.erreur });
+  modele.signataire_mode = v.valeur.signataire_mode ?? "aucun";
+  modele.signataire_id = v.valeur.signataire_id ?? null; // contrôlé ci-dessous : refusé hors mode « fixe »
+  const signataire = await controlerSignataire(modele);
+  if (signataire.erreur) return res.status(400).json({ error: signataire.erreur });
 
   const cx = await getPool().connect();
   try {
@@ -1354,11 +1369,12 @@ router.post("/modeles", requireAdmin, wrap(async (req, res) => {
     const { rows: [cree] } = await cx.query(
       `INSERT INTO modeles_documents (nom, drive_file_id, drive_url, drive_mime, portee, description, cree_par,
                                       type_document, mode_generation, condition_generation, declencheur, condition_code,
-                                      declencheur_actif_depuis)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, CASE WHEN $9 = 'manuel' THEN NULL ELSE now() END) RETURNING id`,
+                                      declencheur_actif_depuis, signataire_mode, signataire_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, CASE WHEN $9 = 'manuel' THEN NULL ELSE now() END, $13, $14) RETURNING id`,
       [modele.nom, fileId, `https://drive.google.com/open?id=${fileId}`, req.body.drive_mime || null,
        modele.portee, modele.description, req.user.id,
-       modele.type_document, modele.mode_generation, modele.condition_generation, modele.declencheur, modele.condition_code]
+       modele.type_document, modele.mode_generation, modele.condition_generation, modele.declencheur, modele.condition_code,
+       modele.signataire_mode, modele.signataire_id]
     );
     const rattachement = await rattacherIndicateurs(cx, cree.id, v.valeur.indicateurs);
     if (rattachement.erreur) {
@@ -1409,6 +1425,13 @@ router.patch("/modeles/:id", requireAdmin, wrap(async (req, res) => {
     if (coherence.erreur) {
       await cx.query("ROLLBACK");
       return res.status(400).json({ error: coherence.erreur });
+    }
+    // Signataire : un mode autre que « fixe » retire l'identifiant ; « fixe » exige un signataire actif.
+    if (v.valeur.signataire_mode !== undefined && v.valeur.signataire_mode !== "fixe" && v.valeur.signataire_id === undefined) fusion.signataire_id = null;
+    const signataire = await controlerSignataire(fusion);
+    if (signataire.erreur) {
+      await cx.query("ROLLBACK");
+      return res.status(400).json({ error: signataire.erreur });
     }
     // Colonnes réellement modifiées : celles transmises, plus les champs remis en cohérence par le mode.
     const modifs = {};

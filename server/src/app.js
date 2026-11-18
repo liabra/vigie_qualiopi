@@ -14,6 +14,7 @@ import pilotageRoutes from "./routes/pilotage.js";
 import variablesRoutes from "./routes/variables.js";
 import inventaireDriveRoutes from "./routes/inventaireDrive.js";
 import questionnairesRoutes from "./routes/questionnaires.js";
+import parametresRoutes from "./routes/parametres.js";
 
 const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
@@ -44,6 +45,7 @@ export function createApp() {
   app.use("/api", inventaireDriveRoutes);
   app.use("/api", variablesRoutes);
   app.use("/api", questionnairesRoutes);
+  app.use("/api", parametresRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

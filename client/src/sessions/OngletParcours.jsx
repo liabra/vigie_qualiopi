@@ -143,6 +143,9 @@ export function OngletParcours({ donnees, peutSaisir, archivee, notifier }) {
       {ligneDossier && vue === "questionnaire" && (
         <PanneauQuestionnaire ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} />
       )}
+      {ligneDossier && vue === "competences" && (
+        <PanneauCompetences ligne={ligneDossier} modifiable={modifiable} onFermer={() => setVue(null)} />
+      )}
     </section>
   );
 }
@@ -176,6 +179,11 @@ function DossierAccompagnement({ ligne, positionnement, modifiable, onOuvrir, on
       id: "questionnaire", titre: "Questionnaire de formation", aide: "Questions propres à la formation suivie — distinctes de l'analyse des besoins commune ci-dessus.",
       etat: <span className="sess-secondaire">Ouvrir pour consulter</span>,
       bouton: action("Consulter le questionnaire de formation", "Renseigner le questionnaire de formation"),
+    },
+    {
+      id: "competences", titre: "Acquisition des compétences", aide: "Pour chaque compétence de la formation : acquise, en cours d'acquisition ou pas acquise. Alimente la grille de suivi des résultats.",
+      etat: <span className="sess-secondaire">Ouvrir pour consulter</span>,
+      bouton: action("Consulter les compétences", "Renseigner les compétences"),
     },
   ];
   return (
@@ -785,6 +793,87 @@ function PanneauQuestionnaire({ ligne, modifiable, onFermer }) {
                 )}
               </div>
             ))}
+          </fieldset>
+        </form>
+      )}
+    </Drawer>
+  );
+}
+
+const STATUTS_COMPETENCE = { acquis: "Acquis", en_cours: "En cours d'acquisition", non_acquis: "Pas acquis" };
+
+// Acquisition des compétences d'un stagiaire : une ligne par compétence de la formation / des séances, un statut
+// (ou « Non évalué »). État complet envoyé à l'enregistrement ; jamais de statut déduit.
+function PanneauCompetences({ ligne, modifiable, onFermer }) {
+  const [donnees, setDonnees] = useState(null);
+  const [statuts, setStatuts] = useState({});
+  const [errChargement, setErrChargement] = useState(null);
+  const [erreurServeur, setErreurServeur] = useState(null);
+  const [enCours, setEnCours] = useState(false);
+  const verrou = useRef(false);
+
+  useEffect(() => {
+    let actif = true;
+    api(`/api/inscriptions/${ligne.inscription_id}/competences`)
+      .then((r) => { if (actif) { setDonnees(r); setStatuts(Object.fromEntries(r.competences.map((c) => [c.competence, c.statut || ""]))); } })
+      .catch((e) => { if (actif) setErrChargement(e.message); });
+    return () => { actif = false; };
+  }, [ligne.inscription_id]);
+
+  const lecture = !modifiable || donnees?.archivee;
+
+  async function enregistrer(e) {
+    e.preventDefault();
+    if (lecture || verrou.current) return;
+    verrou.current = true;
+    setEnCours(true);
+    setErreurServeur(null);
+    try {
+      await api(`/api/inscriptions/${ligne.inscription_id}/competences`, {
+        method: "PUT",
+        body: JSON.stringify({ competences: donnees.competences.map((c) => ({ competence: c.competence, statut: statuts[c.competence] || null })) }),
+      });
+      onFermer();
+    } catch (err) {
+      setErreurServeur(err.message);
+      setEnCours(false);
+      verrou.current = false;
+    }
+  }
+
+  return (
+    <Drawer ouvert onFermer={onFermer} fermable={!enCours} taille="large" titre="Acquisition des compétences"
+      description={`${ligne.prenom} ${ligne.nom}`}
+      pied={!donnees?.competences?.length || lecture
+        ? <Button onClick={onFermer}>Fermer</Button>
+        : (
+          <>
+            <Button onClick={onFermer} disabled={enCours}>Annuler</Button>
+            <Button variante="primary" type="submit" form="form-competences" disabled={enCours}>{enCours ? "Enregistrement…" : "Enregistrer"}</Button>
+          </>
+        )}>
+      {errChargement && <Alert ton="error" titre="Les compétences n'ont pas pu être chargées.">{errChargement}</Alert>}
+      {!donnees && !errChargement && <LoadingState texte="Chargement des compétences…" />}
+      {donnees && donnees.competences.length === 0 && (
+        <EmptyState titre="Aucune compétence à évaluer">
+          Les compétences viennent de la version de la formation et des séances de la session. Ajoutez-les dans les séances (onglet Séances) pour pouvoir les évaluer ici.
+        </EmptyState>
+      )}
+      {donnees?.competences?.length > 0 && (
+        <form id="form-competences" onSubmit={enregistrer} noValidate className="ui-form">
+          {lecture && <Alert ton="info">{donnees.archivee ? "Session archivée : consultation seule." : "Consultation seule."}</Alert>}
+          {erreurServeur && <Alert ton="error" titre="Les compétences n'ont pas été enregistrées.">{erreurServeur}</Alert>}
+          <fieldset className="ui-form-lecture" disabled={lecture || enCours}>
+            <FormSection titre="Compétences" colonnes={1}>
+              {donnees.competences.map((c) => (
+                <Field key={c.competence} label={c.competence} facultatif>
+                  <select value={statuts[c.competence] || ""} onChange={(ev) => setStatuts({ ...statuts, [c.competence]: ev.target.value })}>
+                    <option value="">Non évalué</option>
+                    {Object.entries(STATUTS_COMPETENCE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </Field>
+              ))}
+            </FormSection>
           </fieldset>
         </form>
       )}

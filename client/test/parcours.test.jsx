@@ -88,18 +88,18 @@ test("onglet Accompagnement : synthèse par inscription, sans texte libre ; « A
   assert.ok(texte().includes("2 inscriptions, dont 1 abandon ; l'onglet Stagiaires compte 1 inscrit actif."), "populations explicitées");
 });
 
-test("dossier d'accompagnement : quatre sections expliquées, boutons explicites, retour au dossier après un panneau", async () => {
+test("dossier d'accompagnement : cinq sections expliquées, boutons explicites, retour au dossier après un panneau", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "admin", routes());
   await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
   await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
   await attendre(() => titreDialogue() === "Dossier d'accompagnement");
   const d = dialogue();
-  assert.deepEqual([...d.querySelectorAll("h3")].map((h) => h.textContent), ["1. Besoins et positionnement", "2. Mesures pédagogiques", "3. Observations et relances", "4. Questionnaire de formation"]);
+  assert.deepEqual([...d.querySelectorAll("h3")].map((h) => h.textContent), ["1. Besoins et positionnement", "2. Mesures pédagogiques", "3. Observations et relances", "4. Questionnaire de formation", "5. Acquisition des compétences"]);
   assert.ok(d.textContent.includes("Situation de l'inscription :") && d.textContent.includes("Inscrit"));
   assert.ok(d.textContent.includes("vérification des prérequis") && d.textContent.includes("sans diagnostic") && d.textContent.includes("Faits observés"), "explications courtes");
   const libelles = [...d.querySelectorAll("button")].map((b) => b.textContent);
   assert.deepEqual(libelles.filter((l) => /^(Modifier|Gérer|Renseigner|Consulter)/.test(l)),
-    ["Modifier les besoins et le positionnement", "Gérer les mesures pédagogiques", "Gérer les observations et relances", "Renseigner le questionnaire de formation"]);
+    ["Modifier les besoins et le positionnement", "Gérer les mesures pédagogiques", "Gérer les observations et relances", "Renseigner le questionnaire de formation", "Renseigner les compétences"]);
   assert.ok(!libelles.includes("Modifier") && !libelles.includes("Suivi") && !libelles.includes("Adaptations"), "aucun libellé ambigu");
   assert.ok(!d.textContent.includes(SECRET), "aucun texte libre dans le dossier");
   await cliquer(bouton("Modifier les besoins et le positionnement"));
@@ -254,4 +254,24 @@ test("contributeur : saisie ouverte comme pour les inscriptions", async () => {
   await monter(`/sessions/${SESSION.id}/parcours`, "contributeur", routes());
   await ouvrirBesoins("Alice Martin", "Modifier les besoins et le positionnement");
   assert.ok(document.querySelector('button[type="submit"][form="form-recueil"]'));
+});
+
+test("compétences : statut par compétence envoyé en état complet, « Non évalué » = effacement", async () => {
+  const appels = await monter(`/sessions/${SESSION.id}/parcours`, "admin", {
+    ...routes(),
+    "GET /api/inscriptions/11/competences": { competences: [{ competence: "AT01 allumer un PC", statut: "acquis" }, { competence: "AT02 ouvrir un logiciel", statut: null }], archivee: false },
+    "PUT /api/inscriptions/11/competences": { ok: true, enregistrees: 2 },
+  });
+  await attendre(() => document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await cliquer(document.querySelector(`button[aria-label="Ouvrir le dossier d'accompagnement de Alice Martin"]`));
+  await attendre(() => bouton("Renseigner les compétences"));
+  await cliquer(bouton("Renseigner les compétences"));
+  await attendre(() => champ("AT01 allumer un PC"));
+  assert.equal(champ("AT01 allumer un PC").value, "acquis");
+  assert.equal(champ("AT02 ouvrir un logiciel").value, "");
+  await saisir(champ("AT02 ouvrir un logiciel"), "en_cours");
+  await saisir(champ("AT01 allumer un PC"), "");
+  await cliquer(bouton("Enregistrer"));
+  await attendre(() => appels.some((a) => a.methode === "PUT"));
+  assert.deepEqual(appels.find((a) => a.methode === "PUT").corps, { competences: [{ competence: "AT01 allumer un PC", statut: null }, { competence: "AT02 ouvrir un logiciel", statut: "en_cours" }] });
 });

@@ -65,7 +65,7 @@ test("pur : recueil à faire = absent ou « à faire » ; corps complet, vides �
   assert.ok(recueilAFaire({ recueil_statut: null }) && recueilAFaire({ recueil_statut: "a_faire" }));
   assert.ok(!recueilAFaire({ recueil_statut: "realise" }) && !recueilAFaire({ recueil_statut: "non_applicable" }));
   assert.deepEqual(filtrerParcours(PARCOURS.inscriptions, { aFaire: true }).map((l) => l.inscription_id), [12]);
-  assert.deepEqual(corpsRecueil(valeursRecueil(null)), { statut: "a_faire", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, positionnement_id: null });
+  assert.deepEqual(corpsRecueil(valeursRecueil(null)), { statut: "a_faire", date_recueil: null, attentes: null, objectifs_personnels: null, prerequis_verifies: null, conclusion: null, niveau_positionnement: null, positionnement_id: null });
 });
 
 test("onglet Accompagnement : synthèse par inscription, sans texte libre ; « Aucune mesure » ; statut réel", async () => {
@@ -170,7 +170,7 @@ test("création : date exigée si réalisé, aide RGPD, corps envoyé, panneau f
   const avant = gets(appels);
   await soumettre();
   await attendre(() => titreDialogue() === "Dossier d'accompagnement");
-  assert.deepEqual(puts(appels, 12)[0].corps, { statut: "realise", date_recueil: "2026-09-04", attentes: "Reprendre une activité", objectifs_personnels: null, prerequis_verifies: "oui", conclusion: "parcours_standard", positionnement_id: null });
+  assert.deepEqual(puts(appels, 12)[0].corps, { statut: "realise", date_recueil: "2026-09-04", attentes: "Reprendre une activité", objectifs_personnels: null, prerequis_verifies: "oui", conclusion: "parcours_standard", niveau_positionnement: null, positionnement_id: null });
   assert.equal(gets(appels) - avant, 1, "rechargement ciblé, une fois");
   await attendre(() => texte().includes("Besoins et positionnement enregistrés pour Paul Bernard."));
   assert.ok(dialogue().textContent.includes("Réalisé") && dialogue().textContent.includes("Parcours standard"), "retour au dossier à jour");

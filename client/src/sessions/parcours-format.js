@@ -9,6 +9,7 @@ export const STATUTS_RECUEIL = {
 // Aucun recueil enregistré : état distinct, jamais une fausse date.
 export const RECUEIL_NON_COMMENCE = { libelle: "Non commencé", ton: "warning" };
 
+export const NIVEAUX_POSITIONNEMENT = { debutant: "Débutant", intermediaire: "Intermédiaire", autonome: "Autonome" };
 export const PREREQUIS = { oui: "Oui", partiel: "Partiellement", non: "Non" };
 export const CONCLUSIONS = {
   parcours_standard: "Parcours standard",
@@ -32,14 +33,14 @@ export const filtrerParcours = (lignes, { aFaire = false } = {}) => (lignes || [
 
 export const RECUEIL_VIDE = {
   statut: "a_faire", date_recueil: "", attentes: "", objectifs_personnels: "",
-  prerequis_verifies: "", conclusion: "", positionnement_id: "",
+  prerequis_verifies: "", conclusion: "", niveau_positionnement: "", positionnement_id: "",
 };
 export function valeursRecueil(r) {
   if (!r) return { ...RECUEIL_VIDE };
   return {
     statut: r.statut, date_recueil: (r.date_recueil || "").slice(0, 10), attentes: r.attentes || "",
     objectifs_personnels: r.objectifs_personnels || "", prerequis_verifies: r.prerequis_verifies || "",
-    conclusion: r.conclusion || "", positionnement_id: r.positionnement_id ? String(r.positionnement_id) : "",
+    conclusion: r.conclusion || "", niveau_positionnement: r.niveau_positionnement || "", positionnement_id: r.positionnement_id ? String(r.positionnement_id) : "",
   };
 }
 // Erreurs bloquantes avant envoi (le serveur reste juge).
@@ -54,7 +55,7 @@ export function corpsRecueil(v) {
   const n = (x) => (String(x ?? "").trim() === "" ? null : String(x).trim());
   return {
     statut: v.statut, date_recueil: n(v.date_recueil), attentes: n(v.attentes), objectifs_personnels: n(v.objectifs_personnels),
-    prerequis_verifies: n(v.prerequis_verifies), conclusion: n(v.conclusion),
+    prerequis_verifies: n(v.prerequis_verifies), conclusion: n(v.conclusion), niveau_positionnement: n(v.niveau_positionnement),
     positionnement_id: v.positionnement_id ? Number(v.positionnement_id) : null,
   };
 }

@@ -446,6 +446,7 @@ function DrawerImport({ ouvert, sessionId, admin = false, onFermer, onFait }) {
 // ── Dossier d'un stagiaire (drawer large) ────────────────────
 // La fiche (personne) et l'inscription (session) restent deux appels
 // distincts, comme avant : seul ce qui a changé est envoyé.
+const DOMAINES_HANDICAP = { moteur: "Moteur", visuel: "Visuel", auditif: "Auditif", psychique: "Psychique", deficience_intellectuelle: "Déficience intellectuelle", maladie_invalidante: "Maladies invalidantes" };
 function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, admin = false, onFermer, onFait }) {
   // fix : les champs réservés n'existent dans la fiche QUE pour l'admin ;
   // pour un contributeur, ils ne sont jamais lus ni envoyés (ce qui, sinon,
@@ -453,7 +454,10 @@ function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, admin = false, 
   const ficheDe = (x) => ({
     civilite: x.civilite || "", nom: x.nom || "", prenom: x.prenom || "", email: x.email || "",
     telephone: x.telephone || "", entreprise: x.entreprise || "", financeur: x.financeur || "",
-    ...(admin ? { situation_handicap: x.situation_handicap === true, besoins_adaptation: x.besoins_adaptation || "" } : {}),
+    date_naissance: x.date_naissance || "", adresse: x.adresse || "", code_postal: x.code_postal || "", ville: x.ville || "", profession: x.profession || "",
+    entreprise_adresse: x.entreprise_adresse || "", entreprise_siret: x.entreprise_siret || "", entreprise_ape: x.entreprise_ape || "",
+    entreprise_effectifs: x.entreprise_effectifs || "", entreprise_responsable: x.entreprise_responsable || "", entreprise_opca: x.entreprise_opca || "",
+    ...(admin ? { situation_handicap: x.situation_handicap === true, besoins_adaptation: x.besoins_adaptation || "", domaines_handicap: x.domaines_handicap || [] } : {}),
   });
   const inscDe = (x) => ({ groupe_id: x.groupe_id ? String(x.groupe_id) : "", prescripteur: x.prescripteur || "", dossier_complet: x.dossier_complet === true });
   const [fiche, setFiche] = useState(null);
@@ -519,9 +523,22 @@ function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, admin = false, 
               <Field label="Courriel" facultatif><input type="email" value={fiche.email} onChange={f("email")} /></Field>
               <Field label="Téléphone" facultatif><input type="tel" value={fiche.telephone} onChange={f("telephone")} /></Field>
             </FormSection>
+            <FormSection titre="Coordonnées complémentaires">
+              <Field label="Date de naissance" facultatif><input type="date" value={fiche.date_naissance} onChange={f("date_naissance")} /></Field>
+              <Field label="Profession" facultatif><input value={fiche.profession} onChange={f("profession")} /></Field>
+              <Field label="Adresse" facultatif><input value={fiche.adresse} onChange={f("adresse")} /></Field>
+              <Field label="Code postal" facultatif><input value={fiche.code_postal} onChange={f("code_postal")} /></Field>
+              <Field label="Ville" facultatif><input value={fiche.ville} onChange={f("ville")} /></Field>
+            </FormSection>
             <FormSection titre="Entreprise et financement">
               <Field label="Entreprise" facultatif><input value={fiche.entreprise} onChange={f("entreprise")} /></Field>
               <Field label="Financeur" facultatif><input value={fiche.financeur} onChange={f("financeur")} /></Field>
+              <Field label="Adresse de l'entreprise" facultatif><input value={fiche.entreprise_adresse} onChange={f("entreprise_adresse")} /></Field>
+              <Field label="SIRET" facultatif><input value={fiche.entreprise_siret} onChange={f("entreprise_siret")} /></Field>
+              <Field label="Code APE" facultatif><input value={fiche.entreprise_ape} onChange={f("entreprise_ape")} /></Field>
+              <Field label="Effectifs" facultatif><input value={fiche.entreprise_effectifs} onChange={f("entreprise_effectifs")} /></Field>
+              <Field label="Responsable (signataire)" facultatif><input value={fiche.entreprise_responsable} onChange={f("entreprise_responsable")} /></Field>
+              <Field label="OPCA / OPCO" facultatif><input value={fiche.entreprise_opca} onChange={f("entreprise_opca")} /></Field>
             </FormSection>
             <FormSection titre="Inscription à la session">
               <Field label="Groupe" facultatif>
@@ -545,6 +562,13 @@ function DrawerDossier({ st, groupes, prescripteurs, peutSaisir, admin = false, 
               <Field label="Besoins d'adaptation" facultatif>
                 <textarea rows={3} value={fiche.besoins_adaptation} onChange={f("besoins_adaptation")} />
               </Field>
+              <fieldset className="ui-field">
+                <legend>Domaines de handicap</legend>
+                {Object.entries(DOMAINES_HANDICAP).map(([code, libelle]) => (
+                  <Checkbox key={code} label={libelle} checked={fiche.domaines_handicap.includes(code)}
+                    onChange={(ev) => setFiche({ ...fiche, domaines_handicap: ev.target.checked ? [...fiche.domaines_handicap, code] : fiche.domaines_handicap.filter((d) => d !== code) })} />
+                ))}
+              </fieldset>
             </FormSection>
             )}
           </fieldset>

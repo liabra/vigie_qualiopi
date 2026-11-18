@@ -30,7 +30,7 @@ import {
 } from "../services/csvStagiaires.js";
 import { dateMetierAujourdhui, dateOptionnelleInvalide, estDateValide } from "../services/dates.js";
 import { MSG_ARCHIVEE, dependancesFormation, dependancesSession, dependancesStagiaire, verifierSessionActive } from "../services/archive.js";
-import { lireComplementsStagiaire, DOMAINES_HANDICAP } from "../services/complementsStagiaire.js";
+import { lireComplementsStagiaire, lireContactPrescripteur, DOMAINES_HANDICAP } from "../services/complementsStagiaire.js";
 import { CHAMPS_RESERVES_ADMIN, MSG_RESERVE_ADMIN, champsReservesEnvoyes, estAdmin, projeterStagiaire } from "../services/confidentialite.js";
 import { lireAbandon } from "../services/parcours.js";
 import { NOTE_MAX_DEFAUT, classerReponses, colonneEmail, colonneHorodateur, devinerColonnes, empreinteReponse, parserCsvComplet } from "../services/satisfactionImport.js";
@@ -1444,7 +1444,7 @@ router.post("/sessions/:id/stagiaires/import", requireRedacteur, wrap(async (req
 // Désactiver (actif=false) ne touche jamais les inscriptions passées.
 
 router.get("/prescripteurs", requireAuth, wrap(async (_req, res) => {
-  const { rows } = await query("SELECT id, code, nom, actif FROM prescripteurs ORDER BY nom");
+  const { rows } = await query("SELECT id, code, nom, actif, adresse, contact_nom, contact_fonction, contact_email, contact_telephone FROM prescripteurs ORDER BY nom");
   res.json({ prescripteurs: rows, total: rows.length });
 }));
 
@@ -1473,8 +1473,11 @@ router.patch("/prescripteurs/:id", requireAdmin, wrap(async (req, res) => {
   if (!id) return res.status(400).json({ error: "Identifiant de prescripteur invalide." });
   const { nom, actif } = req.body || {};
   if (nom !== undefined && !nom.trim()) return res.status(400).json({ error: "Le nom ne peut pas être vide." });
+  const contact = lireContactPrescripteur(req.body || {});
+  if (contact.erreur) return res.status(400).json({ error: contact.erreur });
   const sets = [];
   const params = [id];
+  for (const [col, val] of Object.entries(contact.champs)) { params.push(val); sets.push(`${col} = $${params.length}`); }
   if (nom !== undefined) { params.push(nom.trim()); sets.push(`nom = $${params.length}`); }
   if (actif !== undefined) { params.push(actif === true); sets.push(`actif = $${params.length}`); }
   if (!sets.length) return res.status(400).json({ error: "Rien à modifier." });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Alert, Badge, Button, Checkbox, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState } from "../ui/index.js";
 import { aujourdhuiISO } from "../qualite/format.js";
-import {
+import { NIVEAUX_POSITIONNEMENT,
   AIDE_ABANDON, AIDE_ADAPTATION, AIDE_CONFIDENTIALITE, AIDE_SUIVI, CANAUX_RELANCE, CATEGORIES_ABANDON, CATEGORIES_ADAPTATION, CATEGORIES_SUIVI,
   CONCLUSIONS, EXEMPLES_ADAPTATION, MAX_MESURE, MAX_MOTIF_ABANDON, MAX_NOTE_SUIVI, MAX_TEXTE,
   PREREQUIS, STATUTS_ADAPTATION, STATUTS_INSCRIPTION, STATUTS_RECUEIL, TYPES_SUIVI,
@@ -287,6 +287,12 @@ function PanneauRecueil({ ligne, modifiable, onFermer, onEnregistre }) {
                 <select value={valeurs.conclusion} onChange={champ("conclusion")}>
                   <option value="">Non renseignée</option>
                   {Object.entries(CONCLUSIONS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </Field>
+              <Field label="Niveau issu du positionnement" facultatif>
+                <select value={valeurs.niveau_positionnement} onChange={champ("niveau_positionnement")}>
+                  <option value="">Non renseigné</option>
+                  {Object.entries(NIVEAUX_POSITIONNEMENT).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </select>
               </Field>
               <Field label="Positionnement associé" facultatif className="ui-field--large"

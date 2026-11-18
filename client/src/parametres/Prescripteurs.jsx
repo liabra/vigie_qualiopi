@@ -116,6 +116,7 @@ export function PrescripteursPage() {
 function PanneauPrescripteur({ panneau, onFermer, onEnregistre }) {
   const renommage = panneau?.mode === "renommage";
   const [nom, setNom] = useState("");
+  const [contact, setContact] = useState({ adresse: "", contact_nom: "", contact_fonction: "", contact_email: "", contact_telephone: "" });
   const [erreur, setErreur] = useState(null);
   const [erreurServeur, setErreurServeur] = useState(null);
   const [enCours, setEnCours] = useState(false);
@@ -123,6 +124,8 @@ function PanneauPrescripteur({ panneau, onFermer, onEnregistre }) {
   useEffect(() => {
     if (!panneau) return;
     setNom(panneau.prescripteur?.nom || "");
+    const p = panneau.prescripteur || {};
+    setContact({ adresse: p.adresse || "", contact_nom: p.contact_nom || "", contact_fonction: p.contact_fonction || "", contact_email: p.contact_email || "", contact_telephone: p.contact_telephone || "" });
     setErreur(null); setErreurServeur(null); setEnCours(false);
   }, [panneau]);
 
@@ -132,8 +135,8 @@ function PanneauPrescripteur({ panneau, onFermer, onEnregistre }) {
     setErreur(null); setErreurServeur(null); setEnCours(true);
     try {
       if (renommage) {
-        await api(`/api/prescripteurs/${panneau.prescripteur.id}`, { method: "PATCH", body: JSON.stringify({ nom }) });
-        await onEnregistre(`Prescripteur renommé en « ${nom.trim()} ».`);
+        await api(`/api/prescripteurs/${panneau.prescripteur.id}`, { method: "PATCH", body: JSON.stringify({ nom, ...contact }) });
+        await onEnregistre(`Prescripteur « ${nom.trim()} » mis à jour.`);
       } else {
         await api("/api/prescripteurs", { method: "POST", body: JSON.stringify({ nom }) });
         await onEnregistre(`Prescripteur « ${nom.trim()} » ajouté.`);
@@ -165,6 +168,16 @@ function PanneauPrescripteur({ panneau, onFermer, onEnregistre }) {
         <Field label="Nom" erreur={erreur}>
           <input value={nom} onChange={(e) => setNom(e.target.value)} required />
         </Field>
+        {renommage && (
+          <>
+            <p className="sess-secondaire">Coordonnées reprises dans les documents des stagiaires adressés par ce prescripteur.</p>
+            <Field label="Adresse" facultatif><input value={contact.adresse} onChange={(e) => setContact({ ...contact, adresse: e.target.value })} /></Field>
+            <Field label="Nom du contact" facultatif><input value={contact.contact_nom} onChange={(e) => setContact({ ...contact, contact_nom: e.target.value })} /></Field>
+            <Field label="Fonction du contact" facultatif><input value={contact.contact_fonction} onChange={(e) => setContact({ ...contact, contact_fonction: e.target.value })} /></Field>
+            <Field label="E-mail du contact" facultatif><input type="email" value={contact.contact_email} onChange={(e) => setContact({ ...contact, contact_email: e.target.value })} /></Field>
+            <Field label="Téléphone du contact" facultatif><input type="tel" value={contact.contact_telephone} onChange={(e) => setContact({ ...contact, contact_telephone: e.target.value })} /></Field>
+          </>
+        )}
       </form>
     </Drawer>
   );

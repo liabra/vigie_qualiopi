@@ -267,7 +267,7 @@ test("prescripteurs : création et renommage dans un panneau", async () => {
   await saisir(champ("Nom"), "France Travail (ex-Pôle emploi)");
   await soumettre("form-prescripteur");
   await attendre(() => appels.some((a) => a.methode === "PATCH"));
-  assert.deepEqual(appels.find((a) => a.methode === "PATCH").corps, { nom: "France Travail (ex-Pôle emploi)" });
+  assert.deepEqual(appels.find((a) => a.methode === "PATCH").corps, { nom: "France Travail (ex-Pôle emploi)", adresse: "", contact_nom: "", contact_fonction: "", contact_email: "", contact_telephone: "" });
 });
 
 test("prescripteurs : désactiver passe par une confirmation ; réactiver est direct", async () => {

@@ -27,3 +27,18 @@ export function lireComplementsStagiaire(corps = {}) {
   }
   return { champs };
 }
+
+// Contact du prescripteur (structure) : repris par les variables prescripteur_* dans les documents d'un stagiaire adressé par lui.
+const LIMITES_PRESCRIPTEUR = { adresse: 300, contact_nom: 150, contact_fonction: 150, contact_email: 200, contact_telephone: 30 };
+export function lireContactPrescripteur(corps = {}) {
+  const champs = {};
+  for (const [col, max] of Object.entries(LIMITES_PRESCRIPTEUR)) {
+    if (corps[col] === undefined) continue;
+    if (corps[col] !== null && typeof corps[col] !== "string") return { erreur: "Valeur invalide pour un champ du prescripteur." };
+    const v = (corps[col] || "").trim();
+    if (v.length > max) return { erreur: "Valeur trop longue pour un champ du prescripteur." };
+    champs[col] = v || null;
+  }
+  if (champs.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(champs.contact_email)) return { erreur: "E-mail du contact invalide." };
+  return { champs };
+}

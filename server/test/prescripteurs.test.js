@@ -34,7 +34,7 @@ function basePrescripteurs({ prescripteurs = SEED } = {}) {
       const u = [ADMIN, CONTRIBUTEUR].find((x) => x.id === params[0]);
       return { rows: u ? [u] : [], rowCount: u ? 1 : 0 };
     }
-    if (sql.startsWith("SELECT id, code, nom, actif FROM prescripteurs")) {
+    if (sql.startsWith("SELECT id, code, nom, actif")) {
       const rows = etat.map((p) => ({ id: p.id, code: p.code, nom: p.nom, actif: p.actif }));
       return { rows, rowCount: rows.length };
     }

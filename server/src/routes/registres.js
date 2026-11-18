@@ -13,7 +13,8 @@ const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function definition(req, res) {
-  const d = REGISTRES[req.params.nom];
+  // fix : propriété PROPRE seulement (jamais __proto__, constructor…).
+  const d = Object.hasOwn(REGISTRES, req.params.nom) ? REGISTRES[req.params.nom] : null;
   if (!d) { res.status(404).json({ error: "Registre inconnu." }); return null; }
   return d;
 }

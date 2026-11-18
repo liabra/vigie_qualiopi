@@ -132,6 +132,7 @@ test("auditeur : seul le portail d'audit est accessible ; compte expiré = plus 
 
 test("registres : tâches (validation, récurrence, droits contributeur), risques (criticité), partenaires, ressources", async () => {
   assert.equal((await api("POST", "/api/registres/inconnu", { titre: "x" }, A())).statut, 404);
+  for (const nom of ["__proto__", "constructor", "toString"]) assert.equal((await api("GET", `/api/registres/${nom}`, undefined, A())).statut, 404, nom);
   assert.equal((await api("POST", "/api/registres/taches", {}, A())).statut, 400, "intitulé obligatoire");
   assert.equal((await api("POST", "/api/registres/taches", { titre: "x", echeance: "31/12/2026" }, A())).statut, 400);
   assert.equal((await api("POST", "/api/registres/taches", { titre: "x", indicateurs: [999] }, A())).statut, 400);

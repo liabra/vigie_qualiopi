@@ -98,7 +98,7 @@ const valideDate = (d) => DATE.test(d) && !Number.isNaN(Date.parse(d + "T00:00:0
 
 // Vue publique d'une définition (sans nom de table ni SQL) pour l'interface.
 export function schemaPublic(nom) {
-  const d = REGISTRES[nom];
+  const d = Object.hasOwn(REGISTRES, nom) ? REGISTRES[nom] : null; // fix : jamais une propriété héritée
   if (!d) return null;
   return { nom, titre: d.titre, singulier: d.singulier, feminin: !!d.feminin, description: d.description, ecriture: d.ecriture, statutsOuverts: d.statutsOuverts,
     champs: d.champs.map(({ nom: n, libelle, type, max, min, requis, valeurs, libelles, defaut, colonne, filtre, lectureSeule, calcule }) =>

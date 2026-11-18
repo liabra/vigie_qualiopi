@@ -11,7 +11,7 @@
 //  Rejouable : un document déjà produit pour le même couple
 //  (modèle, groupe, stagiaire) est REMPLACÉ, jamais empilé.
 // ─────────────────────────────────────────────────────────────
-import { config } from "../config.js";
+import { config, googleConfigured } from "../config.js";
 import { getPool, query } from "../db.js";
 import { appelGoogle, etatJeton, getDrive, DRIVE_FILE } from "./google.js";
 import { marqueursInconnus, requetesDocs, requetesSheets, valeursDeRemplacement, valeursMarqueurs } from "./marqueurs.js";
@@ -85,6 +85,10 @@ async function lireModele(clients, modele, jeton, cache) {
 // « créé par l'application », donc accessible avec le seul scope
 // drive.file pour la suite.
 export async function dossier(drive, nom, parentId, jeton) {
+  // fix : filet de sécurité — sans parent, la recherche par nom retrouverait le vrai dossier de production.
+  if (config.driveModeTest && !parentId) {
+    throw new Error("Mode test Drive actif (VIGIE_DRIVE_MODE_TEST) : un dossier racine de test validé est obligatoire. Génération interrompue avant tout appel Google.");
+  }
   const propre = nomSain(nom);
   const { data } = await appelGoogle(
     "drive.files.list",
@@ -109,9 +113,76 @@ export async function dossier(drive, nom, parentId, jeton) {
   return cree.id;
 }
 
+// Un dossier de test porte un nom explicite (mot entier « test ») : jamais une arborescence réelle.
+const NOM_TEST_REQUIS = /\btest\b/i;
+
+// Validation en LECTURE SEULE du dossier racine de test : dossier existant, non supprimé, nommé « test »,
+// posé directement à la racine du Drive (jamais à l'intérieur de l'arborescence de production) et vide au
+// premier essai. Toute non-conformité bloque AVANT la moindre écriture.
+async function validerDossierTest(drive, id, jeton) {
+  let data;
+  try {
+    ({ data } = await appelGoogle("drive.files.get",
+      () => drive.files.get({ fileId: id, fields: "id,name,mimeType,trashed,parents", supportsAllDrives: true }), { api: "drive", jeton }));
+  } catch (e) {
+    throw new Error("Dossier de test Drive introuvable ou inaccessible (VIGIE_DRIVE_TEST_ROOT_ID) : " + (e.message || "erreur inconnue"));
+  }
+  if (data.mimeType !== DOSSIER) throw new Error("VIGIE_DRIVE_TEST_ROOT_ID ne pointe pas vers un dossier Drive.");
+  if (data.trashed) throw new Error("Le dossier de test Drive (VIGIE_DRIVE_TEST_ROOT_ID) est à la corbeille.");
+  if (!NOM_TEST_REQUIS.test(data.name || "")) throw new Error(`Le dossier de test Drive doit porter un nom explicite de test (reçu : « ${data.name} »).`);
+  const parents = Array.isArray(data.parents) ? data.parents : [];
+  if (parents.length !== 1) throw new Error("Impossible de confirmer que le dossier de test Drive est directement à la racine de Drive (parent unique attendu).");
+  let racineDrive;
+  try {
+    ({ data: racineDrive } = await appelGoogle("drive.files.get",
+      () => drive.files.get({ fileId: "root", fields: "id,mimeType", supportsAllDrives: true }), { api: "drive", jeton }));
+  } catch (e) {
+    throw new Error("Impossible de vérifier la racine de Drive pour le dossier de test : " + (e.message || "erreur inconnue"));
+  }
+  if (racineDrive.mimeType !== DOSSIER || (parents[0] !== "root" && parents[0] !== racineDrive.id)) {
+    throw new Error("Le dossier de test Drive doit être directement placé à la racine de Drive, et non dans une arborescence de production.");
+  }
+  // Vide au premier essai, ou ne contenant que l'arborescence créée par Vigie lors d'essais précédents.
+  let contenu;
+  try {
+    ({ data: contenu } = await appelGoogle("drive.files.list",
+      () => drive.files.list({ q: `'${echappe(id)}' in parents and trashed = false`, fields: "files(id,name)", pageSize: 10, supportsAllDrives: true, includeItemsFromAllDrives: true }),
+      { api: "drive", dossier: data.name, jeton }));
+  } catch (e) {
+    throw new Error("Impossible de vérifier le contenu du dossier de test Drive : " + (e.message || "erreur inconnue"));
+  }
+  if (!Array.isArray(contenu?.files)) throw new Error("Impossible de confirmer le contenu du dossier de test Drive.");
+  const etrangers = contenu.files.filter((f) => f.name !== nomSain(config.driveRacine));
+  if (etrangers.length) {
+    throw new Error("Le dossier de test Drive ne doit contenir que l'arborescence créée par Vigie : choisissez un dossier de test vide à la racine de Drive.");
+  }
+}
+
+// Point d'entrée UNIQUE du dossier racine, pour TOUS les générateurs (documents et fiche d'entretien FSE-IA).
+// En mode test, seul VIGIE_DRIVE_TEST_ROOT_ID compte (jamais de repli sur DRIVE_RACINE_ID), après validation.
+export async function resoudreRacineDrive(drive, jeton) {
+  if (config.driveModeTest) {
+    const id = config.driveTestRootId;
+    if (!id) {
+      throw new Error("Mode test Drive actif (VIGIE_DRIVE_MODE_TEST) : VIGIE_DRIVE_TEST_ROOT_ID est obligatoire. DRIVE_RACINE_ID n'est jamais utilisé comme repli en mode test. Génération interrompue avant tout appel Google.");
+    }
+    await validerDossierTest(drive, id, jeton);
+    return dossier(drive, config.driveRacine, id, jeton);
+  }
+  return dossier(drive, config.driveRacine, config.driveRacineId || null, jeton);
+}
+
+// Dernier garde-fou : sur un poste local (ni production, ni Railway) avec Google réellement configuré, aucune
+// génération sans mode test explicite — sinon elle écrirait dans le Drive de production.
+export function verifierEnvironnementGeneration() {
+  if (!config.isProd && !config.surRailway && !config.driveModeTest && googleConfigured()) {
+    throw new Error("Génération bloquée : environnement local avec Google configuré et VIGIE_DRIVE_MODE_TEST inactif. Activez VIGIE_DRIVE_MODE_TEST (et VIGIE_DRIVE_TEST_ROOT_ID) pour un essai réel volontaire.");
+  }
+}
+
 // /<racine>/<formation>/<dates de session>/<groupe>/
 export async function dossierCible(drive, { formation, session, groupe }, jeton) {
-  const racine = await dossier(drive, config.driveRacine, config.driveRacineId || null, jeton);
+  const racine = await resoudreRacineDrive(drive, jeton);
   const fFormation = await dossier(drive, formation.intitule, racine, jeton);
   const dates = `${session.date_debut} au ${session.date_fin}`;
   const fSession = await dossier(drive, session.reference ? `${session.reference} (${dates})` : dates, fFormation, jeton);
@@ -583,6 +654,7 @@ const generationsEnCours = new Map();
 // il ne reste rien à produire, le résultat est { documents: 0, rien: true } au lieu d'une erreur.
 // `planificationId` rattache la génération à la tâche planifiée qui l'a lancée.
 export async function genererDocuments({ modeleId, sessionId, groupeId = null, remplacer = false, utilisateurId = null, admin = false, libelle = null, client: clientGoogle = null, completer = false, filtre = null, planificationId = null } = {}) {
+  verifierEnvironnementGeneration();
   const d = clientGoogle || (await getDrive());
   if (!d) {
     const e = new Error("Google Drive est indisponible ou non connecté. Impossible de générer des documents.");

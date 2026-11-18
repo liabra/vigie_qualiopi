@@ -27,6 +27,14 @@ export const config = {
   // DRIVE_RACINE_ID permet d'imposer un dossier parent précis.
   driveRacine: (env.DRIVE_RACINE || "A2C Qualiopi").trim(),
   driveRacineId: (env.DRIVE_RACINE_ID || "").trim(),
+  // Garde-fou des essais LOCAUX : absent/faux par défaut, donc aucun changement en production. Actif, toute
+  // écriture Drive se fait dans VIGIE_DRIVE_TEST_ROOT_ID (dossier vide, nommé « test », à la racine du Drive),
+  // jamais dans le dossier de production, et sans jamais se replier sur DRIVE_RACINE_ID.
+  driveModeTest: ["1", "true", "yes"].includes((env.VIGIE_DRIVE_MODE_TEST || "").trim().toLowerCase()),
+  driveTestRootId: (env.VIGIE_DRIVE_TEST_ROOT_ID || "").trim(),
+  // Exécution sur Railway (production ou autre environnement déployé) : jamais concernée par le blocage des
+  // essais locaux, même si NODE_ENV venait à manquer.
+  surRailway: Boolean((env.RAILWAY_ENVIRONMENT || env.RAILWAY_ENVIRONMENT_NAME || "").trim()),
 };
 
 export const googleConfigured = () =>
@@ -44,5 +52,9 @@ export function checkConfig() {
   }
   if (!googleConfigured()) {
     console.warn("Google OAuth non configuré (GOOGLE_CLIENT_ID / SECRET / REDIRECT_URI) : connexion impossible.");
+  }
+  if (!config.isProd && !config.surRailway && !config.driveModeTest && googleConfigured()) {
+    console.warn("Démarrage local avec Google configuré : la génération de documents est bloquée tant que " +
+      "VIGIE_DRIVE_MODE_TEST (et VIGIE_DRIVE_TEST_ROOT_ID) ne sont pas définis, pour ne jamais écrire dans le Drive de production.");
   }
 }

@@ -12,7 +12,7 @@
 //  modèle réel dès que son accès sera rétabli.
 // ─────────────────────────────────────────────────────────────
 import { appelGoogle } from "./google.js";
-import { nettoyerCopies, dossier } from "./documents.js";
+import { nettoyerCopies, dossier, resoudreRacineDrive, verifierEnvironnementGeneration } from "./documents.js";
 import { construireTexteFiche } from "./ficheEntretien.js";
 import { config } from "../config.js";
 
@@ -30,6 +30,7 @@ function nomFicheSain(stagiaire, entretienId) {
 // à la corbeille UNIQUEMENT après le succès de la nouvelle (jamais avant,
 // pour ne jamais se retrouver sans aucune fiche en cas d'échec).
 export async function genererFicheEntretienDocument(d, { donneesEntretien, stagiaire, ancienFicheId = null }, jeton) {
+  verifierEnvironnementGeneration();
   const texte = construireTexteFiche({ stagiaire, ...donneesEntretien });
   const nom = nomFicheSain(stagiaire, donneesEntretien.entretien.id);
 
@@ -39,7 +40,7 @@ export async function genererFicheEntretienDocument(d, { donneesEntretien, stagi
     // Vigie (racine configurée), jamais à la racine brute du compte Drive
     // connecté — sans quoi les fiches deviendraient introuvables pour
     // l'équipe (DOC-9E, audit de rentrée).
-    const racine = await dossier(d.drive, config.driveRacine, config.driveRacineId || null, jeton);
+    const racine = await resoudreRacineDrive(d.drive, jeton); // même règle que les documents (mode test Drive)
     const dossierEntretiens = await dossier(d.drive, "Entretiens FSE-IA", racine, jeton);
 
     const { data: cree } = await appelGoogle(

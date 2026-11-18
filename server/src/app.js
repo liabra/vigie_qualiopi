@@ -21,6 +21,10 @@ import registresRoutes from "./routes/registres.js";
 import auditsRoutes from "./routes/audits.js";
 import enquetesRoutes from "./routes/enquetes.js";
 import rgpdRoutes from "./routes/rgpd.js";
+import developpementRoutes from "./routes/developpement.js";
+import candidaturesRoutes from "./routes/candidatures.js";
+import portailsRoutes from "./routes/portails.js";
+import exportsPdfRoutes from "./routes/exportsPdf.js";
 
 const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
@@ -59,6 +63,10 @@ export function createApp() {
   app.use("/api", auditsRoutes);
   app.use("/api", enquetesRoutes);
   app.use("/api", rgpdRoutes);
+  app.use("/api", developpementRoutes);
+  app.use("/api", candidaturesRoutes);
+  app.use("/api", portailsRoutes);
+  app.use("/api", exportsPdfRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

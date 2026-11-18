@@ -70,4 +70,7 @@ export const SIGNATURES = {
   "048_campagnes_audit.sql": table("campagnes_audit"),
   "049_enquetes_en_ligne.sql": table("enquetes"),
   "050_rgpd_anonymisation.sql": colonne("stagiaires", "anonymise_le"),
+  "051_developpement_intervenants.sql": table("developpement_intervenants"),
+  "052_candidatures_en_ligne.sql": table("candidatures"),
+  "053_portails.sql": table("acces_portail"),
 };

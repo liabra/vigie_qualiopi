@@ -112,7 +112,7 @@ async function reconcilierSessionFormation(client, champs, avant) {
   return champs;
 }
 
-async function referenceSuivante(client, prefixe) {
+export async function referenceSuivante(client, prefixe) {
   const annee = Number(dateMetierAujourdhui().slice(0, 4)); // fix : année civile de Cayenne
   const { rows: [c] } = await client.query(
     `INSERT INTO compteurs_qualite (annee, type, dernier) VALUES ($1, $2, 1)

@@ -20,6 +20,7 @@ export const CONDITIONS = {
   situation_handicap: "Stagiaire en situation de handicap",
   besoin_adaptation: "Stagiaire ayant un besoin d'adaptation (handicap ou besoin renseigné)",
   prescripteur_renseigne: "Stagiaire orienté par un prescripteur",
+  assiduite_atteinte: "Stagiaire ayant au moins 80 % d'assiduité (abandons exclus)",
 };
 
 const LONGUEUR_NOM = 200;

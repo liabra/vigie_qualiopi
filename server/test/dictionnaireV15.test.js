@@ -20,9 +20,10 @@ const NOMS_V14 = lire("dictionnaire_v1_4_noms.json");
 const LIBELLES_V15 = lire("dictionnaire_v1_5_libelles.json");
 
 test("v1.5 puis 1.6 : version annoncée et historique des évolutions", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.6");
+  assert.equal(DICTIONNAIRE_VERSION, "1.7");
   assert.ok(EVOLUTIONS.some((e) => e.version === "1.5" && /43 libellés/.test(e.changement)));
   assert.ok(EVOLUTIONS.some((e) => e.version === "1.6" && /7 variables/.test(e.changement)));
+  assert.ok(EVOLUTIONS.some((e) => e.version === "1.7" && /questionnaire_formation/.test(e.changement)));
 });
 
 const NOUVELLES_V16 = ["besoin_date_recueil", "besoin_attentes", "besoin_objectifs_personnels", "besoin_prerequis_verifies", "besoin_conclusion", "stagiaire_situation_handicap", "evaluation_seuil_reussite"];

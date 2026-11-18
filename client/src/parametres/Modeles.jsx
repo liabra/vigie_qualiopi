@@ -88,6 +88,7 @@ export const CONDITIONS = {
   situation_handicap: "Stagiaire en situation de handicap",
   besoin_adaptation: "Besoin d'adaptation signalé",
   prescripteur_renseigne: "Prescripteur renseigné",
+  assiduite_atteinte: "Assiduité d'au moins 80 % (abandons exclus)",
 };
 const TYPES_FICHIER = {
   "application/vnd.google-apps.document": "Google Docs",

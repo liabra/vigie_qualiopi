@@ -56,4 +56,5 @@ export const SIGNATURES = {
   "040_questionnaires_ordre_differe.sql": `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'questionnaire_questions_ordre_unique') AS ok`,
   "041_parametres_organisme_signataires.sql": table("signataires"),
   "042_formation_contenu_documentaire.sql": colonne("formation_versions", "objectifs_operationnels"),
+  "043_condition_assiduite.sql": `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'modeles_documents_condition_code_check' AND pg_get_constraintdef(oid) LIKE '%assiduite_atteinte%') AS ok`,
 };

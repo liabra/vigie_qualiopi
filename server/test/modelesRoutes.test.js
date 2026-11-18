@@ -110,7 +110,7 @@ test("GET : filtres par type et par mode, liste des valeurs admises, modèles in
   assert.equal(tous.statut, 200);
   assert.deepEqual(tous.corps.modes_generation, ["manuel", "automatique", "conditionnel"]);
   assert.deepEqual(Object.keys(tous.corps.declencheurs), ["creation_session", "inscription", "debut_session", "fin_session"]);
-  assert.deepEqual(Object.keys(tous.corps.conditions), ["situation_handicap", "besoin_adaptation", "prescripteur_renseigne"]);
+  assert.deepEqual(Object.keys(tous.corps.conditions), ["situation_handicap", "besoin_adaptation", "prescripteur_renseigne", "assiduite_atteinte"]);
   assert.ok(tous.corps.types_document.includes("convocation"));
 
   const conditionnels = await api("GET", "/api/modeles?mode_generation=conditionnel", undefined, C());

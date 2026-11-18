@@ -333,6 +333,23 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
     }
     resultat.evaluations = evaluations;
   }
+  // Réponses au questionnaire de formation : instantané de la question, dans l'ordre actuel du questionnaire
+  // (une réponse dont la question a disparu garde son énoncé et passe en fin). Une requête pour toutes les cibles.
+  if (ids.length && blocs.includes("questionnaire_formation")) {
+    const reponses = new Map();
+    const { rows } = await query(
+      `SELECT r.inscription_id, r.question_libelle, r.valeur_texte, r.valeurs_choisies
+       FROM questionnaire_reponses r LEFT JOIN questionnaire_questions q ON q.id = r.question_id
+       WHERE r.inscription_id = ANY($1::int[])
+       ORDER BY r.inscription_id, q.ordre NULLS LAST, r.id`,
+      [ids]
+    );
+    for (const r of rows) {
+      if (!reponses.has(r.inscription_id)) reponses.set(r.inscription_id, []);
+      reponses.get(r.inscription_id).push(r);
+    }
+    resultat.questionnaire_formation = reponses;
+  }
   // Adaptations du parcours (accès RESTREINT : le précontrôle exige un administrateur) : une requête
   // pour toutes les cibles.
   if (ids.length && blocs.includes("adaptations")) {
@@ -658,6 +675,7 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
             absences: (stagiaire?.inscription_id != null ? lignesBlocs.absences?.get(stagiaire.inscription_id) : null) || [],
             evaluations: (stagiaire?.inscription_id != null ? lignesBlocs.evaluations?.get(stagiaire.inscription_id) : null) || [],
             adaptations: (stagiaire?.inscription_id != null ? lignesBlocs.adaptations?.get(stagiaire.inscription_id) : null) || [],
+            questionnaire_formation: (stagiaire?.inscription_id != null ? lignesBlocs.questionnaire_formation?.get(stagiaire.inscription_id) : null) || [],
             objectifs_formation: (ctx.version?.objectifs_operationnels || []).map((libelle, i) => ({ code: `O${i + 1}`, libelle })),
             intervenants: lignesIntervenants || [],
             seances: lignesBlocs.seances || [],

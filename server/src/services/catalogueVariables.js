@@ -18,7 +18,7 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.6";
+export const DICTIONNAIRE_VERSION = "1.7";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
@@ -36,6 +36,7 @@ export const EVOLUTIONS = Object.freeze([
   { version: "1.4", changement: "Ajout du bloc {{#suivi_pedagogique}} : une ligne par séance applicable au stagiaire, combinant les champs séance (seance_date, seance_competences, seance_activites) et le suivi individuel (suivi_accompagnement, suivi_difficultes, suivi_impressions, suivi_observations)." },
   { version: "1.5", changement: "Harmonisation de 43 libellés métier, sans aucun changement de nom technique : « attribut + de l'objet » (Nom du stagiaire, Adresse de l'organisme – ligne 1, Fonction de l'intervenant…), et plus aucun libellé en double dans le dictionnaire (Code postal, Ville, Téléphone, E-mail existaient pour plusieurs objets). Les libellés « Nom officiel de l'organisme » et « Durée officielle du parcours en heures » sont conservés." },
   { version: "1.6", changement: "Ajout de 7 variables, créées avec les documents qui les utilisent : analyse du besoin du stagiaire (BES-01 à BES-05 : besoin_date_recueil, besoin_attentes, besoin_objectifs_personnels, besoin_prerequis_verifies, besoin_conclusion), STA-18 stagiaire_situation_handicap (accès restreint) et EVA-13 evaluation_seuil_reussite (ajoutée au bloc evaluations). Nouveau domaine « besoin ». Les noms et identifiants de la 1.5 sont inchangés." },
+  { version: "1.7", changement: "Ajout du bloc {{#questionnaire_formation}} (BLK-11) : réponses du stagiaire au questionnaire de sa formation, une ligne par question, avec la question telle qu'elle était posée (question_libelle, question_reponse). Aucune variable ajoutée." },
   { version: "1.6", changement: "Résolveurs ajoutés pour des variables déjà au catalogue : organisme_* et signataire_* (paramètres de l'organisme et signataires), formation_objectifs_operationnels, formation_methodes_pedagogiques, formation_modalites_evaluation (fiche formation), financeur_nom et stagiaire_besoins_specifiques (accès restreint). Blocs : objectifs_formation et adaptations (accès restreint) désormais supportés ; evaluations complété (moment, résultat de validation, commentaire, seuil de réussite)." },
 ]);
 
@@ -332,6 +333,11 @@ const DEF_BLOCS = [
       local("suivi_difficultes", "texte", "Difficultés rencontrées par le stagiaire.", { sensibilite: "personnelle" }),
       local("suivi_impressions", "texte", "Impressions du stagiaire sur la séance.", { sensibilite: "personnelle" }),
       local("suivi_observations", "texte", "Observations du formateur sur la séance.", { sensibilite: "personnelle" })] },
+  // v1.7 : réponses au questionnaire de formation saisies dans l'onglet Accompagnement (une ligne par question).
+  { id: "BLK-11", nom: "questionnaire_formation", libelle: "Questionnaire de formation", source: "inscription -> questionnaire_reponses",
+    documents: "Fiche d'analyse des besoins, bilan",
+    champs: [local("question_libelle", "texte", "Question posée, telle qu'elle l'était au moment de la réponse."),
+      local("question_reponse", "texte", "Réponse du stagiaire à la question.", { sensibilite: "personnelle" })] },
 ];
 
 export const BLOCS = Object.freeze(DEF_BLOCS.map((b) => figer({

@@ -44,3 +44,14 @@ Branches empilées à partir de `origin/main` (8550bdd). Aucune n'est fusionnée
   `adaptations`) sont refusées à un contributeur par le précontrôle et ne sont jamais produites par la génération
   automatique (sans droits administrateur) : un modèle qui les utilise se génère à la main par un administrateur.
 - **Écran** : Paramètres → Formations → Réviser : section « Contenu repris dans les documents ».
+
+## Lot 4 — questionnaire dans les documents et condition d'assiduité (dictionnaire v1.7)
+
+- **Bloc `{{#questionnaire_formation}}`** (`question_libelle`, `question_reponse`) : réponses du stagiaire au questionnaire de
+  sa formation, une ligne par question, dans l'ordre du questionnaire ; la question est celle posée au moment de la
+  réponse (instantané). Aucun stagiaire sans réponse : bloc vide.
+- **Migration 043** (additive) : condition de génération `assiduite_atteinte` (assiduité d'au moins 80 %, abandons exclus ;
+  même calcul et même seuil que l'écran d'assiduité ; durée de session inconnue = personne concerné).
+- **Attestation automatique** : modèle « conditionnel », déclencheur « à la fin de la session », condition
+  « assiduité d'au moins 80 % ». Le seuil est la constante `SEUIL_ASSIDUITE` (services/assiduite.js) : à ajuster en une
+  ligne si la décision B4 diffère. Tant que le modèle de l'attestation reste en mode manuel, rien ne change.

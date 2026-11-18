@@ -17,6 +17,7 @@
 //  · modèle désactivé ou repassé en manuel, session annulée ou archivée : sans objet.
 import { query } from "../db.js";
 import { genererDocuments } from "./documents.js";
+import { SEUIL_ASSIDUITE, calculerAssiduite } from "./assiduite.js";
 import { FUSEAU_METIER } from "./dates.js";
 
 export const EVENEMENTS = ["creation_session", "inscription", "debut_session", "fin_session"];
@@ -37,6 +38,22 @@ const CONDITIONS_SQL = {
 };
 
 export async function stagiairesConcernes(conditionCode, sessionId) {
+  // Assiduité : même calcul que partout dans Vigie (calculerAssiduite) ; un taux non fiable (durée de session
+  // inconnue) ne qualifie personne, jamais une attestation sur un chiffre inventé.
+  if (conditionCode === "assiduite_atteinte") {
+    const { rows } = await query(
+      `SELECT i.stagiaire_id AS id, i.statut, COALESCE(se.duree_heures_reelle, v.duree_heures_defaut) AS prevues,
+              COALESCE((SELECT sum(a.duree_heures) FROM absences a WHERE a.inscription_id = i.id), 0) AS heures_absence
+       FROM inscriptions i JOIN sessions se ON se.id = i.session_id
+       LEFT JOIN formation_versions v ON v.id = se.formation_version_id
+       WHERE i.session_id = $1 AND i.statut <> 'abandon'`,
+      [sessionId]
+    );
+    return new Set(rows.filter((r) => {
+      const a = calculerAssiduite({ heuresPrevues: r.prevues, heuresAbsence: r.heures_absence, statut: r.statut });
+      return a.fiable && a.taux >= SEUIL_ASSIDUITE;
+    }).map((r) => r.id));
+  }
   const condition = CONDITIONS_SQL[conditionCode];
   if (!condition) throw new Error("Condition de génération inconnue.");
   const { rows } = await query(

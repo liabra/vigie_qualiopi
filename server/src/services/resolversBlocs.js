@@ -60,6 +60,11 @@ export const CHAMPS_BLOC = {
     objectif_code: (l) => texte(l.code),
     objectif_libelle: (l) => texte(l.libelle),
   },
+  // questionnaire_formation : instantané de la question + réponse (texte libre, oui/non, choix unique ou multiple).
+  questionnaire_formation: {
+    question_libelle: (l) => texte(l.question_libelle),
+    question_reponse: (l) => texte(l.valeur_texte || (Array.isArray(l.valeurs_choisies) ? l.valeurs_choisies.join(", ") : "")),
+  },
   // adaptations (accès RESTREINT : le précontrôle exige un administrateur) : table adaptations_parcours.
   adaptations: {
     adaptation_categorie: (l) => libelle(CATEGORIES_ADAPTATION, l.categorie),

@@ -11,6 +11,7 @@ import "./veille/veille.css";
 import "./parametres/parametres.css";
 import "./aide/aide.css";
 import "./qualite/qualite.css";
+import "./pilotage/pilotage.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

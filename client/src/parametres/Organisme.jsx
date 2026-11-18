@@ -17,6 +17,12 @@ export const CHAMPS_ORGANISME = [
   ["telephone", "Téléphone fixe", "05 94 00 00 00"],
   ["mobile", "Téléphone mobile", "06 94 00 00 00"],
   ["email", "E-mail", "contact@exemple.fr"],
+  ["siret", "SIRET", "123 456 789 00010"],
+  ["nda", "Numéro de déclaration d'activité", "03 97 30 00 000"],
+  ["site_web", "Site web", "https://www.exemple.fr"],
+  ["referent_handicap_nom", "Référent handicap", "Prénom Nom"],
+  ["referent_handicap_email", "E-mail du référent handicap", "handicap@exemple.fr"],
+  ["referent_handicap_telephone", "Téléphone du référent handicap", "06 94 00 00 00"],
 ];
 const VIDE = Object.fromEntries(CHAMPS_ORGANISME.map(([cle]) => [cle, ""]));
 
@@ -55,7 +61,7 @@ function CoordonneesOrganisme() {
           {CHAMPS_ORGANISME.map(([cle, libelle, exemple]) => (
             <Field key={cle} label={libelle} facultatif>
               <input value={valeurs[cle]} placeholder={exemple} maxLength={200}
-                type={cle === "email" ? "email" : cle === "telephone" || cle === "mobile" ? "tel" : "text"}
+                type={cle.endsWith("email") ? "email" : ["telephone", "mobile", "referent_handicap_telephone"].includes(cle) ? "tel" : cle === "site_web" ? "url" : "text"}
                 onChange={(e) => { setSucces(null); setValeurs({ ...valeurs, [cle]: e.target.value }); }} />
             </Field>
           ))}

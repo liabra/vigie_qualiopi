@@ -33,6 +33,19 @@ export const NAVIGATION = [
       { to: "/actions-qualite", libelle: "Actions qualité" },
       { to: "/signalements-qualite", libelle: "Signalements", admin: true },
       { to: "/synthese-satisfactions", libelle: "Synthèse des satisfactions", admin: true },
+      { to: "/enquetes", libelle: "Enquêtes en ligne", admin: true },
+    ],
+  },
+  {
+    id: "pilotage",
+    titre: "Pilotage",
+    entrees: [
+      { to: "/taches", libelle: "Tâches qualité" },
+      { to: "/echeancier", libelle: "Échéancier" },
+      { to: "/risques", libelle: "Risques" },
+      { to: "/preparation-audit", libelle: "Préparation d'audit", admin: true },
+      { to: "/partenaires", libelle: "Partenaires" },
+      { to: "/ressources", libelle: "Ressources et moyens" },
     ],
   },
   {
@@ -50,6 +63,8 @@ export const NAVIGATION = [
       { to: "/questionnaires", libelle: "Questionnaires de formation" },
       { to: "/versions", libelle: "Versions du référentiel" },
       { to: "/parametres/organisme", libelle: "Organisme et signataires" },
+      { to: "/parametres/comptes", libelle: "Comptes et accès" },
+      { to: "/parametres/rgpd", libelle: "RGPD et conservation" },
       { to: "/parametres/google", libelle: "Google Drive" },
       { to: "/parametres/inventaire-drive", libelle: "Inventaire Drive" },
     ],
@@ -58,7 +73,11 @@ export const NAVIGATION = [
 
 // Groupes et entrées visibles pour un rôle. Tout ce qui n'est pas « admin »
 // est ouvert aux deux rôles connus (admin, contributeur).
+// Auditeur externe : uniquement les dossiers d'audit partagés (le serveur l'impose aussi).
+export const NAVIGATION_AUDITEUR = [{ id: "audit", titre: "Audit", entrees: [{ to: "/portail-audit", libelle: "Dossiers d'audit" }] }];
+
 export function navigationPour(role) {
+  if (role === "auditeur") return NAVIGATION_AUDITEUR;
   const admin = role === "admin";
   return NAVIGATION
     .filter((g) => admin || !g.admin)

@@ -8,14 +8,15 @@ const liens = (role) => navigationPour(role).flatMap((g) => g.entrees.map((e) =>
 
 test("admin : toutes les entrées, dont Formations et le groupe Paramètres", () => {
   assert.deepEqual(liens("admin"), [
-    "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions",
-    "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/google", "/parametres/inventaire-drive",
+    "/accueil", "/sessions", "/jeunes", "/formations", "/intervenants", "/justificatifs-intervenants", "/tableau-de-bord-qualite", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/signalements-qualite", "/synthese-satisfactions", "/enquetes",
+    "/taches", "/echeancier", "/risques", "/preparation-audit", "/partenaires", "/ressources",
+    "/variables-documentaires", "/modeles", "/prescripteurs", "/questionnaires", "/versions", "/parametres/organisme", "/parametres/comptes", "/parametres/rgpd", "/parametres/google", "/parametres/inventaire-drive",
   ]);
   assert.ok(navigationPour("admin").some((g) => g.titre === "Paramètres"));
 });
 
 test("contributeur : aucune entrée d'administration, aucun groupe Paramètres", () => {
-  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/variables-documentaires"]);
+  assert.deepEqual(liens("contributeur"), ["/accueil", "/sessions", "/jeunes", "/intervenants", "/indicateurs", "/preuves", "/veille", "/audits", "/actions-qualite", "/taches", "/echeancier", "/risques", "/partenaires", "/ressources", "/variables-documentaires"]);
   assert.ok(!navigationPour("contributeur").some((g) => g.titre === "Paramètres"));
 });
 
@@ -37,4 +38,8 @@ test("retour après connexion : seulement un chemin interne à l'application", (
     "/api/me", "/auth/google/login", "/api", "sessions/1"]) {
     assert.equal(cheminRetourValide(ko), false, String(ko));
   }
+});
+
+test("auditeur : seulement les dossiers d'audit", () => {
+  assert.deepEqual(liens("auditeur"), ["/portail-audit"]);
 });

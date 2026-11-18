@@ -1,0 +1,38 @@
+/* Pilotage qualité, préparation d'audit, enquêtes : mêmes jetons que le reste de l'application. */
+.pilotage-retard { color: var(--color-error); font-weight: var(--font-weight-medium); }
+.pilotage-filtres { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; margin: var(--space-3) 0; }
+.pilotage-filtres .ui-field { min-width: 12rem; margin: 0; }
+.pilotage-mois { margin-top: var(--space-5); }
+.pilotage-mois__titre { font-size: var(--font-size-section-title); text-transform: capitalize; margin-bottom: var(--space-2); }
+.pilotage-liste { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-2); }
+.pilotage-liste li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.pilotage-liste__date { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); min-width: 6.5rem; }
+.pilotage-historique { margin-top: var(--space-4); }
+.pilotage-historique ul { padding-left: var(--space-4); font-size: var(--font-size-small); color: var(--color-text-secondary); }
+
+.audit-resume { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-3) 0 var(--space-4); padding: var(--space-3) var(--space-4); background: var(--color-surface-2); border-radius: var(--radius-md); }
+.audit-resume strong { font-size: var(--font-size-section-title); color: var(--color-primary); }
+.portail-indicateur { border-top: 1px solid var(--color-border); padding: var(--space-3) 0; }
+
+.enquete-question { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+.enquete-question h3 { font-size: var(--font-size-body); margin: 0 0 var(--space-2); }
+.enquete-barres { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-1); max-width: 36rem; }
+.enquete-barres li { display: grid; grid-template-columns: minmax(3rem, 10rem) 1fr 2.5rem; gap: var(--space-2); align-items: center; }
+.enquete-barres__libelle { overflow-wrap: anywhere; font-size: var(--font-size-small); }
+.enquete-barres__piste { height: 0.75rem; background: var(--color-surface-2); border-radius: var(--radius-pill); overflow: hidden; }
+.enquete-barres__barre { display: block; height: 100%; background: var(--color-primary); }
+.enquete-barres__valeur { text-align: right; font-variant-numeric: tabular-nums; }
+.enquete-textes { padding-left: var(--space-4); }
+.enquete-textes li { margin-bottom: var(--space-1); }
+
+.ui-btn--desactive { opacity: 0.5; pointer-events: none; }
+
+/* Questionnaire public : lisible au téléphone, sans la navigation de l'application. */
+.repondre { max-width: 42rem; margin: 0 auto; padding: var(--space-5) var(--space-4); background: var(--color-background); min-height: 100vh; }
+.repondre h1 { font-size: var(--font-size-page-title); margin: var(--space-2) 0; }
+.repondre__organisme, .repondre__formation { color: var(--color-text-secondary); margin: 0; }
+.repondre__question { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: var(--space-3) 0; background: var(--color-surface); }
+.repondre__question legend { font-weight: var(--font-weight-semibold); padding: 0 var(--space-1); }
+.repondre__question textarea, .repondre__question input[type="number"], .repondre__question input[type="date"] { width: 100%; }
+.repondre__echelle { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.repondre__echelle label, .repondre__choix { display: inline-flex; gap: var(--space-1); align-items: center; min-height: 2.75rem; margin-right: var(--space-3); }

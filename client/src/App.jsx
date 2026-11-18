@@ -38,6 +38,11 @@ import { JustificatifsPilotage } from "./intervenants/JustificatifsPilotage.jsx"
 import { JeunesPage } from "./jeunes/JeunesPage.jsx";
 import { JeuneFiche } from "./jeunes/JeuneFiche.jsx";
 import { EntretienFormulaire } from "./jeunes/EntretienFormulaire.jsx";
+import { EcheancierPage, PartenairesPage, RessourcesPage, RisquesPage, TachesPage } from "./pilotage/Pages.jsx";
+import { CampagneAuditPage, CampagnesAuditPage, PortailAuditPage } from "./pilotage/Audit.jsx";
+import { EnquetePage, EnquetesPage, RepondreEnquete } from "./pilotage/Enquetes.jsx";
+import { ComptesPage } from "./parametres/Comptes.jsx";
+import { RgpdPage } from "./parametres/Rgpd.jsx";
 
 const CLE_RETOUR = "vq_retour_apres_connexion";
 
@@ -147,6 +152,11 @@ export default function App() {
     naviguer("/", { replace: true });
   }
 
+  // Questionnaire public (lien envoyé aux stagiaires) : aucune connexion, aucune navigation interne.
+  if (location.pathname.startsWith("/repondre/")) {
+    return <Routes><Route path="/repondre/:jeton" element={<RepondreEnquete />} /></Routes>;
+  }
+
   if (error) {
     return (
       <main className="ecran-plein">
@@ -169,6 +179,18 @@ export default function App() {
   const auChangement = () => setVersion((v) => v + 1);
   const admin = (el) => <RequireAdmin user={user}>{el}</RequireAdmin>;
   const session = (onglet) => <SessionPage onglet={onglet} admin={isAdmin} peutSaisir={peutSaisir} onChange={auChangement} />;
+
+  if (user.role === "auditeur") {
+    return (
+      <Routes>
+        <Route element={<AppShell user={user} onLogout={logout} flash={flash} onFlashVu={() => setFlash(null)} />}>
+          <Route path="portail-audit" element={<PortailAuditPage />} />
+          <Route path="portail-audit/:campagneId" element={<PortailAuditPage />} />
+          <Route path="*" element={<Navigate to="/portail-audit" replace />} />
+        </Route>
+      </Routes>
+    );
+  }
 
   return (
     <Routes>
@@ -215,6 +237,19 @@ export default function App() {
         <Route path="parametres/inventaire-drive" element={admin(<InventaireDrivePage />)} />
         <Route path="variables-documentaires" element={<VariablesDocumentsPage />} />
         <Route path="parametres/organisme" element={admin(<OrganismePage />)} />
+        <Route path="parametres/comptes" element={admin(<ComptesPage moi={user} />)} />
+        <Route path="parametres/rgpd" element={admin(<RgpdPage />)} />
+        <Route path="taches" element={<TachesPage admin={isAdmin} />} />
+        <Route path="echeancier" element={<EcheancierPage />} />
+        <Route path="risques" element={<RisquesPage admin={isAdmin} />} />
+        <Route path="partenaires" element={<PartenairesPage admin={isAdmin} />} />
+        <Route path="ressources" element={<RessourcesPage admin={isAdmin} />} />
+        <Route path="preparation-audit" element={admin(<CampagnesAuditPage />)} />
+        <Route path="preparation-audit/:campagneId" element={admin(<CampagneAuditPage />)} />
+        <Route path="portail-audit" element={admin(<PortailAuditPage />)} />
+        <Route path="portail-audit/:campagneId" element={admin(<PortailAuditPage />)} />
+        <Route path="enquetes" element={admin(<EnquetesPage />)} />
+        <Route path="enquetes/:enqueteId" element={admin(<EnquetePage />)} />
 
         <Route path="*" element={<PageIntrouvable />} />
       </Route>

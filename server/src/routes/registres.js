@@ -60,6 +60,12 @@ async function historiser(cx, d, id, evenement, par, changements = []) {
   }
 }
 
+// Personnes assignables (responsables, référents) : comptes actifs internes, jamais les auditeurs externes.
+router.get("/registres-utilisateurs", requireRedacteur, wrap(async (_req, res) => {
+  const { rows } = await query("SELECT id, coalesce(nom, email) AS nom FROM utilisateurs WHERE actif AND role IN ('admin','contributeur') ORDER BY lower(coalesce(nom, email))");
+  res.json({ utilisateurs: rows });
+}));
+
 router.get("/registres/:nom/schema", requireRedacteur, (req, res) => {
   const s = schemaPublic(req.params.nom);
   if (!s) return res.status(404).json({ error: "Registre inconnu." });

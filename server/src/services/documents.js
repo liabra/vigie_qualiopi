@@ -475,7 +475,7 @@ export async function contexteGeneration(sessionId, groupeId) {
   // Paramètres de l'organisme (une ligne) et formateurs de CHAQUE groupe de la session (une requête) :
   // alimentent {{organisme_*}} et le signataire « formateur concerné » d'un stagiaire.
   const { rows: [organismeParams] } = await query(
-    "SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email FROM parametres_organisme WHERE id = 1"
+    "SELECT nom, adresse_ligne1, adresse_ligne2, code_postal, ville, telephone, mobile, email, siret, nda, site_web, referent_handicap_nom, referent_handicap_email, referent_handicap_telephone FROM parametres_organisme WHERE id = 1"
   );
   const { rows: lignesGroupes } = await query(
     `SELECT l.groupe_id, i.id, i.civilite, i.nom, i.prenom, i.email, i.fonction

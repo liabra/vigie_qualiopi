@@ -9,7 +9,7 @@ import { setPoolFactory } from "../src/db.js";
 import { encode } from "../src/session.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
-const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
+const SQL_UTILISATEUR = "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 
 function baseSimulee({ inscriptions = [], failOn = null, session = { date_debut: "2026-01-05", date_fin: "2026-03-05" } } = {}) {

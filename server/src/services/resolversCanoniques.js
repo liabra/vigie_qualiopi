@@ -57,6 +57,12 @@ const RESOLVEURS_CANONIQUES = {
   organisme_telephone: (ctx) => texte(ctx.organismeParams?.telephone),
   organisme_mobile: (ctx) => texte(ctx.organismeParams?.mobile),
   organisme_email: (ctx) => texte(ctx.organismeParams?.email),
+  organisme_siret: (ctx) => texte(ctx.organismeParams?.siret),
+  organisme_nda: (ctx) => texte(ctx.organismeParams?.nda),
+  organisme_site_web: (ctx) => texte(ctx.organismeParams?.site_web),
+  referent_handicap_nom: (ctx) => texte(ctx.organismeParams?.referent_handicap_nom),
+  referent_handicap_email: (ctx) => texte(ctx.organismeParams?.referent_handicap_email),
+  referent_handicap_telephone: (ctx) => texte(ctx.organismeParams?.referent_handicap_telephone),
 
   // ── Formation (10) ──
   formation_id: (ctx) => nombre(ctx.formation?.id),

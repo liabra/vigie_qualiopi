@@ -27,7 +27,8 @@ const NON_RESOLUES_PAR_DECISION = [
 const CTX = {
   organisme: "A2C",
   organismeParams: { nom: "Association Test", adresse_ligne1: "1 rue Exemple", adresse_ligne2: "Cité Test", code_postal: "97300",
-    ville: "Cayenne", telephone: "0594000000", mobile: "0694000000", email: "contact@exemple.fr" },
+    ville: "Cayenne", telephone: "0594000000", mobile: "0694000000", email: "contact@exemple.fr",
+    siret: "12345678900010", nda: "03973000000", site_web: "https://exemple.fr", referent_handicap_nom: "Réf Test", referent_handicap_email: "rh@exemple.fr", referent_handicap_telephone: "0594111111" },
   signataire: { nom: "Marie Exemple", fonction: "Présidente" },
   formation: { id: 7, intitule: "Aide à domicile", code_interne: "ADVF" },
   version: { objectifs_operationnels: ["Utiliser un ordinateur", "Naviguer sur Internet"], methodes_pedagogiques: "Ateliers pratiques", modalites_evaluation: "Exercices et quiz",
@@ -68,9 +69,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("110 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 110, "66 (v1.7) + 15 fiche stagiaire/entreprise + 5 prescripteur + 24 indicateurs de session");
-  assert.equal(new Set(NOMS_RESOLUS).size, 110, "aucun doublon");
+test("116 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 116, "66 (v1.7) + 15 fiche stagiaire/entreprise + 5 prescripteur + 24 indicateurs de session + 6 mentions légales et référent handicap");
+  assert.equal(new Set(NOMS_RESOLUS).size, 116, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -85,7 +86,8 @@ test("les 110 variables supportées sont résolues depuis un contexte complet", 
   const attendu = {
     organisme_nom: "Association Test", organisme_adresse_ligne1: "1 rue Exemple", organisme_adresse_ligne2: "Cité Test",
     organisme_code_postal: "97300", organisme_ville: "Cayenne", organisme_telephone: "0594000000", organisme_mobile: "0694000000",
-    organisme_email: "contact@exemple.fr", signataire_nom: "Marie Exemple", signataire_fonction: "Présidente",
+    organisme_email: "contact@exemple.fr", organisme_siret: "12345678900010", organisme_nda: "03973000000", organisme_site_web: "https://exemple.fr",
+    referent_handicap_nom: "Réf Test", referent_handicap_email: "rh@exemple.fr", referent_handicap_telephone: "0594111111", signataire_nom: "Marie Exemple", signataire_fonction: "Présidente",
     formation_objectifs_operationnels: "Utiliser un ordinateur\nNaviguer sur Internet", formation_methodes_pedagogiques: "Ateliers pratiques",
     formation_modalites_evaluation: "Exercices et quiz", financeur_nom: "Région Fictive",
     stagiaire_besoins_specifiques: "Poste adapté", stagiaire_situation_handicap: "Oui",
@@ -124,8 +126,8 @@ test("les 110 variables supportées sont résolues depuis un contexte complet", 
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les attendus + les 2 abandon_* couverts = 110 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 110);
+  // Les attendus + les 2 abandon_* couverts = 116 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 116);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {
@@ -162,7 +164,7 @@ test("champ NULL/vide pour cette instance ⇒ « absent », jamais une chaîne v
   }
 });
 
-test("contexte vide : les 110 supportées sont « absent », les 92 autres « non_resoluble »", () => {
+test("contexte vide : les 116 supportées sont « absent », les 86 autres « non_resoluble »", () => {
   for (const nom of NOMS_RESOLUS) assert.equal(vide[nom].statut, "absent", nom);
   for (const v of VARIABLES) {
     if (!NOMS_RESOLUS.includes(v.nom)) assert.equal(vide[v.nom].statut, "non_resoluble", v.nom);

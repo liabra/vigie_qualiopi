@@ -3,7 +3,8 @@
 // Aucune valeur réelle ici : coordonnées et noms se saisissent dans l'application. Les variables
 // documentaires {{organisme_*}} et {{signataire_nom}} / {{signataire_fonction}} les relisent.
 
-export const CHAMPS_ORGANISME = ["nom", "adresse_ligne1", "adresse_ligne2", "code_postal", "ville", "telephone", "mobile", "email"];
+export const CHAMPS_ORGANISME = ["nom", "adresse_ligne1", "adresse_ligne2", "code_postal", "ville", "telephone", "mobile", "email",
+  "siret", "nda", "site_web", "referent_handicap_nom", "referent_handicap_email", "referent_handicap_telephone"];
 export const MODES_SIGNATAIRE = ["aucun", "fixe", "formateur"];
 export const LIBELLES_MODE_SIGNATAIRE = {
   aucun: "Aucun signataire",
@@ -11,10 +12,13 @@ export const LIBELLES_MODE_SIGNATAIRE = {
   formateur: "Formateur concerné",
 };
 
-const LONGUEUR_MAX = { nom: 200, adresse_ligne1: 200, adresse_ligne2: 200, code_postal: 20, ville: 100, telephone: 30, mobile: 30, email: 200 };
+const LONGUEUR_MAX = { nom: 200, adresse_ligne1: 200, adresse_ligne2: 200, code_postal: 20, ville: 100, telephone: 30, mobile: 30, email: 200,
+  siret: 20, nda: 30, site_web: 200, referent_handicap_nom: 150, referent_handicap_email: 200, referent_handicap_telephone: 30 };
 const LIBELLES = {
   nom: "Nom de l'organisme", adresse_ligne1: "Adresse – ligne 1", adresse_ligne2: "Adresse – ligne 2", code_postal: "Code postal",
   ville: "Ville", telephone: "Téléphone fixe", mobile: "Téléphone mobile", email: "E-mail",
+  siret: "SIRET", nda: "Numéro de déclaration d'activité", site_web: "Site web", referent_handicap_nom: "Référent handicap",
+  referent_handicap_email: "E-mail du référent handicap", referent_handicap_telephone: "Téléphone du référent handicap",
 };
 const TELEPHONE = /^[0-9 .+()-]{6,30}$/;
 const EMAIL = /^[^\s@<>{}]+@[^\s@<>{}]+\.[^\s@<>{}]+$/;
@@ -31,8 +35,11 @@ export function validerOrganisme(corps) {
     const t = (src[champ] ?? "").trim();
     if (t.length > LONGUEUR_MAX[champ]) return { erreur: `${LIBELLES[champ]} : ${LONGUEUR_MAX[champ]} caractères au plus.` };
     if (INTERDIT.test(t)) return { erreur: `${LIBELLES[champ]} : caractères non autorisés ({ } < > ou contrôle).` };
-    if (t && (champ === "telephone" || champ === "mobile") && !TELEPHONE.test(t)) return { erreur: `${LIBELLES[champ]} : numéro invalide.` };
-    if (t && champ === "email" && !EMAIL.test(t)) return { erreur: "E-mail : adresse invalide." };
+    if (t && ["telephone", "mobile", "referent_handicap_telephone"].includes(champ) && !TELEPHONE.test(t)) return { erreur: `${LIBELLES[champ]} : numéro invalide.` };
+    if (t && ["email", "referent_handicap_email"].includes(champ) && !EMAIL.test(t)) return { erreur: `${LIBELLES[champ]} : adresse invalide.` };
+    if (t && champ === "siret" && !/^[0-9 ]{14,17}$/.test(t)) return { erreur: "SIRET : 14 chiffres attendus." };
+    if (t && champ === "nda" && !/^[0-9 ]{8,15}$/.test(t)) return { erreur: "Numéro de déclaration d'activité : chiffres attendus." };
+    if (t && champ === "site_web" && !/^https?:\/\/[^\s<>"]+$/.test(t)) return { erreur: "Site web : adresse commençant par http:// ou https:// attendue." };
     valeur[champ] = t || null;
   }
   if (!Object.keys(valeur).length) return { erreur: "Aucune modification transmise." };

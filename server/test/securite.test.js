@@ -11,7 +11,7 @@ import { createApp } from "../src/app.js";
 import { setPoolFactory } from "../src/db.js";
 import { encode } from "../src/session.js";
 
-const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
+const SQL_UTILISATEUR = "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)";
 const sqlNormalise = (t) => String(t).replace(/\s+/g, " ").trim();
 
 let serveur, origine;

@@ -69,7 +69,7 @@ test("l'assiduité est bornée entre 0 % et 100 %, et jamais inventée", () => {
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
 const AUTRE = { id: 3, email: "autre@exemple.fr", nom: "Autre", role: "autre" };
-const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
+const SQL_UTILISATEUR = "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 
 // 14 h déclarées en dur sur la session, 21 h par défaut sur la formation :

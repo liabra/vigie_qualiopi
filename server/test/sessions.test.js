@@ -18,7 +18,7 @@ import { encode } from "../src/session.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
 const CONTRIBUTEUR = { id: 2, email: "tukui@exemple.fr", nom: "Tukui", role: "contributeur" };
-const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
+const SQL_UTILISATEUR = "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)";
 const SQL_SESSION = "SELECT * FROM sessions WHERE id = $1";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 

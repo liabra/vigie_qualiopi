@@ -2,7 +2,7 @@ import express from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sessionMiddleware } from "./session.js";
+import { limiterAuditeur, sessionMiddleware } from "./session.js";
 import authRoutes from "./routes/auth.js";
 import apiRoutes from "./routes/api.js";
 import gestionRoutes from "./routes/gestion.js";
@@ -16,6 +16,11 @@ import variablesRoutes from "./routes/variables.js";
 import inventaireDriveRoutes from "./routes/inventaireDrive.js";
 import questionnairesRoutes from "./routes/questionnaires.js";
 import parametresRoutes from "./routes/parametres.js";
+import comptesRoutes from "./routes/comptes.js";
+import registresRoutes from "./routes/registres.js";
+import auditsRoutes from "./routes/audits.js";
+import enquetesRoutes from "./routes/enquetes.js";
+import rgpdRoutes from "./routes/rgpd.js";
 
 const CLIENT_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../client/dist");
 
@@ -33,6 +38,7 @@ export function createApp() {
   app.set("trust proxy", 1); // Railway termine le TLS : cookies secure et req.protocol corrects
   app.use(express.json({ limit: "1mb" }));
   app.use(sessionMiddleware);
+  app.use(limiterAuditeur);
 
   app.use("/auth", authRoutes);
   // gestion AVANT api : api.js se termine par un 404 attrape-tout, qui
@@ -48,6 +54,11 @@ export function createApp() {
   app.use("/api", variablesRoutes);
   app.use("/api", questionnairesRoutes);
   app.use("/api", parametresRoutes);
+  app.use("/api", comptesRoutes);
+  app.use("/api", registresRoutes);
+  app.use("/api", auditsRoutes);
+  app.use("/api", enquetesRoutes);
+  app.use("/api", rgpdRoutes);
   app.use("/api", apiRoutes);
 
   if (fs.existsSync(CLIENT_DIST)) {

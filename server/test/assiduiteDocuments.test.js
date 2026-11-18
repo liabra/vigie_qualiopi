@@ -13,7 +13,7 @@ import { encode } from "../src/session.js";
 import { calculerAssiduite } from "../src/services/assiduite.js";
 
 const ADMIN = { id: 1, email: "admin@exemple.fr", nom: "Mme Stark", role: "admin" };
-const SQL_UTILISATEUR = "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif";
+const SQL_UTILISATEUR = "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)";
 const sqlNormalise = (text) => String(text).replace(/\s+/g, " ").trim();
 
 let serveur, origine;

@@ -3,6 +3,7 @@ export const ERREURS = {
   google_non_configure: "La connexion Google n'est pas encore disponible.",
   non_autorise: "Ce compte Google n'est pas autorisé à accéder à Vigie Qualiopi.",
   compte_desactive: "Ce compte a été désactivé.",
+  compte_expire: "Cet accès temporaire est arrivé à échéance. Demandez sa prolongation à l'administrateur.",
   compte_google_different: "Cette adresse est liée à un autre compte Google.",
   refus_google: "La connexion a été annulée côté Google.",
   oauth_invalide: "Lien de connexion expiré ou invalide. Recommencez.",

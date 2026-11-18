@@ -31,7 +31,7 @@ after(async () => {
 function baseSimulee({ modele = MODELE } = {}) {
   const executer = async (text, params) => {
     const sql = sqlNormalise(text);
-    if (sql === "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif") {
+    if (sql === "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)") {
       const u = [ADMIN, CONTRIBUTEUR].find((x) => x.id === params[0]);
       return { rows: u ? [u] : [] };
     }

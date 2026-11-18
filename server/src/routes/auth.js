@@ -39,6 +39,8 @@ async function resolveUser(identity) {
     ));
   }
   if (!user.actif) return { error: "compte_desactive" };
+  // fix : accès temporaire (auditeur) arrivé à échéance.
+  if (user.expire_le && new Date(user.expire_le).toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10)) return { error: "compte_expire" };
   if (user.google_sub && user.google_sub !== identity.sub) return { error: "compte_google_different" };
   await query(
     "UPDATE utilisateurs SET google_sub = $2, nom = COALESCE(nom, $3), derniere_connexion = now() WHERE id = $1",

@@ -69,7 +69,8 @@ export async function sessionMiddleware(req, _res, next) {
   if (!s?.uid) return next();
   try {
     const { rows } = await query(
-      "SELECT id, email, nom, role FROM utilisateurs WHERE id = $1 AND actif",
+      // fix : un compte arrivé à expiration (auditeur temporaire) n'ouvre plus de session.
+      "SELECT id, email, nom, role, expire_le FROM utilisateurs WHERE id = $1 AND actif AND (expire_le IS NULL OR expire_le >= CURRENT_DATE)",
       [s.uid]
     );
     req.user = rows[0] || null;
@@ -99,5 +100,16 @@ export function requireRedacteur(req, res, next) {
   if (!["admin", "contributeur"].includes(req.user.role)) {
     return res.status(403).json({ error: "Réservé aux administrateurs et aux contributeurs." });
   }
+  next();
+}
+
+// Auditeur externe : lecture seule du dossier d'audit, rien d'autre. Appliqué à TOUTE l'API (liste blanche),
+// pour qu'aucune route existante ouverte à « requireAuth » ne lui expose des données de stagiaires.
+export function limiterAuditeur(req, res, next) {
+  if (req.user?.role !== "auditeur") return next();
+  const chemin = req.path;
+  const autorise = req.method === "GET" && (chemin === "/api/me" || chemin.startsWith("/api/portail-audit"));
+  if (autorise || chemin.startsWith("/auth/")) return next();
+  if (chemin.startsWith("/api/")) return res.status(403).json({ error: "Accès auditeur : consultation du dossier d'audit uniquement." });
   next();
 }

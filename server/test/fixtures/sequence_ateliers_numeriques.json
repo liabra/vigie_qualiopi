@@ -1,0 +1,325 @@
+{
+ "modules": [
+  {
+   "code": "C1",
+   "intitule": "Prise en main des outils numériques (ordinateurs, tablettes, smartphones)",
+   "duree_minutes": 300,
+   "evaluation_minutes": 20,
+   "evaluation_objectif": "À l’issue de la séquence 06, une évaluation est proposée afin de vérifier l’acquisition des compétences travaillées au cours des six ateliers. Cette évaluation prend la forme d’un questionnaire comprenant des questions à choix multiples et/ou des questions-réponses. Le module est validé lorsque le stagiaire obtient un taux de réussite d’au moins 80 %. En dessous de 50 % de réponses correctes, les compétences sont considérées comme non acquises. Le stagiaire peut, s’il le souhaite, repasser l’évaluation.",
+   "competences": [
+    {
+     "code": "AT01",
+     "libelle": "découvrir les différents outils numériques du quotidien (ordinateur, tablette, smartphone)",
+     "titre": "Découverte des outils numériques",
+     "duree_minutes": 40,
+     "objectif": "Identifier les principaux outils numériques du quotidien (ordinateur, tablette, smartphone) et distinguer leurs usages de base.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Présentation des différents équipements numériques à partir de situations concrètes du quotidien des stagiaire\n- Manipulation libre encadrée afin de permettre la prise de contact avec le matériel\n- Temps d’échanges collectifs pour identifier les usages, les besoins et les appréhensions liés au numérique\n- Accompagnement individualisé en fonction du niveau de chaque participant",
+     "ressources": "Les éléments qui composent un ordinateur — p.10\nÉcrans, résolutions et pixels — p.50",
+     "indicateur": "À l’issue de l’atelier, les différents outils numériques sont distingués et reliés à leurs usages du quotidien.\nLa compétence est considérée comme acquise lorsque les équipements sont correctement identifiés et associés à des situations concrètes."
+    },
+    {
+     "code": "AT02",
+     "libelle": "identifier les principaux composants et fonctions d’un équipement numérique",
+     "titre": "Composants et fonctions des équipements",
+     "duree_minutes": 45,
+     "objectif": "Reconnaître les principaux composants d’un équipement numérique et expliquer leur rôle essentiel.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Repérage visuel des principaux composants d’un équipement numérique\n\n- Mise en situation pratique : associer chaque composant à sa fonction\n\n- Exercices guidés d’identification sur matériel réel",
+     "ressources": "Les éléments qui composent un ordinateur — p.10\nLe bureau Windows — p.20",
+     "indicateur": "Les principaux composants d’un équipement numérique sont reconnus et leur rôle est compris dans le fonctionnement global de l’appareil.\nL’acquisition est validée lors d’exercices pratiques permettant d’associer chaque composant à sa fonction."
+    },
+    {
+     "code": "AT03",
+     "libelle": "utiliser les interfaces de base : écran, icônes, menus et applications",
+     "titre": "Interfaces numériques",
+     "duree_minutes": 50,
+     "objectif": "Se repérer dans une interface numérique (écran, icônes, menus, applications) et interagir avec ses éléments de base.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Exploration guidée de l’interface (écran, icônes, menus)\n\n- Mise en situation : retrouver une application ou un menu précis",
+     "ressources": "Le bureau Windows — p.20\nLe menu Démarrer — p.24\nLa barre des tâches — p.30\nLes icônes — p.36",
+     "indicateur": "Le stagiaire se repère dans l’environnement numérique et accède de manière autonome aux menus et applications de base.\nLa validation repose sur la capacité à naviguer dans l’interface sans assistance."
+    },
+    {
+     "code": "AT04",
+     "libelle": "allumer, éteindre et manipuler un équipement numérique en toute sécurité",
+     "titre": "Allumage, arrêt et manipulation sécurisée",
+     "duree_minutes": 40,
+     "objectif": "Appliquer les procédures d’allumage, d’arrêt et de manipulation d’un équipement numérique en respectant les règles de sécurité.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Démonstration des procédures d’allumage et d’arrêt sécurisés\n\n- Exercices pratiques répétés sur poste individuel\n\n- Sensibilisation aux erreurs courantes et aux bonnes pratiques",
+     "ressources": "Allumer et éteindre mon ordinateur — p.14\nUne bonne position de travail — p.56",
+     "indicateur": "Les procédures d’allumage, d’arrêt et de manipulation du matériel sont appliquées correctement.\nLa compétence est confirmée lorsque les gestes attendus sont réalisés en situation réelle, dans le respect des consignes de sécurité."
+    },
+    {
+     "code": "AT05",
+     "libelle": "ouvrir, fermer et naviguer entre plusieurs applications",
+     "titre": "Utilisation des applications",
+     "duree_minutes": 55,
+     "objectif": "Utiliser les applications courantes en ouvrant, fermant et naviguant entre plusieurs logiciels.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Ouverture et fermeture d’applications à partir des icônes\n\n- Navigation entre plusieurs applications ouvertes\n\n- Mise en situation : identifier l’application adaptée à une tâche donnée",
+     "ressources": "Le menu Démarrer — p.24\nLes icônes — p.36",
+     "indicateur": "L’utilisation des applications courantes est maîtrisée en fonction d’une consigne donnée.\nL’acquisition est constatée lorsque les actions sont réalisées de manière fluide et adaptée."
+    },
+    {
+     "code": "AT06",
+     "libelle": "utiliser les fonctions essentielles : clic, glisser-déposer, zoom, clavier virtuel ou physique",
+     "titre": "Gestes essentiels",
+     "duree_minutes": 50,
+     "objectif": "Maîtriser les gestes essentiels d’interaction numérique (clic, glisser-déposer, zoom, clavier physique ou virtuel).",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Exercices progressifs sur les gestes de base (clic, glisser-déposer, zoom)\n\n- Manipulation de fenêtres (déplacement, redimensionnement)\n\n- Organisation de l’espace de travail à l’écran selon le besoin",
+     "ressources": "Présentation d’une souris — p.61\nClic, double clic, clic droit — p.65\nLa gestuelle Windows — p.164",
+     "indicateur": "Le stagiaire mobilise les gestes de base nécessaires à l’utilisation de l’outil numérique et organise son espace de travail à l’écran.\nLa validation s’appuie sur l’observation des manipulations réalisées lors des exercices pratiques."
+    }
+   ]
+  },
+  {
+   "code": "C2",
+   "intitule": "Navigation Internet et recherche d’informations",
+   "duree_minutes": 220,
+   "evaluation_minutes": 20,
+   "evaluation_objectif": "À l’issue de la séquence 10, une évaluation est proposée afin de vérifier l’acquisition des compétences travaillées au cours des six ateliers. Cette évaluation prend la forme d’un questionnaire comprenant des questions à choix multiples et/ou des questions-réponses. Le module est validé lorsque le stagiaire obtient un taux de réussite d’au moins 80 %. En dessous de 50 % de réponses correctes, les compétences sont considérées comme non acquises. Le stagiaire peut, s’il le souhaite, repasser l’évaluation.",
+   "competences": [
+    {
+     "code": "AT07",
+     "libelle": "comprendre le fonctionnement d’Internet et des navigateurs",
+     "titre": "Fonctionnement d’Internet et des navigateurs",
+     "duree_minutes": 45,
+     "objectif": "Comprendre le fonctionnement général d’Internet et le rôle des navigateurs web.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Présentation simplifiée du fonctionnement d’Internet\n\n- Découverte des navigateurs web courants\n\n- Mise en situation : ouvrir un navigateur et accéder à une page web",
+     "ressources": "Découvrir Internet — p.174\nLes navigateurs Internet — p.189",
+     "indicateur": "Les principes de fonctionnement d’Internet et des navigateurs sont compris et mis en pratique.\nLa compétence est acquise lorsque l’accès à une page web est réalisé et que les usages des navigateurs sont expliqués."
+    },
+    {
+     "code": "AT08",
+     "libelle": "naviguer sur Internet et utiliser les moteurs de recherche",
+     "titre": "Navigation et moteurs de recherche",
+     "duree_minutes": 50,
+     "objectif": "Effectuer des recherches simples sur Internet à l’aide d’un moteur de recherche.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Recherche d’informations à partir de besoins réels exprimés par les stagiaires (horaires, services, actualités locales)\n\n- Reformulation collective des résultats obtenus afin d’améliorer les mots-clés utilisés\n\n- Exercices pratiques individualisés de navigation sur différents sites",
+     "ressources": "Naviguer sur Internet — p.195\nLes moteurs de recherche — p.202\nRechercher efficacement sur Internet — p.207",
+     "indicateur": "Une recherche simple est menée à partir de mots-clés adaptés à un besoin identifié.\nLa validation repose sur la pertinence de la recherche effectuée et l’accès autonome à l’information recherchée."
+    },
+    {
+     "code": "AT09",
+     "libelle": "rechercher, lire et comprendre une information en ligne",
+     "titre": "Lecture et compréhension de l’information en ligne",
+     "duree_minutes": 55,
+     "objectif": "Analyser une information en ligne afin d’en comprendre le contenu et la pertinence.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Analyse collective de pages web (repérage des informations utiles)\n\n- Exercices pratiques pour distinguer information fiable / non fiable\n\n- Échanges sur les critères de crédibilité",
+     "ressources": "Découvrir des sites web — p.211\nLire une page Web (intégré dans navigation) — p.195–211",
+     "indicateur": "Les informations utiles d’une page web sont identifiées et distinguées des contenus secondaires.\nL’acquisition est confirmée lorsque les informations demandées sont repérées et justifiées."
+    },
+    {
+     "code": "AT10",
+     "libelle": "gérer les onglets et les pages Internet",
+     "titre": "Gestion des onglets et des pages web",
+     "duree_minutes": 50,
+     "objectif": "Organiser sa navigation en gérant plusieurs onglets et pages Internet.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Ouverture et fermeture de plusieurs onglets\n\n- Navigation entre les onglets ouverts\n\n- Mise en situation : organiser sa navigation selon un objectif précis",
+     "ressources": "Les navigateurs Internet — p.189\nNaviguer sur Internet — p.195",
+     "indicateur": "Le stagiaire organise sa navigation en ouvrant, fermant et utilisant plusieurs onglets selon l’objectif poursuivi.\nL’acquisition est validée lorsque le stagiaire navigue efficacement entre différentes pages sans se perdre ni fermer involontairement les contenus ouverts."
+    }
+   ]
+  },
+  {
+   "code": "C3",
+   "intitule": "Messagerie électronique et communication en ligne",
+   "duree_minutes": 260,
+   "evaluation_minutes": 20,
+   "evaluation_objectif": "À l’issue de la séquence 15, une évaluation est proposée afin de vérifier l’acquisition des compétences travaillées au cours des six ateliers. Cette évaluation prend la forme d’un questionnaire comprenant des questions à choix multiples et/ou des questions-réponses. Le module est validé lorsque le stagiaire obtient un taux de réussite d’au moins 80 %. En dessous de 50 % de réponses correctes, les compétences sont considérées comme non acquises. Le stagiaire peut, s’il le souhaite, repasser l’évaluation.",
+   "competences": [
+    {
+     "code": "AT11",
+     "libelle": "créer et sécuriser une adresse de messagerie électronique",
+     "titre": "Créer et sécuriser une adresse de messagerie électronique",
+     "duree_minutes": 45,
+     "objectif": "Créer une adresse de messagerie électronique et mettre en place les premières règles de sécurisation.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Création pas à pas d’une adresse de messagerie électronique\n\n- Paramétrage des éléments de sécurité de base (mot de passe, récupération)\n\n- Tests d’envoi et de réception de messages entre stagiaires\n\n- Accompagnement renforcé pour les participants rencontrant des difficultés",
+     "ressources": "Le courrier électronique — p.218",
+     "indicateur": "Une adresse de messagerie est créée et les paramètres de sécurité de base sont configurés.\nLa validation est effective lorsque l’accès au compte est maîtrisé et que les règles de sécurité sont expliquées."
+    },
+    {
+     "code": "AT12",
+     "libelle": "rédiger, envoyer et recevoir des courriels",
+     "titre": "Envoi et réception de courriels",
+     "duree_minutes": 50,
+     "objectif": "Rédiger, envoyer et recevoir des courriels en respectant les usages de base de la communication électronique.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Rédaction d’un message simple\n\n- Envoi, réception et réponse à un courriel\n\n- Exercices pratiques entre stagiaires",
+     "ressources": "Envoyer, recevoir ses mails — p.222",
+     "indicateur": "Le stagiaire rédige un message simple, l’envoie à un ou plusieurs destinataires et consulte les messages reçus.\nLa validation repose sur la capacité à utiliser la messagerie pour communiquer de manière autonome et conforme aux usages courants."
+    },
+    {
+     "code": "AT13",
+     "libelle": "gérer les pièces jointes (ouvrir, enregistrer, envoyer)",
+     "titre": "Gestion des pièces jointes",
+     "duree_minutes": 50,
+     "objectif": "Manipuler des pièces jointes (ouvrir, enregistrer, transmettre) en adoptant des pratiques sécurisées.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Ajout d’une pièce jointe à un message\n\n- Ouverture et enregistrement sécurisé d’une pièce jointe reçue\n\n- Sensibilisation aux risques liés aux fichiers inconnus",
+     "ressources": "Envoyer, recevoir ses mails (pièces jointes incluses) — p.222",
+     "indicateur": "Les pièces jointes sont ajoutées, ouvertes et enregistrées correctement.\nLa compétence est confirmée lorsque les fichiers sont manipulés en toute sécurité et stockés au bon emplacement."
+    },
+    {
+     "code": "AT14",
+     "libelle": "organiser et trier sa messagerie",
+     "titre": "Organisation et gestion de la messagerie",
+     "duree_minutes": 45,
+     "objectif": "Classer et organiser les messages afin d’optimiser la gestion de la messagerie.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Création de dossiers ou libellés\n\n- Classement et suppression de messages\n\n- Mise en situation : organiser sa boîte de réception",
+     "ressources": "Le courrier électronique — p.218\nEnvoyer, recevoir ses mails — p.222",
+     "indicateur": "Le stagiaire classe ses messages afin de maintenir une messagerie lisible et organisée.\nL’acquisition est confirmée lorsque le stagiaire crée des dossiers ou libellés et les utilise pour retrouver rapidement une information."
+    },
+    {
+     "code": "AT15",
+     "libelle": "découvrir les bases de la communication en ligne (visioconférence, échanges numériques)",
+     "titre": "Communication en ligne",
+     "duree_minutes": 50,
+     "objectif": "Utiliser les outils de communication en ligne pour échanger à distance (visioconférence, échanges numériques).",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Découverte des outils de communication à distance\n\n- Participation à un échange en ligne simple\n\n- Sensibilisation aux règles de communication numérique",
+     "ressources": "Le courrier électronique — p.218",
+     "indicateur": "Le stagiaire utilise un outil de communication en ligne pour échanger à distance dans un cadre simple.\nLa compétence est acquise lorsque la participation à un échange numérique se fait dans le respect des règles de base."
+    }
+   ]
+  },
+  {
+   "code": "C4",
+   "intitule": "Applications et services numériques utiles du quotidien",
+   "duree_minutes": 165,
+   "evaluation_minutes": 15,
+   "evaluation_objectif": "À l’issue de la séquence 19, une évaluation est proposée afin de vérifier l’acquisition des compétences travaillées au cours des six ateliers. Cette évaluation prend la forme d’un questionnaire comprenant des questions à choix multiples et/ou des questions-réponses. Le module est validé lorsque le stagiaire obtient un taux de réussite d’au moins 80 %. En dessous de 50 % de réponses correctes, les compétences sont considérées comme non acquises. Le stagiaire peut, s’il le souhaite, repasser l’évaluation.",
+   "competences": [
+    {
+     "code": "AT16",
+     "libelle": "utiliser des applications utiles à la vie quotidienne",
+     "titre": "Applications utiles au quotidien",
+     "duree_minutes": 35,
+     "objectif": "Exploiter des applications numériques facilitant les usages du quotidien.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Découverte d’applications facilitant la vie quotidienne\n\n- Mise en situation : identifier l’application adaptée à un besoin donné\n\n- Exercices pratiques d’utilisation simple",
+     "ressources": "Services Web utiles — p.214",
+     "indicateur": "Les applications numériques sont mobilisées pour répondre à des besoins concrets du quotidien.\nL’acquisition est validée lorsque l’application appropriée est choisie et utilisée correctement."
+    },
+    {
+     "code": "AT17",
+     "libelle": "accéder aux services publics en ligne",
+     "titre": "Accès aux services publics en ligne",
+     "duree_minutes": 40,
+     "objectif": "Naviguer sur les plateformes de services publics en ligne et en identifier les fonctionnalités principales.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Navigation guidée sur des plateformes de services publics\n\n- Repérage des rubriques principales\n\n- Exercices pratiques de consultation d’informations",
+     "ressources": "Services Web utiles — p.214\nNaviguer sur Internet — p.195",
+     "indicateur": "Le stagiaire accède à un service public en ligne et se repère dans les principales rubriques du site.\nL’acquisition est validée lorsque le stagiaire consulte les informations demandées et identifie les démarches possibles sans accompagnement direct."
+    },
+    {
+     "code": "AT18",
+     "libelle": "réaliser des démarches administratives simples en ligne",
+     "titre": "Démarches administratives en ligne",
+     "duree_minutes": 40,
+     "objectif": "Réaliser des démarches administratives simples en ligne de manière autonome.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Présentation des étapes d’une démarche administrative en ligne\n\n- Simulation d’une démarche simple à partir d’un cas concret\n\n- Repérage des informations personnelles à ne pas communiquer\n\n- Temps d’échanges sur les difficultés rencontrées et les solutions possibles",
+     "ressources": "Services Web utiles — p.214\nRechercher efficacement sur Internet — p.207",
+     "indicateur": "Les étapes d’une démarche administrative simple sont suivies à partir d’un cas pratique.\nLa validation repose sur la capacité à compléter les étapes demandées et à repérer les informations sensibles."
+    },
+    {
+     "code": "AT19",
+     "libelle": "se repérer sur les principaux sites institutionnels (CAF, AMELI, impôts, service-public.fr)",
+     "titre": "Navigation sur les sites institutionnels",
+     "duree_minutes": 35,
+     "objectif": "Utiliser les principaux sites institutionnels (CAF, AMELI, impôts, service-public.fr) pour répondre à ses besoins.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Identification des principaux sites institutionnels\n\n- Navigation guidée selon un besoin précis\n\n- Exercices pratiques d’accès à l’information",
+     "ressources": "Découvrir des sites web — p.211\nNaviguer sur Internet — p.195",
+     "indicateur": "La navigation sur un site institutionnel permet de localiser une information précise.\nL’acquisition est constatée lorsque la démarche suivie est expliquée de manière claire."
+    }
+   ]
+  },
+  {
+   "code": "C5",
+   "intitule": "Sécurité numérique et bonnes pratiques",
+   "duree_minutes": 135,
+   "evaluation_minutes": 15,
+   "evaluation_objectif": "À l’issue de la séquence 23, une évaluation est proposée afin de vérifier l’acquisition des compétences travaillées au cours des six ateliers. Cette évaluation prend la forme d’un questionnaire comprenant des questions à choix multiples et/ou des questions-réponses. Le module est validé lorsque le stagiaire obtient un taux de réussite d’au moins 80 %. En dessous de 50 % de réponses correctes, les compétences sont considérées comme non acquises. Le stagiaire peut, s’il le souhaite, repasser l’évaluation.",
+   "competences": [
+    {
+     "code": "AT20",
+     "libelle": "comprendre les risques liés à l’usage du numérique",
+     "titre": "Risques liés à l’usage du numérique",
+     "duree_minutes": 30,
+     "objectif": "Identifier les principaux risques liés à l’utilisation des outils numériques.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Identification collective des risques numériques courants\n\n- Analyse de situations à risque\n\n- Échanges sur les comportements à adopter",
+     "ressources": "Services Web utiles (bonnes pratiques, vigilance) — p.214",
+     "indicateur": "Le stagiaire identifie les principaux risques liés à l’utilisation des outils numériques.\nLa compétence est considérée comme acquise lorsque le stagiaire reconnaît des situations à risque et explique les comportements à éviter à partir d’exemples concrets."
+    },
+    {
+     "code": "AT21",
+     "libelle": "protéger ses données personnelles et sa vie privée",
+     "titre": "Protection des données personnelles",
+     "duree_minutes": 30,
+     "objectif": "Mettre en œuvre des pratiques visant à protéger les données personnelles et la vie privée.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Sensibilisation aux données personnelles\n\n- Paramétrage simple de la confidentialité\n\n- Exercices pratiques de sécurisation de comptes",
+     "ressources": "Services Web utiles — p.214",
+     "indicateur": "Des pratiques visant à protéger les données personnelles sont mises en œuvre.\nL’acquisition est confirmée lorsque les règles de confidentialité sont appliquées et justifiées."
+    },
+    {
+     "code": "AT22",
+     "libelle": "reconnaître les arnaques, fraudes et tentatives de phishing",
+     "titre": "Arnaques et tentatives de fraude",
+     "duree_minutes": 30,
+     "objectif": "Détecter les situations à risque, les arnaques et les tentatives de fraude en ligne.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Analyse collective d’exemples concrets d’arnaques en ligne\n\n- Identification des signaux d’alerte à partir de situations réelles\n\n- Discussion autour des réflexes à adopter en cas de doute",
+     "ressources": null,
+     "indicateur": "Le stagiaire repère les signes caractéristiques d’une tentative de fraude ou d’arnaque en ligne.\nLa compétence est confirmée lorsque le stagiaire identifie une situation suspecte et décrit les réflexes à adopter en cas de doute."
+    },
+    {
+     "code": "AT23",
+     "libelle": "adopter les bonnes pratiques pour un usage sécurisé du numérique",
+     "titre": "Bonnes pratiques de sécurité numérique",
+     "duree_minutes": 30,
+     "objectif": "Adopter un comportement responsable et sécurisé dans l’usage du numérique.",
+     "support": "Ordinateur (fixe ou portable) / OS Windows / Navigateur Chrome ou Firefox",
+     "modalite": "Présentiel - Association Deuxième Chance",
+     "activites": "- Élaboration collective de règles de bonnes pratiques\n\n- Mise en situation : adopter un comportement sécurisé\n\n- Vérification des acquis par échanges et exercices",
+     "ressources": "Services Web utiles — p.214\n\nFaites des sauvegardes ! — p.168",
+     "indicateur": "Les règles essentielles de sécurité numérique sont appliquées dans les usages courants.\nLa compétence est acquise lorsque les bons comportements sont adoptés et expliqués au quotidien."
+    }
+   ]
+  }
+ ]
+}

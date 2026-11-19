@@ -14,6 +14,7 @@ import { CHAMPS_MODIFIABLES, CONDITIONS, DECLENCHEURS, MODES_GENERATION, TYPES_D
 import { etatJeton, getDrive } from "../services/google.js";
 import { analyserModeleDrive } from "../services/diagnosticModele.js";
 import { parseIdPositif } from "../services/ids.js";
+import { copierModules, ecrireModules, lireModules, lireModulesVersion } from "../services/modulesFormation.js";
 // Évaluations / QCM + satisfaction (lot L7) : validation et parsing purs.
 import {
   champsEvaluation, champsSatisfaction, TYPES_SATISFACTION,
@@ -199,7 +200,7 @@ async function creerVersion(cx, formationId, corps, utilisateurId) {
     [formationId]
   );
   const { rows: [precedente] } = await cx.query(
-    "SELECT objectifs_operationnels, methodes_pedagogiques, modalites_evaluation FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1",
+    "SELECT id, objectifs_operationnels, methodes_pedagogiques, modalites_evaluation FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1",
     [formationId]
   );
   const valeurs = CHAMPS_VERSION.map((c) => {
@@ -216,8 +217,40 @@ async function creerVersion(cx, formationId, corps, utilisateurId) {
      RETURNING *`,
     [formationId, suivant, ...valeurs, utilisateurId]
   );
+  if (precedente?.id) await copierModules(cx, precedente.id, version.id); // la séquence pédagogique est reprise
   return version;
 }
+
+// ── Séquence pédagogique (modules et compétences) de la dernière version d'une formation ──
+router.get("/formations/:id/modules", requireAuth, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
+  const { rows: [v] } = await query("SELECT id, numero FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1", [id]);
+  if (!v) return res.status(404).json({ error: "Formation introuvable." });
+  res.json({ version: v.numero, modules: await lireModulesVersion(v.id) });
+}));
+
+// Remplace la séquence de la dernière version. Refusé si des compétences de stagiaires y sont déjà saisies :
+// il faut alors créer une nouvelle version (qui reprend la séquence) pour ne pas fausser les résultats passés.
+router.put("/formations/:id/modules", requireAdmin, wrap(async (req, res) => {
+  const id = identifiant(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant de formation invalide." });
+  const { modules, erreur } = lireModules(req.body);
+  if (erreur) return res.status(400).json({ error: erreur });
+  const cx = await getPool().connect();
+  try {
+    await cx.query("BEGIN");
+    const { rows: [v] } = await cx.query("SELECT id, numero FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1 FOR UPDATE", [id]);
+    if (!v) { await cx.query("ROLLBACK"); return res.status(404).json({ error: "Formation introuvable." }); }
+    const { rows: [{ n }] } = await cx.query(
+      `SELECT count(*)::int AS n FROM competences_stagiaires c JOIN inscriptions i ON i.id = c.inscription_id
+       JOIN sessions s ON s.id = i.session_id WHERE s.formation_version_id = $1`, [v.id]);
+    if (n > 0) { await cx.query("ROLLBACK"); return res.status(409).json({ error: "Des compétences de stagiaires sont déjà saisies sur cette version : créez une nouvelle version de la formation pour modifier la séquence." }); }
+    await ecrireModules(cx, v.id, modules);
+    await cx.query("COMMIT");
+    res.json({ version: v.numero, modules: await lireModulesVersion(v.id) });
+  } catch (e) { await cx.query("ROLLBACK").catch(() => {}); throw e; } finally { cx.release(); }
+}));
 
 router.post("/formations", requireAdmin, wrap(async (req, res) => {
   const { intitule, code_interne } = req.body || {};

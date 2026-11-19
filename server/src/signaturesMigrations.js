@@ -73,4 +73,5 @@ export const SIGNATURES = {
   "051_developpement_intervenants.sql": table("developpement_intervenants"),
   "052_candidatures_en_ligne.sql": table("candidatures"),
   "053_portails.sql": table("acces_portail"),
+  "054_modules_formation.sql": table("formation_modules"),
 };

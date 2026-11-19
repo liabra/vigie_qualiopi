@@ -18,10 +18,11 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.8";
+export const DICTIONNAIRE_VERSION = "1.9";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
+  { version: "1.9", changement: "IND-25 {{indicateur_nombre_au_terme}} (inscrits non en abandon) et IND-26 {{indicateur_heures_absence}} (heures d'absence, même base que l'assiduité) pour le bilan de session." },
   { version: "1.1", changement: "Ajout de SES-12 {{session_reference}} (référence interne de la session)." },
   { version: "1.1", changement: "Valeurs métier alignées sur le schéma Vigie : session_statut (planifiee | en_cours | terminee | annulee), stagiaire_statut_parcours (inscrit | en_cours | termine | abandon), civilités (M. | Mme), formation_modalite (presentiel | distanciel | mixte). Les libellés affichés sont distincts des valeurs." },
   { version: "1.1", changement: "Caractère obligatoire retiré du catalogue : il sera porté par le mapping de chaque modèle." },
@@ -257,6 +258,8 @@ const LIGNES = [
   ["IND-22", "indicateur_inscrits_mission_locale", "Inscrits par la Mission Locale", "indicateur", "nombre", "Calcul de session", "Session", "Inscrits adressés par la Mission Locale.", { calcule: true, depuis: "1.8" }],
   ["IND-23", "indicateur_inscrits_organisme_formation", "Inscrits par un organisme de formation", "indicateur", "nombre", "Calcul de session", "Session", "Inscrits adressés par un organisme de formation.", { calcule: true, depuis: "1.8" }],
   ["IND-24", "indicateur_inscrits_autres_prescripteurs", "Inscrits par un autre prescripteur ou sans prescripteur", "indicateur", "nombre", "Calcul de session", "Session", "Autres inscrits.", { calcule: true, depuis: "1.8" }],
+  ["IND-25", "indicateur_nombre_au_terme", "Inscrits allés au terme", "indicateur", "nombre", "Calcul de session", "Session", "Nombre d'inscrits qui ne sont pas en abandon (ont suivi la formation jusqu'à son terme).", { calcule: true, depuis: "1.9" }],
+  ["IND-26", "indicateur_heures_absence", "Heures d'absence (session)", "indicateur", "nombre", "Calcul de session", "Session", "Total des heures d'absence des inscrits au taux d'assiduité fiable (heures prévues moins heures suivies).", { format: "duree_heures", calcule: true, depuis: "1.9" }],
   // ── Intervenant ───────────────────────────────────────────
   ["INT-01", "intervenant_id", "Identifiant de l'intervenant", "intervenant", "texte", "Base Vigie", "Intervenant", "Identifiant interne de l'intervenant.", { format: "identifiant" }],
   ["INT-02", "intervenant_civilite", "Civilité de l'intervenant", "intervenant", "texte", "Fiche intervenant", "Intervenant", "Civilité de l'intervenant.", { format: "enum", ...CIVILITES }],

@@ -155,7 +155,7 @@ const api = async (methode, chemin, corps, utilisateurId) => {
 test("migrations 001→031 appliquées depuis zéro, dans l'ordre", async () => {
   const { rows } = await pool.query("SELECT nom FROM schema_migrations ORDER BY nom");
   const noms = rows.map((r) => r.nom);
-  assert.equal(noms.length, 51, "51 migrations attendues");
+  assert.equal(noms.length, 52, "52 migrations attendues");
   assert.match(noms[0], /^001_/, "commence par 001");
   assert.match(noms[24], /^025_/, "025 avant 026");
   assert.match(noms[25], /^026_/, "026 avant 027");
@@ -178,7 +178,7 @@ test("relancer les migrations ne rejoue rien (idempotence)", async () => {
   const appliquees = await migrate({ log: () => {} });
   assert.deepEqual(appliquees, [], "aucune migration rejouée");
   const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-  assert.equal(rows[0].n, 51);
+  assert.equal(rows[0].n, 52);
 });
 
 test("montée incrémentale : base arrêtée à 010, données conservées après 011→031", async () => {
@@ -206,7 +206,7 @@ test("montée incrémentale : base arrêtée à 010, données conservées après
   setPoolFactory(() => p);
   const appliquees = await migrate({ log: () => {} });
   setPoolFactory(() => pool);   // restaure la fabrique principale
-  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028", "029", "030", "031", "032", "033", "036", "037", "038", "039", "040", "041", "042", "043", "044", "045", "046", "047", "048", "049", "050", "051", "052", "053"]);
+  assert.deepEqual(appliquees.map((m) => m.slice(0, 3)), ["011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028", "029", "030", "031", "032", "033", "036", "037", "038", "039", "040", "041", "042", "043", "044", "045", "046", "047", "048", "049", "050", "051", "052", "053", "054"]);
 
   const { rows: [{ n }] } = await p.query("SELECT count(*)::int AS n FROM sessions WHERE reference = 'SESS-HIST'");
   assert.equal(n, 1, "la session historique a survécu");

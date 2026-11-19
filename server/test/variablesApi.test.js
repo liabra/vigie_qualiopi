@@ -64,7 +64,7 @@ test("admin et contributeur : catalogue versionné complet en lecture", async ()
   for (const uid of [adminId, contribId]) {
     const r = await appel("GET", cookie(uid));
     assert.equal(r.statut, 200);
-    assert.equal(r.corps.version, "1.8");
+    assert.equal(r.corps.version, "1.9");
     assert.equal(r.corps.variables.length, VARIABLES.length);
     assert.equal(r.corps.blocs.length, 13);
     assert.equal(r.corps.alias.prenom_stagiaire, "stagiaire_prenom");

@@ -48,7 +48,7 @@ const CTX = {
     niveau_positionnement: "debutant", domaines_handicap: ["moteur", "visuel"], entreprise: "Société Fictive", entreprise_adresse: "5 avenue Test",
     entreprise_siret: "123 456 789 00010", entreprise_ape: "8899B", entreprise_effectifs: "12", entreprise_responsable: "Paul Exemple", entreprise_opca: "OPCO Fictif",
     prescripteur_adresse: "9 place Test", prescripteur_contact_nom: "Anne Contact", prescripteur_contact_fonction: "Conseillère", prescripteur_contact_email: "a@pe.test", prescripteur_contact_telephone: "0594111111" },
-  indicateurs: { taux_satisfaction: 80, repondants: 5, niveaux: { 5: 1, 4: 3, 3: 1, 2: 0, 1: 0 }, taux_assiduite: 97, taux_absence: 3, taux_abandon: 10, abandons: 1,
+  indicateurs: { taux_satisfaction: 80, repondants: 5, niveaux: { 5: 1, 4: 3, 3: 1, 2: 0, 1: 0 }, taux_assiduite: 97, taux_absence: 3, taux_abandon: 10, abandons: 1, au_terme: 9, heures_absence: 12.5,
     motifs: { personnel: 1, professionnel: 0, financement: 0, reorientation: 0, sans_nouvelles: 0, autre: 0 }, taux_atteinte: 100, reussites: 4, echecs: 0,
     prescripteurs: { pole_emploi: 2, mission_locale: 1, of: 0, autres: 1 } },
   assiduite: { heures_prevues: 380, heures_suivies: 376.5, heures_absence: 3.5, taux: 99, fiable: true },
@@ -57,10 +57,10 @@ const CTX = {
 const canoniques = resoudreCanoniques(CTX);
 const vide = resoudreCanoniques({});
 
-test("invariant : exactement 202 clés, pilotées par le catalogue, aucune en trop", () => {
-  assert.equal(VARIABLES.length, 202, "source de vérité du catalogue");
-  assert.equal(Object.keys(canoniques).length, 202);
-  assert.equal(Object.keys(vide).length, 202, "même nombre de clés quel que soit ctx");
+test("invariant : exactement 204 clés, pilotées par le catalogue, aucune en trop", () => {
+  assert.equal(VARIABLES.length, 204, "source de vérité du catalogue");
+  assert.equal(Object.keys(canoniques).length, 204);
+  assert.equal(Object.keys(vide).length, 204, "même nombre de clés quel que soit ctx");
   for (const nom of Object.keys(canoniques)) assert.ok(variableCanonique(nom), `${nom} doit exister dans VARIABLES`);
   assert.deepEqual(Object.keys(canoniques).sort(), VARIABLES.map((v) => v.nom).sort());
 });
@@ -69,9 +69,9 @@ test("invariant : aucun resolver ne cible un nom absent du catalogue", () => {
   for (const nom of NOMS_RESOLUS) assert.ok(variableCanonique(nom), `${nom} doit être une variable canonique`);
 });
 
-test("116 variables réellement supportées, ni plus ni moins", () => {
-  assert.equal(NOMS_RESOLUS.length, 116, "66 (v1.7) + 15 fiche stagiaire/entreprise + 5 prescripteur + 24 indicateurs de session + 6 mentions légales et référent handicap");
-  assert.equal(new Set(NOMS_RESOLUS).size, 116, "aucun doublon");
+test("118 variables réellement supportées, ni plus ni moins", () => {
+  assert.equal(NOMS_RESOLUS.length, 118, "66 (v1.7) + 15 fiche stagiaire/entreprise + 5 prescripteur + 26 indicateurs de session + 6 mentions légales et référent handicap");
+  assert.equal(new Set(NOMS_RESOLUS).size, 118, "aucun doublon");
   assert.ok(!NOMS_RESOLUS.includes("session_libelle"), "distinct de session_reference, non résolu");
 });
 
@@ -116,7 +116,7 @@ test("les 110 variables supportées sont résolues depuis un contexte complet", 
     prescripteur_adresse: "9 place Test", prescripteur_contact_nom: "Anne Contact", prescripteur_contact_fonction: "Conseillère", prescripteur_email: "a@pe.test", prescripteur_telephone: "0594111111",
     indicateur_taux_satisfaction: 80, indicateur_taux_assiduite: 97, indicateur_taux_absence: 3, indicateur_taux_abandon: 10, indicateur_taux_atteinte_objectifs: 100,
     indicateur_nombre_repondants_satisfaction: 5, indicateur_satisfaction_tres_satisfaits: 1, indicateur_satisfaction_satisfaits: 3, indicateur_satisfaction_neutres: 1,
-    indicateur_satisfaction_peu_satisfaits: 0, indicateur_satisfaction_pas_du_tout_satisfaits: 0, indicateur_nombre_reussites: 4, indicateur_nombre_echecs: 0, indicateur_nombre_abandons: 1,
+    indicateur_satisfaction_peu_satisfaits: 0, indicateur_satisfaction_pas_du_tout_satisfaits: 0, indicateur_nombre_reussites: 4, indicateur_nombre_echecs: 0, indicateur_nombre_abandons: 1, indicateur_nombre_au_terme: 9, indicateur_heures_absence: 12.5,
     indicateur_abandons_personnel: 1, indicateur_abandons_professionnel: 0, indicateur_abandons_financement: 0, indicateur_abandons_reorientation: 0, indicateur_abandons_sans_nouvelles: 0, indicateur_abandons_autre: 0,
     indicateur_inscrits_pole_emploi: 2, indicateur_inscrits_mission_locale: 1, indicateur_inscrits_organisme_formation: 0, indicateur_inscrits_autres_prescripteurs: 1,
   };
@@ -126,8 +126,8 @@ test("les 110 variables supportées sont résolues depuis un contexte complet", 
   // abandon_date/abandon_motif : pas d'abandon dans ce jeu → absent, pas une valeur inventée.
   assert.deepEqual(canoniques.abandon_date, { statut: "absent", valeur: null });
   assert.deepEqual(canoniques.abandon_motif, { statut: "absent", valeur: null });
-  // Les attendus + les 2 abandon_* couverts = 116 clés distinctes vérifiées.
-  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 116);
+  // Les attendus + les 2 abandon_* couverts = 118 clés distinctes vérifiées.
+  assert.equal(new Set([...Object.keys(attendu), "abandon_date", "abandon_motif"]).size, 118);
 });
 
 test("v1.2 : session_statut_code résolue (valeur brute), session_statut hors canonique", () => {

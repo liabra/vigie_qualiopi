@@ -60,15 +60,15 @@ test("chaque fichier de migration a une signature (aucune référence impossible
   assert.deepEqual(fichiers.filter((f) => !SIGNATURES[f]), []);
 });
 
-test("base de production sans historique : référence établie, 001 jamais rejouée, seules 026 à 033 et 036 à 053 appliquées", async () => {
+test("base de production sans historique : référence établie, 001 jamais rejouée, seules 026 à 033 et 036 à 054 appliquées", async () => {
   const pool = await nouvelleBase("prod_complete");
   try {
     await schemaProduction(pool);
     setPoolFactory(() => pool);
     const appliquees = await migrate(silence);
-    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql"]);
+    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql", "054_modules_formation.sql"]);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM schema_migrations");
-    assert.equal(rows[0].n, 51);
+    assert.equal(rows[0].n, 52);
     const { rows: [m] } = await pool.query("SELECT nom, type_document, mode_generation FROM modeles_documents");
     assert.deepEqual(m, { nom: "Attestation réelle", type_document: "autre", mode_generation: "manuel" }, "donnée existante préservée");
     assert.deepEqual(await migrate(silence), [], "second démarrage : rien à faire");
@@ -84,7 +84,7 @@ test("migration 007 absente en production : non enregistrée, puis appliquée no
     await schemaProduction(pool, { sauf: ["007_alertes_contraintes_souples.sql"] });
     setPoolFactory(() => pool);
     const appliquees = await migrate(silence);
-    assert.deepEqual(appliquees, ["007_alertes_contraintes_souples.sql", "026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql"]);
+    assert.deepEqual(appliquees, ["007_alertes_contraintes_souples.sql", "026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "032_referentiel_statut_guide.sql", "033_questionnaires_formation.sql", "036_modeles_bibliotheque.sql", "037_modeles_typologie_unicite.sql", "038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql", "054_modules_formation.sql"]);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM pg_constraint WHERE conname IN ('preuves_check', 'preuves_check1')");
     assert.equal(rows[0].n, 0, "contraintes supprimées par l'application normale de 007");
   } finally {
@@ -104,7 +104,7 @@ test("038 après la bibliothèque : modèles déjà classés automatique/conditi
       ('Auto classé', 'CLASSE_AUTO_01', 'session', 'automatique', NULL),
       ('Conditionnel classé', 'CLASSE_COND_01', 'stagiaire', 'conditionnel', 'Si handicap')`);
     setPoolFactory(() => pool);
-    assert.deepEqual(await migrate(silence), ["038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql"]);
+    assert.deepEqual(await migrate(silence), ["038_generations_automatiques.sql", "039_bascules_referentiel.sql", "040_questionnaires_ordre_differe.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql", "054_modules_formation.sql"]);
     const { rows } = await pool.query("SELECT nom, mode_generation, condition_generation, declencheur, condition_code FROM modeles_documents ORDER BY nom");
     assert.deepEqual(rows, [
       { nom: "Auto classé", mode_generation: "automatique", condition_generation: null, declencheur: null, condition_code: null },
@@ -121,7 +121,7 @@ test("historique déjà renseigné : aucune référence par signature, comportem
   try {
     setPoolFactory(() => pool);
     const toutes = await migrate(silence);
-    assert.equal(toutes.length, 51, "base neuve : tout est appliqué normalement");
+    assert.equal(toutes.length, 52, "base neuve : tout est appliqué normalement");
     assert.deepEqual(await migrate(silence), []);
   } finally {
     setPoolFactory(null);
@@ -166,7 +166,7 @@ test("historique présent, 032–040 déjà appliquées : 026–031 puis 041–0
 
     setPoolFactory(() => pool);
     const appliquees = await migrate(silence);
-    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql"]);
+    assert.deepEqual(appliquees, ["026_entretiens_initiaux.sql", "027_sans_suite_stagiaires.sql", "028_generation_multiple.sql", "029_entretien_positionnement.sql", "030_entretien_champs_etendus.sql", "031_entretien_fiche_generee.sql", "041_parametres_organisme_signataires.sql", "042_formation_contenu_documentaire.sql", "043_condition_assiduite.sql", "044_fiche_stagiaire_complete.sql", "045_competences_stagiaires.sql", "046_organisme_comptes_journal.sql", "047_registres_qualite.sql", "048_campagnes_audit.sql", "049_enquetes_en_ligne.sql", "050_rgpd_anonymisation.sql", "051_developpement_intervenants.sql", "052_candidatures_en_ligne.sql", "053_portails.sql", "054_modules_formation.sql"]);
     assert.deepEqual(await migrate(silence), [], "second démarrage : rien à rejouer");
 
     // Document existant conservé, libellé vide ; modèle non multiple par défaut.

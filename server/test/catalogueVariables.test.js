@@ -22,8 +22,8 @@ const avert = (r) => r.avertissements.map((e) => e.code);
 // ── Catalogue ────────────────────────────────────────────────
 
 test("catalogue : noms canoniques et identifiants uniques, syntaxe {{nom}}", () => {
-  assert.equal(DICTIONNAIRE_VERSION, "1.8");
-  assert.equal(VARIABLES.length, 202, "171 variables en 1.7 + 31 ajoutées en 1.8 (STA-19 à 28, PAR-08, IND-05 à 24)");
+  assert.equal(DICTIONNAIRE_VERSION, "1.9");
+  assert.equal(VARIABLES.length, 204, "171 variables en 1.7 + 31 ajoutées en 1.8 (STA-19 à 28, PAR-08, IND-05 à 24) + 2 en 1.9 (IND-25, IND-26)");
   const noms = VARIABLES.map((v) => v.nom);
   assert.equal(new Set(noms).size, noms.length, "noms canoniques uniques");
   const ids = VARIABLES.map((v) => v.id);
@@ -225,7 +225,7 @@ test("validateur : modèle de convocation canonique valide, sans avertissement",
   assert.deepEqual(r.erreurs, []);
   assert.deepEqual(r.avertissements, []);
   assert.equal(r.resume.canoniques.length, 9);
-  assert.equal(r.version, "1.8");
+  assert.equal(r.version, "1.9");
 });
 
 test("validateur : variable inconnue rejetée explicitement", () => {
@@ -316,7 +316,7 @@ test("validateur : entrée non textuelle ou démesurée refusée, écho des bali
 
 test("catalogue() : vue publique cohérente, sans règle d'obligation", () => {
   const c = catalogue();
-  assert.equal(c.version, "1.8");
+  assert.equal(c.version, "1.9");
   assert.equal(c.variables.length, VARIABLES.length);
   assert.equal(c.blocs.length, 13);
   assert.deepEqual(c.syntaxe, { variable: "{{nom_variable}}", bloc: "{{#bloc}} … {{/bloc}}" });

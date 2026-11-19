@@ -100,7 +100,7 @@ after(async () => {
 });
 
 
-import { calculerIndicateurs } from "../src/services/indicateursSession.js";
+import { calculerIndicateurs, chargerIndicateursSession } from "../src/services/indicateursSession.js";
 const C = () => ({ cookie: cookie(contribId) });
 let contribId;
 test("indicateurs : méthodes de calcul (pur) — taux null sans donnée, jamais de 0 % inventé", () => {
@@ -123,12 +123,33 @@ test("indicateurs : méthodes de calcul (pur) — taux null sans donnée, jamais
     ],
   });
   assert.equal(r.taux_assiduite, 95); assert.equal(r.taux_absence, 5);
+  assert.equal(r.heures_absence, 2, "40 h prévues (2 inscrits actifs × 20 h) − 38 h suivies");
+  assert.equal(r.au_terme, 2, "inscrits non en abandon");
+  assert.equal(vide.heures_absence, null, "sans heures prévues : jamais un 0 h inventé"); assert.equal(vide.au_terme, 0);
   assert.equal(r.taux_abandon, 50); assert.equal(r.abandons, 2);
   assert.deepEqual(r.motifs, { personnel: 0, professionnel: 0, financement: 1, reorientation: 0, sans_nouvelles: 0, autre: 1 });
   assert.equal(r.repondants, 3, "seules les réponses « à chaud » comptent"); assert.equal(r.taux_satisfaction, 67);
   assert.deepEqual(r.niveaux, { 5: 1, 4: 1, 3: 1, 2: 0, 1: 0 });
   assert.deepEqual([r.reussites, r.echecs, r.taux_atteinte], [1, 1, 50], "dernier QCM par stagiaire ; 4/10 = échec, 18 ≥ seuil 12 = réussite");
   assert.deepEqual(r.prescripteurs, { pole_emploi: 0, mission_locale: 1, of: 0, autres: 1 }, "abandons exclus");
+});
+
+test("indicateurs : atteinte des objectifs = au moins 50 % des compétences évaluées acquises ; QCM à défaut", () => {
+  const ins = (id, statut = "inscrit") => ({ id, statut, heures_absence: 0, prescripteur: null, categorie_abandon: null });
+  const comp = (inscription_id, ...statuts) => statuts.map((statut) => ({ inscription_id, statut }));
+  const r = calculerIndicateurs({
+    inscriptions: [ins(1), ins(2), ins(3), ins(4), ins(5, "abandon")],
+    competences: [
+      ...comp(1, "acquis", "acquis", "en_cours", "non_acquis"),       // 2/4 = 50 % → atteint (seuil inclus)
+      ...comp(2, "acquis", "en_cours", "non_acquis"),                  // 1/3 → non atteint
+      ...comp(3, "acquis", "non_evalue", null, undefined),             // non évalué exclu : 1/1 → atteint
+      ...comp(5, "acquis"),                                            // abandon : ignoré
+    ],
+    qcm: [{ id: 1, inscription_id: 4, type: "qcm", date_passage: "2026-12-01", score: 9, score_max: 10, seuil_reussite: null, resultat: "non_determine" },
+          { id: 2, inscription_id: 2, type: "qcm", date_passage: "2026-12-01", score: 10, score_max: 10, seuil_reussite: null, resultat: "valide" }],
+  });
+  assert.deepEqual([r.reussites, r.echecs, r.taux_atteinte], [3, 1, 75], "stagiaire 4 sans compétence évaluée : QCM 9/10 ; stagiaire 2 : la règle des compétences prime sur son QCM validé");
+  assert.deepEqual(calculerIndicateurs({ inscriptions: [ins(1)], competences: comp(1, null) }).taux_atteinte, null, "aucune compétence évaluée ni QCM : pas de 0 % inventé");
 });
 
 test("fiche stagiaire : champs validés, domaines de handicap réservés à l'administrateur", async () => {
@@ -221,4 +242,13 @@ test("génération : grille des compétences (X par colonne) et liste des inscri
   assert.match(doc.texte, /<Test Alpha\|Inscrit\|Pôle Emploi\|2 h\|10 %\|Non>/, "taux d'absence = 2/20");
   assert.match(doc.texte, /<Test Bravo\|Abandon\|[^|]*\|0 h\|\|Non>/, "abandon : taux non calculable, vide");
   assert.equal((doc.texte.match(/</g) || []).length, 4, "les 4 inscrits, abandon compris");
+});
+
+test("indicateurs (base réelle) : les compétences saisies priment sur le QCM pour l'atteinte des objectifs", async () => {
+  const avant = await chargerIndicateursSession(F.session, 10);
+  const a = F.inscrits.Alpha; // QCM final validé (cf. test de génération) ; 1 compétence acquise sur 3 → objectif non atteint
+  await pool.query("INSERT INTO competences_stagiaires (inscription_id, competence, statut) VALUES ($1, 'C1', 'acquis'), ($1, 'C2', 'non_acquis'), ($1, 'C3', 'en_cours')", [a.id]);
+  const apres = await chargerIndicateursSession(F.session, 10);
+  assert.equal(apres.reussites, avant.reussites - 1, "Alpha n'est plus compté parmi les réussites");
+  assert.equal(apres.echecs, avant.echecs + 1, "… mais parmi les échecs (1/3 < 50 %)");
 });

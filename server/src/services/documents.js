@@ -21,6 +21,7 @@ import { signatairePour } from "./parametresOrganisme.js";
 import { balisesResiduelles } from "./validationModeles.js";
 import { texteModeleSheet } from "./diagnosticModele.js";
 import { chargerIndicateursSession } from "./indicateursSession.js";
+import { lireModulesSession, modulesDeSession, resultatsModules, evaluerModules, LIBELLES_MODULE } from "./modulesFormation.js";
 import { competencesDeSession } from "./competencesStagiaire.js";
 import { remplacementsBlocs } from "./renduBlocs.js";
 import { planContenuTableaux, planStructureTableaux } from "./blocsTableaux.js";
@@ -374,7 +375,10 @@ async function cibles(modele, { session, groupe }) {
      ORDER BY s.nom, s.prenom`,
     [session.id, groupe?.id ?? null]
   );
-  return rows.map((stagiaire) => ({ stagiaire }));
+  // Résultat par module de chaque stagiaire (règle à deux niveaux) : 2 requêtes au plus pour tout le lot, aucune sans module.
+  const modules = await modulesDeSession(session.id);
+  const resultats = await resultatsModules(modules, rows.map((r) => r.inscription_id));
+  return rows.map((stagiaire) => ({ stagiaire: { ...stagiaire, resultat_modules: resultats.get(stagiaire.inscription_id) || null } }));
 }
 
 // DOC-6A/6B/7B — Lignes des blocs répétables, récupérées en UNE requête par bloc
@@ -458,8 +462,35 @@ async function chargerLignesBlocs(aProduire, blocs = [], sessionId = null) {
     const saisies = new Map();
     for (const r of rows) { if (!saisies.has(r.inscription_id)) saisies.set(r.inscription_id, new Map()); saisies.get(r.inscription_id).set(r.competence, r.statut); }
     const lignes = new Map();
-    for (const id of ids) lignes.set(id, liste.map((competence) => ({ competence, statut: saisies.get(id)?.get(competence) || null })));
+    // Module de chaque compétence (si la formation a une séquence) et statut calculé du module pour ce stagiaire.
+    const sequence = await lireModulesSession(sessionId);
+    const moduleDe = new Map(sequence.flatMap((m) => m.competences.map((c) => [c.libelle_complet, m])));
+    const modulesCalcul = sequence.map((m) => ({ code: m.code, competences: m.competences.map((c) => c.libelle_complet) }));
+    for (const id of ids) {
+      const bilan = modulesCalcul.length ? evaluerModules(modulesCalcul, saisies.get(id) || new Map()) : null;
+      lignes.set(id, liste.map((competence) => {
+        const m = moduleDe.get(competence);
+        return { competence, statut: saisies.get(id)?.get(competence) || null,
+          module_code: m?.code || null, module_intitule: m?.intitule || null, module_statut: m ? bilan?.modules.find((x) => x.code === m.code)?.statut || null : null };
+      }));
+    }
     resultat.competences_stagiaire = lignes;
+  }
+  // Séquence pédagogique de la formation : modules (avec statut calculé du stagiaire) et compétences détaillées.
+  if (sessionId && (blocs.includes("modules_formation") || blocs.includes("sequence_formation"))) {
+    const sequence = await lireModulesSession(sessionId);
+    resultat.sequence_formation = sequence.flatMap((m) => m.competences.map((c) => ({ ...c, module_code: m.code, module_intitule: m.intitule })));
+    const modulesCalcul = sequence.map((m) => ({ code: m.code, competences: m.competences.map((c) => c.libelle_complet) }));
+    const { rows } = ids.length && sequence.length
+      ? await query("SELECT inscription_id, competence, statut FROM competences_stagiaires WHERE inscription_id = ANY($1::int[])", [ids]) : { rows: [] };
+    const saisies = new Map();
+    for (const r of rows) { if (!saisies.has(r.inscription_id)) saisies.set(r.inscription_id, new Map()); saisies.get(r.inscription_id).set(r.competence, r.statut); }
+    const parStagiaire = new Map();
+    for (const id of ids.length ? ids : [0]) {
+      const bilan = ids.length ? evaluerModules(modulesCalcul, saisies.get(id) || new Map()) : null;
+      parStagiaire.set(id, sequence.map((m) => ({ ...m, statut: bilan?.modules.find((x) => x.code === m.code)?.statut || null })));
+    }
+    resultat.modules_formation = parStagiaire;
   }
   // Inscrits de la SESSION (mêmes lignes pour toutes les cibles) : une requête, tous statuts, ordre alphabétique.
   if (blocs.includes("inscrits_session") && sessionId) {
@@ -569,8 +600,9 @@ export async function contexteGeneration(sessionId, groupeId) {
   session.nombre_termines = compte.termines;
   // Indicateurs de résultats de la session (satisfaction, assiduité, abandons, atteinte des objectifs…).
   const indicateurs = await chargerIndicateursSession(sessionId, session.duree_heures_reelle ?? session.duree_heures_defaut ?? null);
+  const modules = await modulesDeSession(sessionId);
   return {
-    indicateurs, session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
+    modules, indicateurs, session, groupe, formateursSession, formateursGroupe, formateursParGroupe, organismeParams: organismeParams || {},
     formation: { intitule: session.intitule, id: session.formation_id, code_interne: session.formation_code_interne },
     version: {
       duree_heures_defaut: session.duree_heures_defaut, public_vise: session.version_public_vise,
@@ -806,6 +838,8 @@ export async function genererDocuments({ modeleId, sessionId, groupeId = null, r
             seances: lignesBlocs.seances || [],
             competences_stagiaire: (stagiaire?.inscription_id != null ? lignesBlocs.competences_stagiaire?.get(stagiaire.inscription_id) : null) || [],
             inscrits_session: (lignesBlocs.inscrits_session || []).map((l) => ({ ...l, taux_absence: tauxAbsence(l, ctx.heuresPrevues) })),
+            modules_formation: (lignesBlocs.modules_formation?.get(stagiaire?.inscription_id ?? 0)) || [],
+            sequence_formation: lignesBlocs.sequence_formation || [],
             suivi_pedagogique: (stagiaire?.inscription_id != null ? lignesBlocs.suivi_pedagogique?.get(stagiaire.inscription_id) : null) || [],
           }
         : null;

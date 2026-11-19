@@ -18,10 +18,11 @@
 //  dépend pas encore.
 // ─────────────────────────────────────────────────────────────
 
-export const DICTIONNAIRE_VERSION = "1.9";
+export const DICTIONNAIRE_VERSION = "1.10";
 
 // Écarts par rapport au PDF v1.0, tous validés.
 export const EVOLUTIONS = Object.freeze([
+  { version: "1.10", changement: "Séquence pédagogique : FOR-15 {{formation_nombre_modules}} ; STA-29 à STA-37 (modules validés, résultat des objectifs, niveau d'autonomie et cases à cocher de la grille de suivi des résultats) ; blocs BLK-14 {{#modules_formation}} (modules et résultat du stagiaire) et BLK-15 {{#sequence_formation}} (compétences/ateliers de la séquence) ; BLK-12 complété du module de chaque compétence." },
   { version: "1.9", changement: "IND-25 {{indicateur_nombre_au_terme}} (inscrits non en abandon) et IND-26 {{indicateur_heures_absence}} (heures d'absence, même base que l'assiduité) pour le bilan de session." },
   { version: "1.1", changement: "Ajout de SES-12 {{session_reference}} (référence interne de la session)." },
   { version: "1.1", changement: "Valeurs métier alignées sur le schéma Vigie : session_statut (planifiee | en_cours | terminee | annulee), stagiaire_statut_parcours (inscrit | en_cours | termine | abandon), civilités (M. | Mme), formation_modalite (presentiel | distanciel | mixte). Les libellés affichés sont distincts des valeurs." },
@@ -105,6 +106,7 @@ const LIGNES = [
   ["FOR-12", "formation_modalites_evaluation", "Modalités d'évaluation de la formation", "formation", "texte", "Fiche formation", "Formation", "Modalités d'évaluation de la formation.", { format: "texte_long" }],
   ["FOR-13", "formation_accessibilite", "Modalités d'accessibilité", "formation", "texte", "Fiche formation", "Formation", "Modalités d'accessibilité de la formation.", { format: "texte_long" }],
   ["FOR-14", "formation_nombre_phases", "Nombre de phases pédagogiques", "formation", "nombre", "Configuration formation", "Formation", "Nombre de phases du parcours (6 pour ce projet)."],
+  ["FOR-15", "formation_nombre_modules", "Nombre de modules de la formation", "formation", "nombre", "Séquence pédagogique", "Formation", "Nombre de modules de la séquence pédagogique de la formation.", { depuis: "1.10" }],
   // ── Session ───────────────────────────────────────────────
   ["SES-01", "session_id", "Identifiant interne session", "session", "texte", "Base Vigie", "Session", "Identifiant interne de la session.", { format: "identifiant" }],
   ["SES-02", "session_libelle", "Libellé de session", "session", "texte", "Session", "Session", "Libellé de la session ; ne pas confondre avec le groupe."],
@@ -155,6 +157,15 @@ const LIGNES = [
   ["STA-26", "stagiaire_entreprise_effectifs", "Effectifs de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Effectifs de l'entreprise.", { depuis: "1.8" }],
   ["STA-27", "stagiaire_entreprise_responsable", "Responsable de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "Nom du responsable (signataire) de l'entreprise.", { sensibilite: "personnelle", depuis: "1.8" }],
   ["STA-28", "stagiaire_entreprise_opca", "OPCA de l'entreprise", "stagiaire", "texte", "Dossier stagiaire", "Bénéficiaire", "OPCA / opérateur de compétences de l'entreprise.", { depuis: "1.8" }],
+  ["STA-29", "stagiaire_modules_valides", "Modules validés par le stagiaire", "stagiaire", "nombre", "Suivi des résultats", "Bénéficiaire", "Nombre de modules acquis (au moins 50 % des compétences évaluées acquises).", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-30", "stagiaire_resultat_objectifs", "Résultat sur les objectifs de la formation", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "Objectifs atteints, partiellement atteints ou non atteints (4 à 5, 2 à 3, 0 à 1 module validé sur 5).", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-31", "stagiaire_niveau_autonomie", "Niveau d'autonomie du stagiaire", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "Autonome, En progression ou Nécessite un accompagnement renforcé.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-32", "stagiaire_case_objectifs_atteints", "Case « Objectifs atteints »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si les objectifs sont atteints, sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-33", "stagiaire_case_objectifs_partiels", "Case « Objectifs partiellement atteints »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si les objectifs sont partiellement atteints, sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-34", "stagiaire_case_objectifs_non_atteints", "Case « Objectifs non atteints »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si les objectifs ne sont pas atteints, sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-35", "stagiaire_case_autonome", "Case « Autonome »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si le stagiaire est autonome (4 à 5 modules validés), sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-36", "stagiaire_case_en_progression", "Case « En progression »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si le stagiaire est en progression (2 à 3 modules validés), sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
+  ["STA-37", "stagiaire_case_accompagnement_renforce", "Case « Accompagnement renforcé »", "stagiaire", "texte", "Suivi des résultats", "Bénéficiaire", "☒ si le stagiaire nécessite un accompagnement renforcé (0 à 1 module validé), sinon ☐.", { sensibilite: "personnelle", depuis: "1.10" }],
   // ── Représentant légal et autorisations ───────────────────
   ["LEG-01", "representant_legal_nom", "Nom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Nom du représentant légal d'un bénéficiaire mineur.", { sensibilite: "personnelle" }],
   ["LEG-02", "representant_legal_prenom", "Prénom du représentant légal", "representant_legal", "texte", "Dossier mineur", "Bénéficiaire", "Prénom du représentant légal.", { sensibilite: "personnelle" }],
@@ -380,7 +391,10 @@ const DEF_BLOCS = [
       local("competence_statut", "texte", "Statut : Acquis, En cours d'acquisition, Pas acquis ou Non évalué.", { sensibilite: "personnelle" }),
       local("competence_acquis", "texte", "« X » si la compétence est acquise, sinon vide (colonne d'une grille).", { sensibilite: "personnelle" }),
       local("competence_en_cours", "texte", "« X » si la compétence est en cours d'acquisition, sinon vide.", { sensibilite: "personnelle" }),
-      local("competence_non_acquis", "texte", "« X » si la compétence n'est pas acquise, sinon vide.", { sensibilite: "personnelle" })] },
+      local("competence_non_acquis", "texte", "« X » si la compétence n'est pas acquise, sinon vide.", { sensibilite: "personnelle" }),
+      local("competence_module_code", "texte", "Code du module de la compétence (C1…), si la formation a une séquence."),
+      local("competence_module_intitule", "texte", "Intitulé du module de la compétence."),
+      local("competence_module_statut", "texte", "Résultat du stagiaire sur le module : Acquis, En cours d'acquisition ou Pas acquis.", { sensibilite: "personnelle" })] },
   // v1.8 : liste des inscrits de la session (documents de suivi par session : suivi des inscrits, transmission des documents).
   { id: "BLK-13", nom: "inscrits_session", libelle: "Inscrits de la session", source: "session -> inscriptions",
     documents: "Suivi des inscrits et des absences, tableau de transmission des documents",
@@ -397,6 +411,27 @@ const DEF_BLOCS = [
       local("inscrit_taux_absence", "texte", "Taux d'absence de l'inscrit, affiché avec son signe % (vide si non calculable).", {}),
       local("inscrit_date_abandon", "date", "Date d'abandon, le cas échéant.", { format: "date" }),
       local("inscrit_motif_abandon", "texte", "Motif d'abandon, le cas échéant.", { sensibilite: "personnelle" })] },
+  // v1.10 : séquence pédagogique (modules et compétences) de la version de formation de la session.
+  { id: "BLK-14", nom: "modules_formation", libelle: "Modules de la formation", source: "formation_version -> modules (+ résultat du stagiaire)",
+    documents: "Programme, suivi des résultats, bilans intermédiaires",
+    champs: [local("module_code", "texte", "Code du module (C1…)."), local("module_intitule", "texte", "Intitulé du module."),
+      local("module_duree", "nombre", "Durée du module en heures.", { format: "duree_heures" }),
+      local("module_evaluation_duree", "texte", "Durée de l'évaluation du module (« 20 min »)."),
+      local("module_evaluation_objectif", "texte", "Objectif de l'évaluation intermédiaire du module."),
+      local("module_nombre_competences", "nombre", "Nombre de compétences du module."),
+      local("module_competences", "texte", "Compétences du module, une par ligne (code et intitulé)."),
+      local("module_statut", "texte", "Résultat du stagiaire : Acquis, En cours d'acquisition ou Pas acquis.", { sensibilite: "personnelle" }),
+      local("module_acquis", "texte", "« X » si le module est acquis, sinon vide.", { sensibilite: "personnelle" }),
+      local("module_en_cours", "texte", "« X » si le module est en cours d'acquisition, sinon vide.", { sensibilite: "personnelle" }),
+      local("module_non_acquis", "texte", "« X » si le module n'est pas acquis, sinon vide.", { sensibilite: "personnelle" })] },
+  { id: "BLK-15", nom: "sequence_formation", libelle: "Séquence pédagogique (compétences)", source: "formation_version -> modules -> compétences",
+    documents: "Séquence pédagogique, programme",
+    champs: [local("sequence_module_code", "texte", "Code du module."), local("sequence_module_intitule", "texte", "Intitulé du module."),
+      local("sequence_competence_code", "texte", "Code de la compétence (AT01…)."), local("sequence_competence_titre", "texte", "Titre court de la compétence."),
+      local("sequence_competence_libelle", "texte", "Intitulé de la compétence tel qu'au programme."), local("sequence_duree", "texte", "Durée (« 40 min »)."),
+      local("sequence_objectif", "texte", "Objectif pédagogique."), local("sequence_support", "texte", "Support."), local("sequence_modalite", "texte", "Modalité."),
+      local("sequence_activites", "texte", "Activités ou techniques."), local("sequence_ressources", "texte", "Ressources pédagogiques."),
+      local("sequence_indicateur", "texte", "Indicateur / évaluation.")] },
 ];
 
 export const BLOCS = Object.freeze(DEF_BLOCS.map((b) => figer({

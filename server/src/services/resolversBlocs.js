@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 import { formaterDate, formaterDuree } from "./formatageDocuments.js";
 import { LIBELLES_STATUT_COMPETENCE } from "./competencesStagiaire.js";
+import { LIBELLES_MODULE } from "./modulesFormation.js";
 
 const resolu = (valeur) => ({ statut: "resolu", valeur });
 const absent = () => ({ statut: "absent", valeur: null });
@@ -117,6 +118,38 @@ export const CHAMPS_BLOC = {
     competence_acquis: (l) => resolu(l.statut === "acquis" ? "X" : ""),
     competence_en_cours: (l) => resolu(l.statut === "en_cours" ? "X" : ""),
     competence_non_acquis: (l) => resolu(l.statut === "non_acquis" ? "X" : ""),
+    competence_module_code: (l) => texte(l.module_code),
+    competence_module_intitule: (l) => texte(l.module_intitule),
+    competence_module_statut: (l) => libelle(LIBELLES_MODULE, l.module_statut),
+  },
+  // modules_formation : modules de la séquence pédagogique de la formation ; statut = résultat du stagiaire (règle des 50 %).
+  modules_formation: {
+    module_code: (l) => texte(l.code),
+    module_intitule: (l) => texte(l.intitule),
+    module_duree: (l) => (l.duree_minutes === null || l.duree_minutes === undefined ? absent() : resolu(formaterDuree(Math.round((l.duree_minutes / 60) * 100) / 100))),
+    module_evaluation_duree: (l) => (l.evaluation_minutes === null || l.evaluation_minutes === undefined ? absent() : resolu(`${l.evaluation_minutes} min`)),
+    module_evaluation_objectif: (l) => texte(l.evaluation_objectif),
+    module_nombre_competences: (l) => nombre(l.competences?.length),
+    module_competences: (l) => (l.competences?.length ? resolu(l.competences.map((c) => c.libelle_complet).join("\n")) : absent()),
+    module_statut: (l) => libelle(LIBELLES_MODULE, l.statut),
+    module_acquis: (l) => resolu(l.statut === "acquis" ? "X" : ""),
+    module_en_cours: (l) => resolu(l.statut === "en_cours" ? "X" : ""),
+    module_non_acquis: (l) => resolu(l.statut === "non_acquis" ? "X" : ""),
+  },
+  // sequence_formation : une ligne par compétence/atelier de la séquence pédagogique (tableau de la séquence).
+  sequence_formation: {
+    sequence_module_code: (l) => texte(l.module_code),
+    sequence_module_intitule: (l) => texte(l.module_intitule),
+    sequence_competence_code: (l) => texte(l.code),
+    sequence_competence_titre: (l) => texte(l.titre || l.libelle),
+    sequence_competence_libelle: (l) => texte(l.libelle),
+    sequence_duree: (l) => (l.duree_minutes === null || l.duree_minutes === undefined ? absent() : resolu(`${l.duree_minutes} min`)),
+    sequence_objectif: (l) => texte(l.objectif),
+    sequence_support: (l) => texte(l.support),
+    sequence_modalite: (l) => texte(l.modalite),
+    sequence_activites: (l) => texte(l.activites),
+    sequence_ressources: (l) => texte(l.ressources),
+    sequence_indicateur: (l) => texte(l.indicateur),
   },
   // inscrits_session : une ligne par inscription de la session (abandons compris : le statut le dit).
   inscrits_session: {

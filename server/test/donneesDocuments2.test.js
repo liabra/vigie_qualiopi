@@ -252,3 +252,27 @@ test("indicateurs (base réelle) : les compétences saisies priment sur le QCM p
   assert.equal(apres.reussites, avant.reussites - 1, "Alpha n'est plus compté parmi les réussites");
   assert.equal(apres.echecs, avant.echecs + 1, "… mais parmi les échecs (1/3 < 50 %)");
 });
+
+test("génération : séquence pédagogique (modules, séquence, résultat du stagiaire, cases à cocher) depuis la base", async () => {
+  const { rows: [v] } = await pool.query("SELECT id FROM formation_versions WHERE formation_id = $1 ORDER BY numero DESC LIMIT 1", [F.formation]);
+  const mod = async (ordre, code, intitule, comps) => {
+    const { rows: [m] } = await pool.query("INSERT INTO formation_modules (formation_version_id, ordre, code, intitule, duree_minutes, evaluation_minutes) VALUES ($1,$2,$3,$4,300,20) RETURNING id", [v.id, ordre, code, intitule]);
+    for (const [i, [cc, lib]] of comps.entries()) await pool.query("INSERT INTO formation_competences (module_id, ordre, code, libelle, titre, duree_minutes, activites) VALUES ($1,$2,$3,$4,$5,40,'Activité fictive')", [m.id, i + 1, cc, lib, "Titre " + cc]);
+  };
+  await mod(1, "C1", "Prise en main", [["AT01", "allumer un PC"], ["AT02", "ouvrir un logiciel"]]);
+  await mod(2, "C2", "Messagerie", [["AT03", "envoyer un message"]]);
+  const m = await modele("{{formation_nombre_modules}} modules ; {{stagiaire_modules_valides}} validé ; {{stagiaire_resultat_objectifs}} ; {{stagiaire_niveau_autonomie}} ; {{stagiaire_case_objectifs_atteints}}{{stagiaire_case_objectifs_partiels}}{{stagiaire_case_objectifs_non_atteints}} {{stagiaire_case_autonome}}{{stagiaire_case_en_progression}}{{stagiaire_case_accompagnement_renforce}} "
+    + "{{#modules_formation}}<{{module_code}}|{{module_intitule}}|{{module_duree}}|{{module_evaluation_duree}}|{{module_nombre_competences}}|{{module_statut}}|{{module_acquis}}>{{/modules_formation}} "
+    + "{{#sequence_formation}}({{sequence_module_code}}/{{sequence_competence_code}}/{{sequence_competence_titre}}/{{sequence_duree}}/{{sequence_activites}}){{/sequence_formation}} "
+    + "{{#competences_stagiaire}}[{{competence_module_code}}:{{competence_module_statut}}]{{/competences_stagiaire}}");
+  ok(await api("POST", "/api/generations", { modele_id: m, session_id: F.session }, C()));
+  const docs = await documents(F.session, m);
+  const alpha = docs.find((d) => d.stagiaire_id === F.inscrits.Alpha.stagiaire_id).texte;
+  // Alpha : AT01 acquis, AT02 en cours → C1 = 50 % acquis ; AT03 non évalué → C2 non évalué ; 1 module sur 2 → partiellement atteints.
+  assert.match(alpha, /^2 modules ; 1 validé ; Objectifs partiellement atteints ; En progression ; ☐☒☐ ☐☒☐ /);
+  assert.match(alpha, /<C1\|Prise en main\|5 h\|20 min\|2\|Acquis\|X><C2\|Messagerie\|5 h\|20 min\|1\|\|>/, "C2 non évalué : statut vide, jamais inventé");
+  assert.match(alpha, /\(C1\/AT01\/Titre AT01\/40 min\/Activité fictive\)\(C1\/AT02\/Titre AT02\/40 min\/Activité fictive\)\(C2\/AT03\/Titre AT03\/40 min\/Activité fictive\)/);
+  assert.match(alpha, /\[C1:Acquis\]\[C1:Acquis\]\[C2:\]/);
+  const charlie = docs.find((d) => d.stagiaire_id === F.inscrits.Charlie.stagiaire_id).texte;
+  assert.match(charlie, /^2 modules ; 0 validé ; ; ; ☐☐☐ ☐☐☐ /, "aucune compétence évaluée : pas de niveau déduit, aucune case cochée");
+});

@@ -26,8 +26,11 @@
 // ─────────────────────────────────────────────────────────────
 import { VARIABLES, variableCanonique } from "./catalogueVariables.js";
 import { dureeAttestation, formaterDate } from "./formatageDocuments.js";
+import { LIBELLES_NIVEAU } from "./modulesFormation.js";
 
 const resolu = (valeur) => ({ statut: "resolu", valeur });
+// Case à cocher d'une grille : ☒ si le niveau du stagiaire correspond, ☐ sinon (absent si la formation n'a pas de séquence).
+const caseNiveau = (ctx, niveau) => (ctx.stagiaire?.resultat_modules?.total ? { statut: "resolu", valeur: ctx.stagiaire.resultat_modules.niveau === niveau ? "☒" : "☐" } : { statut: "absent", valeur: null });
 const absent = () => ({ statut: "absent", valeur: null });
 // Un texte n'est considéré résolu que non vide : un champ NULL/vide en
 // base est « absent », jamais une chaîne vide déguisée en valeur réelle.
@@ -83,6 +86,7 @@ const RESOLVEURS_CANONIQUES = {
   formation_methodes_pedagogiques: (ctx) => texte(ctx.version?.methodes_pedagogiques),
   formation_modalites_evaluation: (ctx) => texte(ctx.version?.modalites_evaluation),
   // (formation_nombre_phases : aucune donnée Vigie, donc non_resoluble.)
+  formation_nombre_modules: (ctx) => (ctx.modules?.length ? resolu(ctx.modules.length) : absent()),
 
   // ── Session (11) ──
   session_id: (ctx) => nombre(ctx.session?.id),
@@ -153,6 +157,16 @@ const RESOLVEURS_CANONIQUES = {
   stagiaire_entreprise_effectifs: (ctx) => texte(ctx.stagiaire?.entreprise_effectifs),
   stagiaire_entreprise_responsable: (ctx) => texte(ctx.stagiaire?.entreprise_responsable),
   stagiaire_entreprise_opca: (ctx) => texte(ctx.stagiaire?.entreprise_opca),
+  // Résultat par module (règle à deux niveaux, modulesFormation.js) ; absent tant que la formation n'a pas de séquence.
+  stagiaire_modules_valides: (ctx) => (ctx.stagiaire?.resultat_modules?.total ? resolu(ctx.stagiaire.resultat_modules.valides) : absent()),
+  stagiaire_resultat_objectifs: (ctx) => texte(LIBELLES_NIVEAU[ctx.stagiaire?.resultat_modules?.niveau]?.objectifs),
+  stagiaire_niveau_autonomie: (ctx) => texte(LIBELLES_NIVEAU[ctx.stagiaire?.resultat_modules?.niveau]?.autonomie),
+  stagiaire_case_objectifs_atteints: (ctx) => caseNiveau(ctx, "atteints"),
+  stagiaire_case_objectifs_partiels: (ctx) => caseNiveau(ctx, "partiels"),
+  stagiaire_case_objectifs_non_atteints: (ctx) => caseNiveau(ctx, "non_atteints"),
+  stagiaire_case_autonome: (ctx) => caseNiveau(ctx, "atteints"),
+  stagiaire_case_en_progression: (ctx) => caseNiveau(ctx, "partiels"),
+  stagiaire_case_accompagnement_renforce: (ctx) => caseNiveau(ctx, "non_atteints"),
   // (stagiaire_amenagements : en attente d'une règle de rendu ; le bloc adaptations porte le détail.
   // stagiaire_date_naissance/age/adresse/code_postal/ville : aucune colonne, cf. DOC-3A.)
 

@@ -152,3 +152,28 @@ export function regrouper(rows) {
   }
   return [...parModule.values()];
 }
+
+// ── Résultats d'un lot de stagiaires (documents) ──
+export const LIBELLES_NIVEAU = {
+  atteints: { objectifs: "Objectifs atteints", autonomie: "Autonome" },
+  partiels: { objectifs: "Objectifs partiellement atteints", autonomie: "En progression" },
+  non_atteints: { objectifs: "Objectifs non atteints", autonomie: "Nécessite un accompagnement renforcé" },
+};
+export const LIBELLES_MODULE = { acquis: "Acquis", en_cours: "En cours d'acquisition", non_acquis: "Pas acquis" };
+
+// Map inscription_id → résultat par module ({ modules, valides, total, niveau }) : une seule requête pour tout le lot.
+export async function resultatsModules(modules, inscriptionIds) {
+  const res = new Map();
+  if (!modules.length || !inscriptionIds.length) return res;
+  const { rows } = await query("SELECT inscription_id, competence, statut FROM competences_stagiaires WHERE inscription_id = ANY($1::int[])", [inscriptionIds]);
+  const statuts = new Map();
+  for (const r of rows) { if (!statuts.has(r.inscription_id)) statuts.set(r.inscription_id, new Map()); statuts.get(r.inscription_id).set(r.competence, r.statut); }
+  for (const id of inscriptionIds) res.set(id, evaluerModules(modules, statuts.get(id) || new Map()));
+  return res;
+}
+
+// Séquence détaillée de la version de formation d'une session (blocs de documents).
+export async function lireModulesSession(sessionId) {
+  const { rows: [s] } = await query("SELECT formation_version_id FROM sessions WHERE id = $1", [sessionId]);
+  return s?.formation_version_id ? lireModulesVersion(s.formation_version_id) : [];
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
 import { Alert, Badge, Button, ConfirmDialog, Drawer, EmptyState, Field, FormSection, LoadingState, PageHeader } from "../ui/index.js";
 import { useTitrePage } from "../pages/titre.js";
+import { SequenceFormation } from "./SequenceFormation.jsx";
 
 export const MODALITES = { presentiel: "Présentiel", distanciel: "Distanciel", mixte: "Mixte" };
 const VIDE = {
@@ -32,6 +33,7 @@ export function FormationsPage() {
   const [etat, setEtat] = useState("actives"); // actives | archivees
   const [aSupprimer, setASupprimer] = useState(null);
   const [enCours, setEnCours] = useState(null); // id en cours d'action
+  const [sequence, setSequence] = useState(null); // formation dont on édite la séquence pédagogique
 
   const charger = useCallback(async () => {
     try { setFormations((await api("/api/formations")).formations); setErr(null); } catch (e) { setErr(e.message); }
@@ -142,6 +144,10 @@ export function FormationsPage() {
                         onClick={() => { setSucces(null); setPanneau({ mode: "revision", formation: f }); }}>
                         Réviser
                       </Button>
+                      <Button compact aria-label={`Séquence pédagogique de la formation ${f.intitule}`}
+                        onClick={() => { setSucces(null); setSequence(f); }}>
+                        Séquence
+                      </Button>
                       {f.actif !== false
                         ? <Button compact aria-label={`Archiver la formation ${f.intitule}`} disabled={enCours === f.id}
                             onClick={() => changerActif(f, false)}>{enCours === f.id ? "Archivage…" : "Archiver"}</Button>
@@ -165,6 +171,9 @@ export function FormationsPage() {
         onFermer={() => setPanneau(null)}
         onEnregistree={async (message) => { setPanneau(null); setSucces(message); await charger(); }}
       />
+
+      <SequenceFormation formation={sequence} onFermer={() => setSequence(null)}
+        onEnregistree={async (message) => { setSequence(null); setSucces(message); }} />
 
       <ConfirmDialog
         ouvert={!!aSupprimer} titre="Supprimer définitivement cette formation ?"
